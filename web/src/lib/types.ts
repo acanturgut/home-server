@@ -69,3 +69,59 @@ export interface HKInfo {
   setup_uri: string;
   accessories: HKAccessory[] | null;
 }
+
+export interface BuildRecord {
+  action: string;
+  prompt: string;
+  status: string;
+  duration: string;
+  node: string;
+  timestamp: string;
+}
+
+export interface AppInfo {
+  name: string;
+  icon?: string;
+  port: number;
+  healthcheck: string;
+  route: string;
+  type: string;
+  status: string;
+  prompt: string;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+  builds?: BuildRecord[];
+  dev_mode?: boolean;
+  dev_running?: boolean;
+}
+
+export interface BuildTask {
+  id: number;
+  title: string;
+  description: string;
+  worker: string; // "heavy" or "light"
+  nodeName?: string;
+  model?: string;
+  status: string; // "pending", "running", "done", "error"
+  latency?: string;
+}
+
+export interface BuildEvent {
+  step: string;
+  message: string;
+  detail?: string;
+  latency?: string;
+  timestamp?: string;
+  tasks?: BuildTask[];
+  taskId?: number;
+}
+
+export interface Endpoint {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  path: string;
+  summary: string;
+  body?: string;
+  pathParams?: string[];
+  queryParams?: { name: string; default?: string }[];
+}

@@ -96,342 +96,21 @@ import {
 } from '@/lib/format';
 import { useSpeechRecognition, speak, stopSpeaking } from '@/lib/voice';
 import { SLASH_COMMANDS } from '@/lib/slash';
-import {
-  MarkdownView,
-  CompareBlock,
-} from '@/lib/markdown';
+import { MarkdownView, CompareBlock } from '@/lib/markdown';
 import { DashboardPanel } from '@/panels/DashboardPanel';
 import { NodesPanel } from '@/panels/NodesPanel';
 import { LogsPanel } from '@/panels/LogsPanel';
 import { HomeKitPanel } from '@/panels/HomeKitPanel';
-import type { SystemInfo } from '@/lib/types';
-
-interface Endpoint {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  path: string;
-  summary: string;
-  body?: string;
-  pathParams?: string[];
-  queryParams?: { name: string; default?: string }[];
-}
-
-const ENDPOINTS: Endpoint[] = [
-  {
-    method: 'GET',
-    path: '/api/health',
-    summary: 'System health, Ollama status & node online/offline',
-  },
-  {
-    method: 'GET',
-    path: '/api/config',
-    summary: 'Current server configuration (router model, ollama host)',
-  },
-  {
-    method: 'PUT',
-    path: '/api/config',
-    summary: 'Update server config (e.g. router model)',
-    body: JSON.stringify({ router_model: 'gemma3:1b' }, null, 2),
-  },
-  {
-    method: 'GET',
-    path: '/api/logs',
-    summary: 'Recent server logs',
-    queryParams: [{ name: 'n', default: '50' }],
-  },
-  { method: 'GET', path: '/api/nodes', summary: 'List all compute nodes' },
-  {
-    method: 'POST',
-    path: '/api/nodes',
-    summary: 'Add a new compute node',
-    body: JSON.stringify(
-      {
-        name: 'My PC',
-        host: 'http://192.168.50.100:1234',
-        tier: 'high-end',
-        gpu: 'RTX 4090',
-        mac: '',
-        model: '',
-      },
-      null,
-      2,
-    ),
-  },
-  {
-    method: 'PUT',
-    path: '/api/nodes/{id}',
-    summary: 'Update a compute node',
-    pathParams: ['id'],
-    body: JSON.stringify(
-      {
-        name: 'My PC',
-        host: 'http://192.168.50.100:1234',
-        tier: 'high-end',
-        gpu: 'RTX 4090',
-        mac: '',
-        model: '',
-      },
-      null,
-      2,
-    ),
-  },
-  {
-    method: 'DELETE',
-    path: '/api/nodes/{id}',
-    summary: 'Delete a compute node',
-    pathParams: ['id'],
-  },
-  {
-    method: 'POST',
-    path: '/api/nodes/{id}/wake',
-    summary: 'Send Wake-on-LAN magic packet',
-    pathParams: ['id'],
-  },
-  {
-    method: 'GET',
-    path: '/api/nodes/{id}/models',
-    summary: 'List models on a node (LM Studio)',
-    pathParams: ['id'],
-  },
-  {
-    method: 'POST',
-    path: '/api/chat',
-    summary: 'Send a chat message (non-streaming)',
-    body: JSON.stringify(
-      { messages: [{ role: 'user', content: 'Hello!' }] },
-      null,
-      2,
-    ),
-  },
-  {
-    method: 'POST',
-    path: '/api/chat/stream',
-    summary: 'Chat message (streaming NDJSON)',
-    body: JSON.stringify(
-      { messages: [{ role: 'user', content: 'Hello!' }] },
-      null,
-      2,
-    ),
-  },
-];
-
-const METHOD_COLORS: Record<string, string> = {
-  GET: 'text-emerald-400',
-  POST: 'text-blue-400',
-  PUT: 'text-amber-400',
-  DELETE: 'text-red-400',
-};
-
-function EndpointCard({ ep }: { ep: Endpoint }) {
-  const [body, setBody] = useState(ep.body || '');
-  const [params, setParams] = useState<Record<string, string>>(() => {
-    const p: Record<string, string> = {};
-    ep.pathParams?.forEach((k) => (p[k] = ''));
-    ep.queryParams?.forEach((q) => (p[q.name] = q.default || ''));
-    return p;
-  });
-  const [response, setResponse] = useState<string | null>(null);
-  const [status, setStatus] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
-
-  const buildUrl = useCallback(() => {
-    let url = `${API_BASE}${ep.path}`;
-    ep.pathParams?.forEach((k) => {
-      url = url.replace(`{${k}}`, encodeURIComponent(params[k] || ''));
-    });
-    if (ep.queryParams?.length) {
-      const qs = ep.queryParams
-        .filter((q) => params[q.name])
-        .map((q) => `${q.name}=${encodeURIComponent(params[q.name])}`)
-        .join('&');
-      if (qs) url += `?${qs}`;
-    }
-    return url;
-  }, [ep, params]);
-
-  const execute = async () => {
-    setLoading(true);
-    setResponse(null);
-    setStatus(null);
-    try {
-      const url = buildUrl();
-      const opts: RequestInit = { method: ep.method };
-      if (body && (ep.method === 'POST' || ep.method === 'PUT')) {
-        opts.headers = { 'Content-Type': 'application/json' };
-        opts.body = body;
-      }
-      if (ep.path === '/api/chat/stream') {
-        const res = await fetch(url, opts);
-        setStatus(res.status);
-        const reader = res.body?.getReader();
-        const decoder = new TextDecoder();
-        let text = '';
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            text += decoder.decode(value, { stream: true });
-            setResponse(text);
-          }
-        }
-      } else {
-        const res = await fetch(url, opts);
-        setStatus(res.status);
-        const text = await res.text();
-        try {
-          setResponse(JSON.stringify(JSON.parse(text), null, 2));
-        } catch {
-          setResponse(text);
-        }
-      }
-    } catch (e: unknown) {
-      setResponse(`Error: ${e instanceof Error ? e.message : String(e)}`);
-      setStatus(0);
-    }
-    setLoading(false);
-  };
-
-  return (
-    <div className="border-b border-border/10 last:border-0">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-3 py-2 px-1 text-left hover:bg-white/[0.02] transition-colors">
-        <span
-          className={`font-mono text-[10px] font-semibold w-12 shrink-0 ${METHOD_COLORS[ep.method]}`}>
-          {ep.method}
-        </span>
-        <code className="text-[11px] font-mono text-foreground/70 flex-1 min-w-0 truncate">
-          {ep.path}
-        </code>
-        <span className="text-[10px] text-muted-foreground/40 hidden sm:block truncate max-w-[200px]">
-          {ep.summary}
-        </span>
-        <ChevronDown
-          size={12}
-          className={`text-muted-foreground/30 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-      {open && (
-        <div className="pb-3 px-1 space-y-2.5">
-          <p className="text-[10px] text-muted-foreground/60">{ep.summary}</p>
-          {ep.pathParams?.map((k) => (
-            <div key={k} className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground/40 w-16 shrink-0">
-                :{k}
-              </span>
-              <input
-                placeholder={k}
-                value={params[k] || ''}
-                onChange={(e) =>
-                  setParams((p) => ({ ...p, [k]: e.target.value }))
-                }
-                className="flex-1 h-6 text-[11px] font-mono bg-transparent border-b border-border/20 focus:border-foreground/30 focus:outline-none px-1 transition-colors"
-              />
-            </div>
-          ))}
-          {ep.queryParams?.map((q) => (
-            <div key={q.name} className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground/40 w-16 shrink-0">
-                ?{q.name}
-              </span>
-              <input
-                placeholder={q.default || q.name}
-                value={params[q.name] || ''}
-                onChange={(e) =>
-                  setParams((p) => ({ ...p, [q.name]: e.target.value }))
-                }
-                className="flex-1 h-6 text-[11px] font-mono bg-transparent border-b border-border/20 focus:border-foreground/30 focus:outline-none px-1 transition-colors"
-              />
-            </div>
-          ))}
-          {ep.body && (
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              className="w-full font-mono text-[10px] bg-white/[0.02] border border-border/15 rounded p-2 min-h-[80px] resize-y focus:outline-none focus:border-foreground/20 transition-colors"
-              spellCheck={false}
-            />
-          )}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={execute}
-              disabled={loading}
-              className="px-3 py-1 rounded text-[10px] font-medium bg-foreground/10 hover:bg-foreground/15 disabled:opacity-40 transition-colors">
-              {loading ? '...' : 'Run'}
-            </button>
-            <code className="text-[9px] text-muted-foreground/30 truncate">
-              {buildUrl()}
-            </code>
-          </div>
-          {response !== null && (
-            <div className="space-y-1">
-              {status !== null && (
-                <span
-                  className={`text-[10px] font-mono ${status >= 200 && status < 300 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {status}
-                </span>
-              )}
-              <pre className="text-[10px] font-mono text-foreground/60 bg-black/20 rounded p-2 max-h-[300px] overflow-auto whitespace-pre-wrap break-words">
-                {response}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+import { EndpointCard } from '@/components/EndpointCard';
+import { ClarifyWizard } from '@/components/ClarifyWizard';
+import { AppSidebar } from '@/components/AppSidebar';
+import { guessIcon } from '@/lib/icons';
+import type { SystemInfo, AppInfo, BuildEvent } from '@/lib/types';
+import { ENDPOINTS } from '@/lib/endpoints';
 
 /* ── System Dashboard ── */
 
 /* ── Apps Panel ── */
-
-interface BuildRecord {
-  action: string;
-  prompt: string;
-  status: string;
-  duration: string;
-  node: string;
-  timestamp: string;
-}
-
-interface AppInfo {
-  name: string;
-  icon?: string;
-  port: number;
-  healthcheck: string;
-  route: string;
-  type: string;
-  status: string;
-  prompt: string;
-  error?: string;
-  created_at: string;
-  updated_at: string;
-  builds?: BuildRecord[];
-  dev_mode?: boolean;
-  dev_running?: boolean;
-}
-
-interface BuildEvent {
-  step: string;
-  message: string;
-  detail?: string;
-  latency?: string;
-  timestamp?: string;
-  tasks?: BuildTask[];
-  taskId?: number;
-}
-
-interface BuildTask {
-  id: number;
-  title: string;
-  description: string;
-  worker: string; // "heavy" or "light"
-  nodeName?: string;
-  model?: string;
-  status: string; // "pending", "running", "done", "error"
-  latency?: string;
-}
 
 const PIPELINE_STEPS = [
   'planning',
@@ -1727,491 +1406,6 @@ function BottomPanel(props: {
   );
 }
 
-function ClarifyWizard(props: {
-  prompt: string;
-  setPrompt: (v: string) => void;
-  loading: boolean;
-  error: string | null;
-  summary: string;
-  questions: Array<{
-    id: string;
-    question: string;
-    hint?: string;
-    suggestions?: string[];
-    required?: boolean;
-    default?: string;
-  }>;
-  answers: Record<string, string>;
-  setAnswers: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  name: string;
-  setName: (v: string) => void;
-  notes: string;
-  setNotes: (v: string) => void;
-  onClose: () => void;
-  onRegenerate: () => void;
-  onSkip: () => void;
-  onBuild: () => void;
-}) {
-  const {
-    prompt,
-    setPrompt,
-    loading,
-    error,
-    summary,
-    questions,
-    answers,
-    setAnswers,
-    name,
-    setName,
-    notes,
-    setNotes,
-    onClose,
-    onRegenerate,
-    onSkip,
-    onBuild,
-  } = props;
-  const setAns = (id: string, v: string) =>
-    setAnswers((prev) => ({ ...prev, [id]: v }));
-  const answeredCount = questions.filter((q) =>
-    (answers[q.id] || '').trim(),
-  ).length;
-  const requiredMissing = questions.some(
-    (q) => q.required && !(answers[q.id] || '').trim(),
-  );
-  const sanitizeName = (v: string) =>
-    v
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, '-')
-      .replace(/-+/g, '-')
-      .slice(0, 24);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-      onClick={onClose}>
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-[640px] max-w-[92vw] max-h-[88vh] flex flex-col bg-[#0a0a0a] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-          <div className="flex items-center gap-2">
-            <Sparkles size={14} className="text-violet-400" />
-            <h3 className="text-[12px] font-medium text-foreground/90">
-              Refine your app idea
-            </h3>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-6 h-6 flex items-center justify-center text-muted-foreground/50 hover:text-foreground transition-colors">
-            <X size={12} />
-          </button>
-        </div>
-
-        {/* Original prompt — editable */}
-        <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
-          <div className="flex items-center justify-between mb-1.5">
-            <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40">
-              Your idea
-            </div>
-            <button
-              onClick={onRegenerate}
-              disabled={loading || !prompt.trim()}
-              title="Re-run AI clarification on the current idea"
-              className="text-[9px] text-violet-400/70 hover:text-violet-300 disabled:opacity-30 transition-colors flex items-center gap-1">
-              <Sparkles size={9} className={loading ? 'animate-pulse' : ''} />
-              {loading
-                ? 'Refining…'
-                : questions.length
-                  ? 'Re-refine'
-                  : 'Refine with AI'}
-            </button>
-          </div>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                if (prompt.trim()) onRegenerate();
-              }
-            }}
-            placeholder="Describe what you want to build… e.g. a kanban board with drag-and-drop, dark theme"
-            rows={3}
-            autoFocus
-            className="w-full bg-transparent border border-white/5 rounded p-2 text-[12px] text-foreground/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-500/30 resize-none"
-          />
-          {summary && (
-            <div className="mt-2 pt-2 border-t border-white/5">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 mb-1">
-                AI understands
-              </div>
-              <p className="text-[11px] text-violet-300/80 leading-relaxed">
-                {summary}
-              </p>
-            </div>
-          )}
-          {!loading && (
-            <div className="mt-2 pt-2 border-t border-white/5">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Sparkles size={9} className="text-violet-400/60" />
-                <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40">
-                  Suggested name
-                </div>
-              </div>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(sanitizeName(e.target.value))}
-                placeholder="my-app"
-                spellCheck={false}
-                className="w-full bg-black/30 border border-white/5 rounded px-2 py-1.5 text-[11px] font-mono text-violet-200/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-400/40 transition-colors"
-              />
-              <p className="text-[10px] text-muted-foreground/40 mt-1">
-                Lowercase, dashes only. Used as the app folder & container name.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-auto px-4 py-3">
-          {loading && (
-            <div className="flex flex-col items-center justify-center py-10 gap-3">
-              <Sparkles
-                size={24}
-                className="text-violet-400/60 animate-pulse"
-              />
-              <p className="text-[11px] text-muted-foreground/60">
-                Thinking up the right questions...
-              </p>
-            </div>
-          )}
-
-          {!loading && error && (
-            <div className="flex flex-col items-center gap-3 py-6">
-              <AlertCircle size={20} className="text-amber-400/70" />
-              <p className="text-[11px] text-amber-300/80 text-center max-w-sm">
-                {error}
-              </p>
-              <button
-                onClick={onRegenerate}
-                className="text-[10px] px-3 py-1 bg-white/[0.04] hover:bg-white/[0.08] rounded text-muted-foreground/70 hover:text-foreground transition-colors">
-                Try again
-              </button>
-            </div>
-          )}
-
-          {!loading && !error && questions.length > 0 && (
-            <div className="space-y-4">
-              {questions.map((q, i) => (
-                <div key={q.id} className="space-y-1.5">
-                  <label className="block text-[11px] text-foreground/80">
-                    <span className="text-muted-foreground/40 mr-1.5">
-                      {i + 1}.
-                    </span>
-                    {q.question}
-                    {q.required && (
-                      <span className="text-red-400/70 ml-1">*</span>
-                    )}
-                  </label>
-                  {q.hint && (
-                    <p className="text-[10px] text-muted-foreground/40 ml-4">
-                      {q.hint}
-                    </p>
-                  )}
-                  <input
-                    type="text"
-                    value={answers[q.id] || ''}
-                    onChange={(e) => setAns(q.id, e.target.value)}
-                    placeholder="Your answer..."
-                    className="ml-4 w-[calc(100%-1rem)] bg-black/30 border border-white/5 rounded px-2 py-1.5 text-[11px] text-foreground/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-400/40 transition-colors"
-                  />
-                  {q.suggestions && q.suggestions.length > 0 && (
-                    <div className="ml-4 flex flex-wrap gap-1.5 pt-0.5">
-                      {q.suggestions.map((s) => {
-                        const active = (answers[q.id] || '') === s;
-                        return (
-                          <button
-                            key={s}
-                            onClick={() => setAns(q.id, s)}
-                            className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
-                              active
-                                ? 'bg-violet-500/15 border-violet-400/40 text-violet-200'
-                                : 'bg-white/[0.02] border-white/5 text-muted-foreground/60 hover:text-foreground/80 hover:border-white/15'
-                            }`}>
-                            {s}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {!loading && !error && (
-            <div className="mt-5 pt-4 border-t border-white/5 space-y-1.5">
-              <label className="block text-[11px] text-foreground/80">
-                Anything else?{' '}
-                <span className="text-muted-foreground/40">(optional)</span>
-              </label>
-              <p className="text-[10px] text-muted-foreground/40">
-                Extra context, design hints, libraries to use, things to avoid…
-              </p>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={3}
-                placeholder="e.g. keep it minimalist, use Tailwind, prefer SQLite over Postgres…"
-                className="w-full bg-black/30 border border-white/5 rounded px-2 py-1.5 text-[11px] text-foreground/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-400/40 transition-colors resize-none"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-white/5 bg-white/[0.01]">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onRegenerate}
-              disabled={loading || !prompt.trim()}
-              className="text-[10px] flex items-center gap-1 px-2 py-1 text-muted-foreground/50 hover:text-foreground/80 disabled:opacity-30 transition-colors">
-              <RefreshCw size={10} className={loading ? 'animate-spin' : ''} />
-              Regenerate
-            </button>
-            {!loading && questions.length > 0 && (
-              <span className="text-[9px] text-muted-foreground/40">
-                {answeredCount}/{questions.length} answered
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onSkip}
-              disabled={!prompt.trim()}
-              className="text-[10px] px-3 py-1.5 text-muted-foreground/60 hover:text-foreground disabled:opacity-30 transition-colors">
-              Skip & build
-            </button>
-            <button
-              onClick={onBuild}
-              disabled={loading || requiredMissing || !prompt.trim()}
-              className="text-[11px] px-3 py-1.5 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-400/30 rounded text-violet-100 disabled:opacity-30 transition-colors flex items-center gap-1.5">
-              <Sparkles size={11} />
-              Build app
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── App sidebar (left panel of Apps view) ────────────────────────────────
-// Grouped by status with a quick filter, an accent bar on the active row,
-// and consistent right-aligned status indicators so the list stays tidy.
-function AppSidebar({
-  apps,
-  selectedApp,
-  setSelectedApp,
-  building,
-  openClarify,
-  cancelBuild,
-  setPrompt,
-}: {
-  apps: AppInfo[];
-  selectedApp: string | null;
-  setSelectedApp: (name: string | null) => void;
-  building: boolean;
-  openClarify: () => void;
-  cancelBuild: () => void;
-  setPrompt: (p: string) => void;
-}) {
-  const [filter, setFilter] = useState('');
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-
-  const filtered = filter.trim()
-    ? apps.filter((a) => a.name.toLowerCase().includes(filter.toLowerCase()))
-    : apps;
-
-  // Group order: running first, then building, then stopped, then failed/other
-  const groups: { key: string; label: string; items: AppInfo[] }[] = [
-    {
-      key: 'running',
-      label: 'Running',
-      items: filtered.filter((a) => a.status === 'running'),
-    },
-    {
-      key: 'building',
-      label: 'Building',
-      items: filtered.filter((a) => a.status === 'building'),
-    },
-    {
-      key: 'stopped',
-      label: 'Stopped',
-      items: filtered.filter(
-        (a) =>
-          a.status !== 'running' &&
-          a.status !== 'building' &&
-          a.status !== 'failed',
-      ),
-    },
-    {
-      key: 'failed',
-      label: 'Failed',
-      items: filtered.filter((a) => a.status === 'failed'),
-    },
-  ].filter((g) => g.items.length > 0);
-
-  const dotClass = (status: string) =>
-    status === 'running'
-      ? 'bg-emerald-500'
-      : status === 'building'
-        ? 'bg-amber-500 animate-pulse'
-        : status === 'failed'
-          ? 'bg-red-500'
-          : 'bg-zinc-600';
-
-  return (
-    <div className="w-52 shrink-0 border-r border-border/10 flex flex-col bg-background/40">
-      {/* Header: title + count */}
-      <div className="px-3 pt-2.5 pb-1.5 flex items-center justify-between">
-        <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 font-medium">
-          Apps
-        </div>
-        <div className="text-[9px] text-muted-foreground/30 tabular-nums">
-          {apps.length}
-        </div>
-      </div>
-
-      {/* New App button */}
-      <div className="px-2.5 pb-2">
-        <button
-          onClick={() => {
-            setPrompt('');
-            openClarify();
-          }}
-          disabled={building}
-          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-violet-300 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 rounded transition-colors disabled:opacity-30">
-          <Sparkles size={11} className={building ? 'animate-pulse' : ''} />
-          {building ? 'Building…' : 'New App'}
-        </button>
-        {building && (
-          <button
-            onClick={cancelBuild}
-            className="mt-1 w-full py-1 text-[9px] text-red-400/70 hover:text-red-400 transition-colors">
-            ✕ Cancel build
-          </button>
-        )}
-      </div>
-
-      {/* Filter */}
-      {apps.length > 4 && (
-        <div className="px-2.5 pb-2">
-          <div className="relative">
-            <Search
-              size={10}
-              className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/30"
-            />
-            <input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter…"
-              className="w-full h-6 text-[10px] bg-transparent border border-border/10 rounded pl-6 pr-2 focus:outline-none focus:border-border/30 placeholder:text-muted-foreground/25"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* List */}
-      <div className="flex-1 overflow-auto pb-2">
-        {apps.length === 0 ? (
-          <div className="px-3 py-6 text-center">
-            <p className="text-[10px] text-muted-foreground/30">
-              No apps yet — click <span className="text-violet-300/70">New App</span> to begin.
-            </p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="px-3 py-4 text-center">
-            <p className="text-[10px] text-muted-foreground/30">No matches</p>
-          </div>
-        ) : (
-          groups.map((g) => {
-            const isCollapsed = !!collapsed[g.key];
-            return (
-              <div key={g.key} className="mt-1.5 first:mt-0">
-                <button
-                  onClick={() =>
-                    setCollapsed((c) => ({ ...c, [g.key]: !c[g.key] }))
-                  }
-                  className="w-full flex items-center justify-between px-3 py-1 text-[8.5px] uppercase tracking-wider text-muted-foreground/35 hover:text-muted-foreground/60 transition-colors">
-                  <span className="flex items-center gap-1">
-                    <ChevronRight
-                      size={8}
-                      className={`transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
-                    />
-                    {g.label}
-                  </span>
-                  <span className="tabular-nums text-muted-foreground/30">
-                    {g.items.length}
-                  </span>
-                </button>
-                {!isCollapsed && (
-                  <div>
-                    {g.items.map((a) => {
-                      const icon = a.icon || guessIcon(a.name);
-                      const isSelected = selectedApp === a.name;
-                      return (
-                        <button
-                          key={a.name}
-                          onClick={() => setSelectedApp(a.name)}
-                          title={a.name}
-                          className={`group relative w-full flex items-center gap-2 pl-3 pr-2.5 py-1.5 text-left transition-colors ${
-                            isSelected
-                              ? 'bg-white/[0.05]'
-                              : 'hover:bg-white/[0.025]'
-                          }`}>
-                          {/* Active accent bar */}
-                          <span
-                            className={`absolute left-0 top-1 bottom-1 w-0.5 rounded-r ${
-                              isSelected ? 'bg-violet-400/70' : 'bg-transparent'
-                            }`}
-                          />
-                          <span className="text-sm leading-none shrink-0 w-4 text-center">
-                            {icon}
-                          </span>
-                          <span
-                            className={`flex-1 min-w-0 truncate text-[11px] ${
-                              isSelected
-                                ? 'text-foreground font-medium'
-                                : 'text-muted-foreground/70 group-hover:text-foreground/85'
-                            }`}>
-                            {a.name}
-                          </span>
-                          {a.dev_running && (
-                            <span
-                              title="Dev container running"
-                              className="text-[8px] px-1 rounded bg-blue-500/15 text-blue-300/80 leading-tight">
-                              dev
-                            </span>
-                          )}
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass(a.status)}`}
-                          />
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
 function AppsPanel() {
   const [apps, setApps] = useState<AppInfo[]>([]);
   const [selectedApp, setSelectedApp] = useState<string | null>(() =>
@@ -2851,14 +2045,11 @@ function AppsPanel() {
     }
     setClarifyOpen(false);
     const name = clarifyName.trim();
-    streamNDJSON(
-      `${API_BASE}/api/apps/build`,
-      {
-        prompt: enriched,
-        ...(name ? { name } : {}),
-        ...(selectedBuildNode ? { node: selectedBuildNode } : {}),
-      },
-    );
+    streamNDJSON(`${API_BASE}/api/apps/build`, {
+      prompt: enriched,
+      ...(name ? { name } : {}),
+      ...(selectedBuildNode ? { node: selectedBuildNode } : {}),
+    });
   };
 
   const skipClarifyAndBuild = () => {
@@ -2942,15 +2133,21 @@ function AppsPanel() {
   const commitChanges = async () => {
     if (!selectedApp || committing) return;
     const msg =
-      window.prompt('Commit message:', `manual: edited ${selectedFile || 'files'}`) || '';
+      window.prompt(
+        'Commit message:',
+        `manual: edited ${selectedFile || 'files'}`,
+      ) || '';
     if (!msg.trim()) return;
     setCommitting(true);
     try {
-      const res = await fetch(`${API_BASE}/api/apps/${selectedApp}/git/commit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg.trim() }),
-      });
+      const res = await fetch(
+        `${API_BASE}/api/apps/${selectedApp}/git/commit`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg.trim() }),
+        },
+      );
       const data = await res.json();
       if (data.sha) {
         setSaveToast(`Committed ${data.sha} · ${msg.trim()}`);
@@ -3381,13 +2578,18 @@ function AppsPanel() {
                   <div className="p-3 space-y-3">
                     {/* ─── Hot reload status banner (top of panel) ─── */}
                     {app.dev_mode && (
-                      <div className={`px-2.5 py-2 rounded-lg border flex items-center gap-2 text-[11px] ${
-                        app.dev_running
-                          ? 'bg-amber-500/10 border-amber-500/25 text-amber-200'
-                          : 'bg-red-500/10 border-red-500/30 text-red-200'
-                      }`}>
+                      <div
+                        className={`px-2.5 py-2 rounded-lg border flex items-center gap-2 text-[11px] ${
+                          app.dev_running
+                            ? 'bg-amber-500/10 border-amber-500/25 text-amber-200'
+                            : 'bg-red-500/10 border-red-500/30 text-red-200'
+                        }`}>
                         {app.dev_running ? (
-                          <Zap size={12} className="animate-pulse" fill="currentColor" />
+                          <Zap
+                            size={12}
+                            className="animate-pulse"
+                            fill="currentColor"
+                          />
                         ) : (
                           <Zap size={12} />
                         )}
@@ -3415,15 +2617,18 @@ function AppsPanel() {
                             <span className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                           )}
                         </div>
-                        <div className={`p-2 rounded-lg max-h-48 overflow-auto border ${
-                          deployEvents.some((e) => e.step === 'hot-reload')
-                            ? 'bg-amber-500/5 border-amber-500/20'
-                            : 'bg-white/[0.02] border-border/10'
-                        }`}>
+                        <div
+                          className={`p-2 rounded-lg max-h-48 overflow-auto border ${
+                            deployEvents.some((e) => e.step === 'hot-reload')
+                              ? 'bg-amber-500/5 border-amber-500/20'
+                              : 'bg-white/[0.02] border-border/10'
+                          }`}>
                           {deployEvents.length > 0 ? (
                             <EventLog events={deployEvents} />
                           ) : (
-                            <div className="text-[10px] text-muted-foreground/40 italic">Working…</div>
+                            <div className="text-[10px] text-muted-foreground/40 italic">
+                              Working…
+                            </div>
                           )}
                         </div>
                       </div>
@@ -3561,7 +2766,7 @@ function AppsPanel() {
                               : 'Build the Docker image and restart the container.'
                           }
                           className="py-1.5 px-3 text-[10px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded hover:bg-emerald-500/15 disabled:opacity-30 transition-colors flex items-center gap-1">
-                            <Rocket size={10} /> {deploying ? '...' : 'Deploy'}
+                          <Rocket size={10} /> {deploying ? '...' : 'Deploy'}
                         </button>
                         <button
                           onClick={toggleDev}
@@ -3950,7 +3155,8 @@ function AppsPanel() {
                       onChange={(e) => setChangeInput(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && changeInput.trim()) {
-                          if (actionType === 'feature') startRebuild(changeInput);
+                          if (actionType === 'feature')
+                            startRebuild(changeInput);
                           else startFix(changeInput);
                           setChangeInput('');
                         }
@@ -3987,7 +3193,8 @@ function AppsPanel() {
                       onClick={() => startFix()}
                       disabled={building}
                       className="w-full py-1.5 text-[10px] text-amber-400/80 bg-amber-500/5 border border-amber-500/10 rounded hover:bg-amber-500/10 transition-colors disabled:opacity-30">
-                      <Wrench size={10} className="inline mr-0.5" /> Auto-fix from Logs
+                      <Wrench size={10} className="inline mr-0.5" /> Auto-fix
+                      from Logs
                     </button>
                   )}
                 </div>
@@ -5901,9 +5108,7 @@ function ChatPanel() {
                     }}
                     title={s.title || 'Untitled'}
                     className={`group relative w-full flex items-start gap-1.5 pl-3 pr-1.5 py-1.5 text-left rounded transition-colors ${
-                      isActive
-                        ? 'bg-white/[0.05]'
-                        : 'hover:bg-white/[0.025]'
+                      isActive ? 'bg-white/[0.05]' : 'hover:bg-white/[0.025]'
                     }`}>
                     {/* Active accent bar */}
                     <span
@@ -8658,37 +7863,6 @@ function DashboardPage() {
 }
 
 /* ── App Store grid for dashboard ── */
-const DEFAULT_APP_ICONS: Record<string, string> = {
-  chat: '💬',
-  todo: '✅',
-  notes: '📝',
-  calculator: '🧮',
-  timer: '⏱️',
-  weather: '🌤️',
-  music: '🎵',
-  photo: '📷',
-  game: '🎮',
-  news: '📰',
-  calendar: '📅',
-  map: '🗺️',
-  mail: '📧',
-  video: '🎬',
-  book: '📚',
-  shop: '🛒',
-  finance: '💰',
-  health: '❤️',
-  food: '🍕',
-  travel: '✈️',
-};
-
-function guessIcon(name: string): string {
-  const lower = name.toLowerCase();
-  for (const [key, icon] of Object.entries(DEFAULT_APP_ICONS)) {
-    if (lower.includes(key)) return icon;
-  }
-  return '📦';
-}
-
 function AppsQuickView() {
   const [apps, setApps] = useState<AppInfo[]>([]);
   useEffect(() => {

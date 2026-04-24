@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Home, Monitor, Power, Package, Download, RefreshCw } from 'lucide-react';
+import {
+  Home,
+  Monitor,
+  Power,
+  Package,
+  Download,
+  RefreshCw,
+} from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { API_BASE } from '@/lib/api';
 import type { HKInfo, LogEntry } from '@/lib/types';
