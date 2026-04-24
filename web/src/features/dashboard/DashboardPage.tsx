@@ -9,8 +9,8 @@ import {
 import { API_BASE } from '@/lib/api';
 import { guessIcon } from '@/lib/icons';
 import type { AppInfo } from '@/lib/types';
-import { DashboardPanel } from '@/panels/DashboardPanel';
-import { NodesPanel } from '@/panels/NodesPanel';
+import { DashboardPanel } from '@/features/dashboard/components/ServerStats';
+import { NodesPanel } from '@/features/dashboard/components/NodesList';
 import { StatusDot } from '@/components/ui/status-dot';
 
 const cpuChartConfig: ChartConfig = {

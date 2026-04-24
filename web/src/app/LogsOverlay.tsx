@@ -1,4 +1,4 @@
-import { LogsPanel } from '@/panels/LogsPanel';
+import { LogsPanel } from '@/features/logs/LogsPanel';
 
 interface LogsOverlayProps {
   open: boolean;

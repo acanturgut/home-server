@@ -1,15 +1,14 @@
-import './index.css';
 import { useCallback, useState } from 'react';
-import { Sidebar, NAV_ITEMS } from '@/components/Sidebar';
-import { StatusBar } from '@/components/StatusBar';
-import { LogsOverlay } from '@/components/LogsOverlay';
-import { PageLayout } from '@/components/PageLayout';
-import { DashboardPage } from '@/panels/DashboardPage';
-import { AppsPanel } from '@/panels/AppsPanel';
-import { ChatPanel } from '@/panels/ChatPanel';
-import { SettingsPanel } from '@/panels/SettingsPanel';
-import { useSystemStatus } from '@/lib/useSystemStatus';
-import { useNavGoto } from '@/lib/useNavGoto';
+import { Sidebar, NAV_ITEMS } from '@/app/Sidebar';
+import { StatusBar } from '@/app/StatusBar';
+import { LogsOverlay } from '@/app/LogsOverlay';
+import { PageLayout } from '@/app/PageLayout';
+import { DashboardPage } from '@/features/dashboard';
+import { AppsPanel } from '@/features/apps';
+import { ChatPanel } from '@/features/chat';
+import { SettingsPanel } from '@/features/settings';
+import { useSystemStatus } from '@/app/hooks/useSystemStatus';
+import { useNavGoto } from '@/app/hooks/useNavGoto';
 
 function App() {
   const [page, setPage] = useState<string>('dashboard');

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '@/lib/api';
 import type { AppInfo, BuildEvent } from '@/lib/types';
-import { buildTree, type AppFile } from '@/components/CodeEditor';
+import { buildTree, type AppFile } from '@/features/apps/components/CodeEditor';
 
 interface ChatMessage {
   role: 'user' | 'assistant';

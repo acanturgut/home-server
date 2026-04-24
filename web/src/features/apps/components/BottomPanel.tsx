@@ -10,7 +10,7 @@ import {
   ScrollText,
   Terminal,
 } from 'lucide-react';
-import { EventLog } from '@/components/build/BuildPanel';
+import { EventLog } from '@/features/apps/components/BuildPanel';
 import type { BuildEvent } from '@/lib/types';
 
 export type BottomTab = 'events' | 'logs' | 'terminal';

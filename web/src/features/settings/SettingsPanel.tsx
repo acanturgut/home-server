@@ -12,18 +12,18 @@ import {
 import { API_BASE } from '@/lib/api';
 import { formatUptime } from '@/lib/format';
 import { ENDPOINTS } from '@/lib/endpoints';
-import { EndpointCard } from '@/components/EndpointCard';
-import { HomeKitPanel } from '@/panels/HomeKitPanel';
+import { EndpointCard } from '@/features/settings/components/EndpointCard';
+import { HomeKitPanel } from '@/features/homekit/HomeKitPanel';
 import {
   SettingsCard,
   SkeletonRows,
   InfoRow,
   ToggleRow,
   NumberRow,
-} from '@/components/settings/SettingsRows';
-import { PromptsEditor } from '@/components/settings/PromptsEditor';
-import { NodeFormInline } from '@/components/settings/NodeFormInline';
-import { useSettings } from '@/lib/useSettings';
+} from '@/features/settings/components/SettingsRows';
+import { PromptsEditor } from '@/features/settings/components/PromptsEditor';
+import { NodeFormInline } from '@/features/settings/components/NodeFormInline';
+import { useSettings } from '@/features/settings/hooks/useSettings';
 
 /* ── Settings Panel (Config + Node CRUD) ── */
 export function SettingsPanel() {

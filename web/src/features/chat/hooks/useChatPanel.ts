@@ -3,9 +3,9 @@ import { API_BASE } from '@/lib/api';
 import { gotoPage } from '@/lib/format';
 import { speak, useSpeechRecognition } from '@/lib/voice';
 import { SLASH_COMMANDS } from '@/lib/slash';
-import { BUILTIN_PERSONAS, DEFAULT_SYSTEM_PROMPT, type ChatAttachment, type ChatMsg, type ChatSession, type Persona } from '@/lib/chat';
+import { BUILTIN_PERSONAS, DEFAULT_SYSTEM_PROMPT, type ChatAttachment, type ChatMsg, type ChatSession, type Persona } from '@/features/chat/types';
 import type { AppInfo } from '@/lib/types';
-import type { NodeConfig } from '@/components/settings/NodeFormInline';
+import type { NodeConfig } from '@/features/settings/components/NodeFormInline';
 
 export function useChatPanel() {
   const [sessions, setSessions] = useState<ChatSession[]>(() => {

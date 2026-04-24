@@ -4,12 +4,12 @@ import { copyToClipboard, gotoPage, relTime } from '@/lib/format';
 import { speak, stopSpeaking } from '@/lib/voice';
 import { SLASH_COMMANDS } from '@/lib/slash';
 import { CompareBlock, MarkdownView } from '@/lib/markdown';
-import type { ChatMsg } from '@/lib/chat';
-import { SearchPalette } from '@/components/SearchPalette';
-import { SchedulesModal } from '@/components/SchedulesModal';
-import { PersonaQuickAdd } from '@/components/PersonaQuickAdd';
+import type { ChatMsg } from '@/features/chat/types';
+import { SearchPalette } from '@/features/chat/components/SearchPalette';
+import { SchedulesModal } from '@/features/chat/components/SchedulesModal';
+import { PersonaQuickAdd } from '@/features/chat/components/PersonaQuickAdd';
 
-import { useChatPanel } from '@/lib/useChatPanel';
+import { useChatPanel } from '@/features/chat/hooks/useChatPanel';
 
 export function ChatPanel() {
   const {

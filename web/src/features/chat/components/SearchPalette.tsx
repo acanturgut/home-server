@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Search } from 'lucide-react';
-import type { ChatSession } from '@/lib/chat';
+import type { ChatSession } from '@/features/chat/types';
 
 /** ⌘K-style fuzzy search palette over chat sessions and message contents. */
 export function SearchPalette(props: {

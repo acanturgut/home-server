@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { API_BASE } from '@/lib/api';
-import type { NodeConfig } from '@/components/settings/NodeFormInline';
+import type { NodeConfig } from '@/features/settings/components/NodeFormInline';
 
 export type SystemConfig = {
   router_model: string;

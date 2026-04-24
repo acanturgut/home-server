@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { Persona } from '@/lib/chat';
+import type { Persona } from '@/features/chat/types';
 
 /**
  * Hidden helper that listens for `chat:persona-add` window events and appends

@@ -1,13 +1,13 @@
 import { Activity, Blocks, Bug, Circle, Columns2, Cpu, ExternalLink, GitBranch, History, ListTree, MessageSquare, Package, PanelLeft, Play, RefreshCw, Rocket, Rows3, Search, Settings, Sparkles, Undo2, Wrench, X, Zap } from 'lucide-react';
 import { API_BASE } from '@/lib/api';
 import { guessIcon } from '@/lib/icons';
-import { ClarifyWizard } from '@/components/ClarifyWizard';
-import { AppSidebar } from '@/components/AppSidebar';
-import { DiffView } from '@/components/DiffView';
-import { EventLog } from '@/components/build/BuildPanel';
-import { CodeEditor, FileTreeNode } from '@/components/CodeEditor';
-import { BottomPanel } from '@/components/BottomPanel';
-import { useAppsPanel } from '@/lib/useAppsPanel';
+import { ClarifyWizard } from '@/features/apps/components/ClarifyWizard';
+import { AppSidebar } from '@/features/apps/components/AppSidebar';
+import { DiffView } from '@/features/apps/components/DiffView';
+import { EventLog } from '@/features/apps/components/BuildPanel';
+import { CodeEditor, FileTreeNode } from '@/features/apps/components/CodeEditor';
+import { BottomPanel } from '@/features/apps/components/BottomPanel';
+import { useAppsPanel } from '@/features/apps/hooks/useAppsPanel';
 
 export function AppsPanel() {
   const {
