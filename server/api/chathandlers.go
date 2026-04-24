@@ -201,3 +201,91 @@ func (h *Handler) DeleteSnippet(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// ── POST /api/web/search ────────────────────────────────────────────────
+//
+// Body: { "q": "query", "k": 5 }
+// Reply: { "query": "...", "results": [{ "title","url","snippet" }, ...] }
+func (h *Handler) WebSearch(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Q string `json:"q"`
+		K int    `json:"k"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Q) == "" {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "q required"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	results, err := apps.SearchDDG(ctx, req.Q, req.K)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, errorResp{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"query": req.Q, "results": results, "count": len(results)})
+}
+
+// ── POST /api/web/search-fetch ──────────────────────────────────────────
+//
+// Search the web and fetch the top K pages in parallel, returning each
+// page's extracted text so the model can cite actual content.
+//
+// Body:  { "q": "query", "k": 4, "perPageChars": 6000 }
+// Reply: { "query": "...", "results": [{ "title","url","snippet","text" }, ...] }
+func (h *Handler) WebSearchFetch(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Q            string `json:"q"`
+		K            int    `json:"k"`
+		PerPageChars int    `json:"perPageChars"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Q) == "" {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "q required"})
+		return
+	}
+	if req.K <= 0 {
+		req.K = 4
+	}
+	if req.K > 8 {
+		req.K = 8
+	}
+	if req.PerPageChars <= 0 {
+		req.PerPageChars = 6000
+	}
+	if req.PerPageChars > 20000 {
+		req.PerPageChars = 20000
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
+	defer cancel()
+	hits, err := apps.SearchDDG(ctx, req.Q, req.K)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, errorResp{Error: err.Error()})
+		return
+	}
+	// Fan out page fetches in parallel, skipping blocked hosts.
+	results := make([]apps.WebResult, len(hits))
+	done := make(chan int, len(hits))
+	for i, h := range hits {
+		results[i] = h
+		// SSRF-block private/loopback hosts before attempting fetch.
+		if pu, perr := parseHTTPURL(h.URL); perr != nil || pu == nil {
+			done <- i
+			continue
+		}
+		go func(i int, u string) {
+			title, text := apps.FetchPageText(ctx, u, req.PerPageChars)
+			if title != "" && results[i].Title == "" {
+				results[i].Title = title
+			}
+			results[i].Text = text
+			done <- i
+		}(i, h.URL)
+	}
+	for range hits {
+		<-done
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"query":   req.Q,
+		"results": results,
+		"count":   len(results),
+	})
+}

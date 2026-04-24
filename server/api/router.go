@@ -64,6 +64,10 @@ func NewRouter(h *Handler) http.Handler {
 	mux.HandleFunc("POST /api/snippets", h.CreateSnippet)
 	mux.HandleFunc("DELETE /api/snippets/{id}", h.DeleteSnippet)
 
+	// Web search
+	mux.HandleFunc("POST /api/web/search", h.WebSearch)
+	mux.HandleFunc("POST /api/web/search-fetch", h.WebSearchFetch)
+
 	// RAG + tools
 	mux.HandleFunc("POST /api/rag/search", h.RAGSearch)
 	mux.HandleFunc("GET /api/tools", h.ListTools)

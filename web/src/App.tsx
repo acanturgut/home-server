@@ -63,6 +63,7 @@ import {
   Send,
   Plus,
   Clock,
+  Globe,
 } from 'lucide-react';
 import {
   EditorView,
@@ -3950,6 +3951,29 @@ const BUILTIN_PERSONAS: Persona[] = [
   { id: 'shell', name: 'Shell Wizard', emoji: '🖥️', system: 'You are a shell expert. Reply with a single fenced bash block plus one sentence of context unless asked otherwise.' },
 ];
 
+// Default system prompt applied to every chat unless the user replaces it.
+// The key goals: (1) stop the model from claiming it can't search when the
+// user has explicitly enabled web search and supplied fresh page content;
+// (2) encourage answers split into clearly separated sections so the UI can
+// render them as multiple message bubbles.
+const DEFAULT_SYSTEM_PROMPT = [
+  'You are a helpful assistant running on a private home server.',
+  '',
+  'If the user message includes an attachment labelled "Web search results for: …",',
+  'those are fresh search results that were just fetched for the user. Use them as',
+  'authoritative, up-to-date source material. Quote concrete facts from them. Cite',
+  'which result you used by domain in parentheses, e.g. "(weather.com)". Never say',
+  'you cannot search the web when such results are present — the search has already',
+  'been performed for you.',
+  '',
+  'Without web results, be honest about knowledge cutoffs and suggest the user',
+  'enable the Web toggle for live data.',
+  '',
+  'Formatting: structure longer answers as several short sections separated by a',
+  'line containing only "---" so the UI can render them as distinct message bubbles.',
+  'Aim for 1–4 sections. Keep each section focused on one idea. Use markdown.',
+].join('\n');
+
 // Cross-panel events for handoff & terminal integration
 function gotoPage(page: string, payload?: unknown) {
   window.dispatchEvent(new CustomEvent('nav:goto', { detail: { page, payload } }));
@@ -4348,6 +4372,7 @@ function ChatPanel() {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [pendingModel, setPendingModel] = useState<string>(''); // one-shot override
   const [toolsEnabled, setToolsEnabled] = useState<boolean>(false); // one-shot tool-call hint
+  const [webEnabled, setWebEnabled] = useState<boolean>(false); // one-shot web search hint
   const [compareRoutes, setCompareRoutes] = useState<string[] | null>(null); // one-shot compare mode
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -4798,7 +4823,7 @@ function ChatPanel() {
     try {
       const sysMsg = active.system?.trim()
         ? [{ role: 'system' as const, content: active.system.trim() }]
-        : [];
+        : [{ role: 'system' as const, content: DEFAULT_SYSTEM_PROMPT }];
       const apiMsgs = [
         ...sysMsg,
         ...nextMsgs
@@ -4866,7 +4891,7 @@ function ChatPanel() {
       try {
         const sysMsg = active.system?.trim()
           ? [{ role: 'system' as const, content: active.system.trim() }]
-          : [];
+          : [{ role: 'system' as const, content: DEFAULT_SYSTEM_PROMPT }];
         const toolSys = toolsEnabled
           ? [{
               role: 'system' as const,
@@ -5044,15 +5069,56 @@ function ChatPanel() {
       await sendCompare(text, compareRoutes);
       return;
     }
+    // Web search: run it first and fold the results into attachments so the
+    // model sees them in context. One-shot: toggles off after sending.
+    let effectiveAttachments = attachments;
+    if (webEnabled) {
+      try {
+        setStatusMsg('Searching the web…');
+        const r = await fetch(`${API_BASE}/api/web/search-fetch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ q: text, k: 4, perPageChars: 5000 }),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          const results = Array.isArray(data.results) ? data.results : [];
+          if (results.length) {
+            const combined = results
+              .map((rr: { title?: string; url?: string; snippet?: string; text?: string }, i: number) =>
+                `### Source ${i + 1}: ${rr.title || '(untitled)'}\nURL: ${rr.url || ''}\n${rr.snippet || ''}\n\n${rr.text || '(no page text extracted)'}`,
+              )
+              .join('\n\n---\n\n');
+            const webAtt: ChatAttachment = {
+              id: 'web-' + Date.now(),
+              name: `Web search: "${text}" (${results.length} sources)`,
+              type: 'text/web',
+              size: combined.length,
+              text: `Web search results for: ${text}\n\n${combined}`,
+            };
+            effectiveAttachments = [...effectiveAttachments, webAtt];
+            setStatusMsg(`Found ${results.length} web source${results.length === 1 ? '' : 's'}`);
+          } else {
+            setStatusMsg('No web results found');
+          }
+        } else {
+          setStatusMsg('Web search failed');
+        }
+      } catch {
+        setStatusMsg('Web search error');
+      }
+      setWebEnabled(false);
+      setTimeout(() => setStatusMsg(null), 2500);
+    }
     const userMsg: ChatMsg = {
       id: Date.now().toString(),
       role: 'user',
       content: text,
-      attachments: attachments.length ? attachments : undefined,
+      attachments: effectiveAttachments.length ? effectiveAttachments : undefined,
     };
     let composed = text;
-    if (attachments.length) {
-      const parts = attachments
+    if (effectiveAttachments.length) {
+      const parts = effectiveAttachments
         .filter((a) => a.text)
         .map((a) => `\n\n--- Attached: ${a.name} (${a.type}) ---\n${a.text}\n--- end ---`)
         .join('');
@@ -5065,7 +5131,7 @@ function ChatPanel() {
     const oneShot = pendingModel;
     setPendingModel('');
     await sendWithMessages(newMessages, { titleSeed, modelOverride: oneShot || undefined });
-  }, [input, loading, active, attachments, pendingModel, runSlash, sendWithMessages, compareRoutes]);
+  }, [input, loading, active, attachments, pendingModel, runSlash, sendWithMessages, compareRoutes, webEnabled]);
 
   // ── Edit user message + resend ──
   const startEdit = (m: ChatMsg) => {
@@ -5693,9 +5759,19 @@ function ChatPanel() {
                       )}
                       {m.content.startsWith('__COMPARE__') ? (
                         <CompareBlock payload={m.content.slice('__COMPARE__'.length).trim()} />
-                      ) : (
-                        <MarkdownView text={m.content} />
-                      )}
+                      ) : (() => {
+                        const sections = m.content.split(/\n-{3,}\n/).map((s) => s.trim()).filter(Boolean);
+                        if (sections.length <= 1) return <MarkdownView text={m.content} />;
+                        return (
+                          <div className="space-y-2">
+                            {sections.map((s, si) => (
+                              <div key={si} className="rounded-xl bg-white/[0.03] border border-white/5 px-3 py-2">
+                                <MarkdownView text={s} />
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                       {/* Trace strip */}
                       {(m.node || m.latency) && (
                         <div className="flex flex-wrap gap-2 pt-1 items-center text-[10px] text-muted-foreground/60">
@@ -5828,6 +5904,18 @@ function ChatPanel() {
               </div>
             )}
 
+            {/* Web-search pill */}
+            {webEnabled && (
+              <div className="flex items-center gap-1 text-[10px]">
+                <span className="px-2 py-0.5 rounded bg-sky-500/15 border border-sky-400/30 text-sky-200">
+                  🌐 web: on (next message will search the web)
+                </span>
+                <button onClick={() => setWebEnabled(false)} className="text-muted-foreground/60 hover:text-foreground">
+                  <X size={10} />
+                </button>
+              </div>
+            )}
+
             {/* Compare-mode pill */}
             {compareRoutes && (
               <div className="flex items-center gap-1 text-[10px]">
@@ -5856,6 +5944,13 @@ function ChatPanel() {
                   <Mic size={14} />
                 </button>
               )}
+              <button
+                onClick={() => setWebEnabled((v) => !v)}
+                title={webEnabled ? 'Web search: ON (next message)' : 'Enable web search for next message'}
+                disabled={loading}
+                className={`p-2 rounded hover:bg-white/5 disabled:opacity-30 ${webEnabled ? 'text-sky-300 bg-sky-500/10' : 'text-muted-foreground/60 hover:text-foreground'}`}>
+                <Globe size={14} />
+              </button>
               <select
                 value={pendingModel}
                 onChange={(e) => setPendingModel(e.target.value)}
