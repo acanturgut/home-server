@@ -981,6 +981,7 @@ interface AppInfo {
   updated_at: string;
   builds?: BuildRecord[];
   dev_mode?: boolean;
+  dev_running?: boolean;
 }
 
 interface BuildEvent {
@@ -2427,7 +2428,11 @@ function ClarifyWizard(props: {
               title="Re-run AI clarification on the current idea"
               className="text-[9px] text-violet-400/70 hover:text-violet-300 disabled:opacity-30 transition-colors flex items-center gap-1">
               <Sparkles size={9} className={loading ? 'animate-pulse' : ''} />
-              {loading ? 'Refining…' : questions.length ? 'Re-refine' : 'Refine with AI'}
+              {loading
+                ? 'Refining…'
+                : questions.length
+                  ? 'Re-refine'
+                  : 'Refine with AI'}
             </button>
           </div>
           <textarea
@@ -2611,6 +2616,211 @@ function ClarifyWizard(props: {
   );
 }
 
+// ── App sidebar (left panel of Apps view) ────────────────────────────────
+// Grouped by status with a quick filter, an accent bar on the active row,
+// and consistent right-aligned status indicators so the list stays tidy.
+function AppSidebar({
+  apps,
+  selectedApp,
+  setSelectedApp,
+  building,
+  openClarify,
+  cancelBuild,
+  setPrompt,
+}: {
+  apps: AppInfo[];
+  selectedApp: string | null;
+  setSelectedApp: (name: string | null) => void;
+  building: boolean;
+  openClarify: () => void;
+  cancelBuild: () => void;
+  setPrompt: (p: string) => void;
+}) {
+  const [filter, setFilter] = useState('');
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  const filtered = filter.trim()
+    ? apps.filter((a) => a.name.toLowerCase().includes(filter.toLowerCase()))
+    : apps;
+
+  // Group order: running first, then building, then stopped, then failed/other
+  const groups: { key: string; label: string; items: AppInfo[] }[] = [
+    {
+      key: 'running',
+      label: 'Running',
+      items: filtered.filter((a) => a.status === 'running'),
+    },
+    {
+      key: 'building',
+      label: 'Building',
+      items: filtered.filter((a) => a.status === 'building'),
+    },
+    {
+      key: 'stopped',
+      label: 'Stopped',
+      items: filtered.filter(
+        (a) =>
+          a.status !== 'running' &&
+          a.status !== 'building' &&
+          a.status !== 'failed',
+      ),
+    },
+    {
+      key: 'failed',
+      label: 'Failed',
+      items: filtered.filter((a) => a.status === 'failed'),
+    },
+  ].filter((g) => g.items.length > 0);
+
+  const dotClass = (status: string) =>
+    status === 'running'
+      ? 'bg-emerald-500'
+      : status === 'building'
+        ? 'bg-amber-500 animate-pulse'
+        : status === 'failed'
+          ? 'bg-red-500'
+          : 'bg-zinc-600';
+
+  return (
+    <div className="w-52 shrink-0 border-r border-border/10 flex flex-col bg-background/40">
+      {/* Header: title + count */}
+      <div className="px-3 pt-2.5 pb-1.5 flex items-center justify-between">
+        <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 font-medium">
+          Apps
+        </div>
+        <div className="text-[9px] text-muted-foreground/30 tabular-nums">
+          {apps.length}
+        </div>
+      </div>
+
+      {/* New App button */}
+      <div className="px-2.5 pb-2">
+        <button
+          onClick={() => {
+            setPrompt('');
+            openClarify();
+          }}
+          disabled={building}
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-violet-300 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 rounded transition-colors disabled:opacity-30">
+          <Sparkles size={11} className={building ? 'animate-pulse' : ''} />
+          {building ? 'Building…' : 'New App'}
+        </button>
+        {building && (
+          <button
+            onClick={cancelBuild}
+            className="mt-1 w-full py-1 text-[9px] text-red-400/70 hover:text-red-400 transition-colors">
+            ✕ Cancel build
+          </button>
+        )}
+      </div>
+
+      {/* Filter */}
+      {apps.length > 4 && (
+        <div className="px-2.5 pb-2">
+          <div className="relative">
+            <Search
+              size={10}
+              className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/30"
+            />
+            <input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter…"
+              className="w-full h-6 text-[10px] bg-transparent border border-border/10 rounded pl-6 pr-2 focus:outline-none focus:border-border/30 placeholder:text-muted-foreground/25"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* List */}
+      <div className="flex-1 overflow-auto pb-2">
+        {apps.length === 0 ? (
+          <div className="px-3 py-6 text-center">
+            <p className="text-[10px] text-muted-foreground/30">
+              No apps yet — click <span className="text-violet-300/70">New App</span> to begin.
+            </p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="px-3 py-4 text-center">
+            <p className="text-[10px] text-muted-foreground/30">No matches</p>
+          </div>
+        ) : (
+          groups.map((g) => {
+            const isCollapsed = !!collapsed[g.key];
+            return (
+              <div key={g.key} className="mt-1.5 first:mt-0">
+                <button
+                  onClick={() =>
+                    setCollapsed((c) => ({ ...c, [g.key]: !c[g.key] }))
+                  }
+                  className="w-full flex items-center justify-between px-3 py-1 text-[8.5px] uppercase tracking-wider text-muted-foreground/35 hover:text-muted-foreground/60 transition-colors">
+                  <span className="flex items-center gap-1">
+                    <ChevronRight
+                      size={8}
+                      className={`transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
+                    />
+                    {g.label}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground/30">
+                    {g.items.length}
+                  </span>
+                </button>
+                {!isCollapsed && (
+                  <div>
+                    {g.items.map((a) => {
+                      const icon = a.icon || guessIcon(a.name);
+                      const isSelected = selectedApp === a.name;
+                      return (
+                        <button
+                          key={a.name}
+                          onClick={() => setSelectedApp(a.name)}
+                          title={a.name}
+                          className={`group relative w-full flex items-center gap-2 pl-3 pr-2.5 py-1.5 text-left transition-colors ${
+                            isSelected
+                              ? 'bg-white/[0.05]'
+                              : 'hover:bg-white/[0.025]'
+                          }`}>
+                          {/* Active accent bar */}
+                          <span
+                            className={`absolute left-0 top-1 bottom-1 w-0.5 rounded-r ${
+                              isSelected ? 'bg-violet-400/70' : 'bg-transparent'
+                            }`}
+                          />
+                          <span className="text-sm leading-none shrink-0 w-4 text-center">
+                            {icon}
+                          </span>
+                          <span
+                            className={`flex-1 min-w-0 truncate text-[11px] ${
+                              isSelected
+                                ? 'text-foreground font-medium'
+                                : 'text-muted-foreground/70 group-hover:text-foreground/85'
+                            }`}>
+                            {a.name}
+                          </span>
+                          {a.dev_running && (
+                            <span
+                              title="Dev container running"
+                              className="text-[8px] px-1 rounded bg-blue-500/15 text-blue-300/80 leading-tight">
+                              dev
+                            </span>
+                          )}
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass(a.status)}`}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AppsPanel() {
   const [apps, setApps] = useState<AppInfo[]>([]);
   const [selectedApp, setSelectedApp] = useState<string | null>(() =>
@@ -2706,6 +2916,8 @@ function AppsPanel() {
   const [fileContent, setFileContent] = useState('');
   const [fileDirty, setFileDirty] = useState(false);
   const [fileSaving, setFileSaving] = useState(false);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
+  const [committing, setCommitting] = useState(false);
   const [fileLoading, setFileLoading] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [deployEvents, setDeployEvents] = useState<BuildEvent[]>([]);
@@ -2793,6 +3005,41 @@ function AppsPanel() {
     'feature',
   );
   const chatRef = useRef<HTMLDivElement>(null);
+
+  // Compute-node selection for Build/Rebuild/Fix runs ('' = auto)
+  type WorkerNode = {
+    id: string;
+    name: string;
+    host: string;
+    tier?: string;
+  };
+  const [workerNodes, setWorkerNodes] = useState<WorkerNode[]>([]);
+  const [selectedBuildNode, setSelectedBuildNode] = useState<string>(
+    () => localStorage.getItem('selectedBuildNode') || '',
+  );
+  useEffect(() => {
+    if (selectedBuildNode)
+      localStorage.setItem('selectedBuildNode', selectedBuildNode);
+    else localStorage.removeItem('selectedBuildNode');
+  }, [selectedBuildNode]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      fetch(`${API_BASE}/api/nodes`)
+        .then((r) => r.json())
+        .then((n) => {
+          if (cancelled) return;
+          setWorkerNodes(Array.isArray(n) ? n : []);
+        })
+        .catch(() => {});
+    };
+    load();
+    const id = setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   const refresh = useCallback(() => {
     fetch(`${API_BASE}/api/apps`)
@@ -3027,7 +3274,7 @@ function AppsPanel() {
   const streamNDJSON = async (url: string, body: object) => {
     setBuilding(true);
     setEvents([]);
-    setRightTab('build');
+    setRightTab('info');
     const controller = new AbortController();
     abortRef.current = controller;
     try {
@@ -3122,7 +3369,10 @@ function AppsPanel() {
 
   const startBuild = () => {
     if (!prompt.trim() || building) return;
-    streamNDJSON(`${API_BASE}/api/apps/build`, { prompt: prompt.trim() });
+    streamNDJSON(`${API_BASE}/api/apps/build`, {
+      prompt: prompt.trim(),
+      node: selectedBuildNode || undefined,
+    });
   };
 
   // ── AI Clarify wizard ──
@@ -3212,7 +3462,11 @@ function AppsPanel() {
     const name = clarifyName.trim();
     streamNDJSON(
       `${API_BASE}/api/apps/build`,
-      name ? { prompt: enriched, name } : { prompt: enriched },
+      {
+        prompt: enriched,
+        ...(name ? { name } : {}),
+        ...(selectedBuildNode ? { node: selectedBuildNode } : {}),
+      },
     );
   };
 
@@ -3224,12 +3478,14 @@ function AppsPanel() {
     if (!text.trim() || building || !selectedApp) return;
     streamNDJSON(`${API_BASE}/api/apps/${selectedApp}/rebuild`, {
       changes: text.trim(),
+      node: selectedBuildNode || undefined,
     });
   };
   const startFix = (description?: string) => {
     if (building || !selectedApp) return;
     streamNDJSON(`${API_BASE}/api/apps/${selectedApp}/fix`, {
       description: description?.trim() || '',
+      node: selectedBuildNode || undefined,
     });
   };
   const deleteApp = async (name: string) => {
@@ -3241,7 +3497,8 @@ function AppsPanel() {
     await fetch(`${API_BASE}/api/apps/${name}/stop`, { method: 'POST' });
     refresh();
   };
-  const restartApp = async (name: string) => {    try {
+  const restartApp = async (name: string) => {
+    try {
       const r = await fetch(`${API_BASE}/api/apps/${name}/restart`, {
         method: 'POST',
       });
@@ -3258,7 +3515,9 @@ function AppsPanel() {
   const toggleDev = async () => {
     if (!selectedApp || !app) return;
     if (app.dev_mode) {
-      await fetch(`${API_BASE}/api/apps/${selectedApp}/dev/stop`, { method: 'POST' });
+      await fetch(`${API_BASE}/api/apps/${selectedApp}/dev/stop`, {
+        method: 'POST',
+      });
       refresh();
     } else {
       streamNDJSON(`${API_BASE}/api/apps/${selectedApp}/dev/start`, {});
@@ -3275,10 +3534,45 @@ function AppsPanel() {
         body: JSON.stringify({ content: fileContent }),
       });
       setFileDirty(false);
+      // Visible feedback (esp. important since hot reload happens silently).
+      setSaveToast(
+        app?.dev_mode
+          ? `Saved ${selectedFile} · vite watch will rebuild & reload the page`
+          : `Saved ${selectedFile}`,
+      );
+      setTimeout(() => setSaveToast(null), 3500);
     } catch {
-      /* ignore */
+      setSaveToast(`Save failed`);
+      setTimeout(() => setSaveToast(null), 3500);
     }
     setFileSaving(false);
+  };
+
+  const commitChanges = async () => {
+    if (!selectedApp || committing) return;
+    const msg =
+      window.prompt('Commit message:', `manual: edited ${selectedFile || 'files'}`) || '';
+    if (!msg.trim()) return;
+    setCommitting(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/apps/${selectedApp}/git/commit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg.trim() }),
+      });
+      const data = await res.json();
+      if (data.sha) {
+        setSaveToast(`Committed ${data.sha} · ${msg.trim()}`);
+        loadCommits?.();
+      } else {
+        setSaveToast('Nothing to commit');
+      }
+      setTimeout(() => setSaveToast(null), 4000);
+    } catch {
+      setSaveToast('Commit failed');
+      setTimeout(() => setSaveToast(null), 3500);
+    }
+    setCommitting(false);
   };
 
   const deployApp = async () => {
@@ -3399,9 +3693,10 @@ function AppsPanel() {
 
   const app = apps.find((a) => a.name === selectedApp);
   const ext = selectedFile?.split('.').pop() || '';
-  const hasBuild = events.length > 0;
-  const lastStep = events.length > 0 ? events[events.length - 1].step : '';
-  const buildDone = lastStep === 'done' || lastStep === 'error';
+  // (BuildNodeStats / PipelineProgress / TaskBoard kept around for future reuse)
+  void BuildNodeStats;
+  void PipelineProgress;
+  void TaskBoard;
 
   // Build file tree
   const tree = useMemo(() => buildTree(files), [files]);
@@ -3415,7 +3710,7 @@ function AppsPanel() {
 
   // Auto-switch to build tab when building
   useEffect(() => {
-    if (building) setRightTab('build');
+    if (building) setRightTab('info');
   }, [building]);
 
   return (
@@ -3423,72 +3718,15 @@ function AppsPanel() {
       <div
         className={`flex min-h-0 overflow-hidden ${bottomState === 'expanded' ? 'flex-none h-0' : 'flex-1'}`}>
         {/* ── Left: App sidebar ── */}
-        <div className="w-52 shrink-0 border-r border-border/10 flex flex-col">
-          {/* Build entry — single button opens the wizard */}
-          <div className="p-2.5 border-b border-border/10">
-            <button
-              onClick={() => {
-                setPrompt('');
-                openClarify();
-              }}
-              disabled={building}
-              className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-violet-300 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 rounded-md transition-colors disabled:opacity-30">
-              <Sparkles size={12} className={building ? 'animate-pulse' : ''} />
-              {building ? 'Building…' : 'New App'}
-            </button>
-            {building && (
-              <button
-                onClick={cancelBuild}
-                className="mt-1.5 w-full py-1 text-[9px] text-red-400/70 hover:text-red-400 transition-colors">
-                ✕ Cancel build
-              </button>
-            )}
-          </div>
-
-          {/* App list */}
-          <div className="flex-1 overflow-auto">
-            {apps.length === 0 && (
-              <div className="p-6 text-center">
-                <p className="text-[11px] text-muted-foreground/30">
-                  No apps yet
-                </p>
-              </div>
-            )}
-            {apps.map((a) => {
-              const icon = a.icon || guessIcon(a.name);
-              const isSelected = selectedApp === a.name;
-              return (
-                <button
-                  key={a.name}
-                  onClick={() => setSelectedApp(a.name)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-all ${
-                    isSelected ? 'bg-white/[0.04]' : 'hover:bg-white/[0.02]'
-                  }`}>
-                  <span className="text-base shrink-0">{icon}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className={`text-[11px] truncate ${isSelected ? 'text-foreground font-medium' : 'text-muted-foreground/70'}`}>
-                        {a.name}
-                      </span>
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                          a.status === 'running'
-                            ? 'bg-emerald-500'
-                            : a.status === 'building'
-                              ? 'bg-amber-500 animate-pulse'
-                              : a.status === 'failed'
-                                ? 'bg-red-500'
-                                : 'bg-zinc-600'
-                        }`}
-                      />
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <AppSidebar
+          apps={apps}
+          selectedApp={selectedApp}
+          setSelectedApp={setSelectedApp}
+          building={building}
+          openClarify={openClarify}
+          cancelBuild={cancelBuild}
+          setPrompt={setPrompt}
+        />
 
         {/* ── Center: Code editor ── */}
         <div className="flex-1 flex flex-col min-w-0">
@@ -3522,38 +3760,25 @@ function AppsPanel() {
                   )}
                 </div>
                 <div className="flex items-center gap-0.5 text-[10px] shrink-0 ml-2">
+                  {saveToast && (
+                    <span className="px-2 py-0.5 text-[9px] text-emerald-300/80 bg-emerald-500/10 border border-emerald-500/20 rounded mr-1 truncate max-w-[260px]">
+                      ✓ {saveToast}
+                    </span>
+                  )}
                   <button
                     onClick={saveFile}
                     disabled={!fileDirty || fileSaving}
+                    title="Save the current file (⌘S). Hot reload will pick it up automatically."
                     className="px-2 py-0.5 text-muted-foreground/50 hover:text-foreground disabled:opacity-20 transition-colors">
                     {fileSaving ? '...' : 'Save'}
                   </button>
                   <span className="text-border/20">│</span>
                   <button
-                    onClick={toggleDev}
-                    disabled={building}
-                    title={app?.dev_mode ? '⚡ Hot reload ON (default) — file changes apply instantly. Click to switch to a persistent static container.' : '📦 Persistent mode — production-style container. Click to switch back to ⚡ Hot reload.'}
-                    className={`px-2 py-0.5 transition-colors disabled:opacity-30 flex items-center gap-1 ${
-                      app?.dev_mode ? 'text-amber-300' : 'text-muted-foreground/60 hover:text-foreground'
-                    }`}>
-                    {app?.dev_mode ? (
-                      <>
-                        <Zap size={10} className="animate-pulse" fill="currentColor" />
-                        Hot
-                      </>
-                    ) : (
-                      <>
-                        <Package size={10} />
-                        Persist
-                      </>
-                    )}
-                  </button>
-                  <span className="text-border/20">│</span>
-                  <button
-                    onClick={deployApp}
-                    disabled={deploying}
-                    className="px-2 py-0.5 text-emerald-400/70 hover:text-emerald-300 disabled:opacity-30 transition-colors">
-                    {deploying ? '...' : 'Deploy'}
+                    onClick={commitChanges}
+                    disabled={committing}
+                    title="git commit -am — snapshots all working-tree changes so they appear in Changes."
+                    className="px-2 py-0.5 text-violet-300/70 hover:text-violet-300 disabled:opacity-30 transition-colors flex items-center gap-1">
+                    <GitBranch size={10} /> {committing ? '...' : 'Commit'}
                   </button>
                   {app?.status === 'running' && (
                     <>
@@ -3730,23 +3955,25 @@ function AppsPanel() {
 
         {/* ── Right: Tabbed panel ── */}
         <div className="w-72 shrink-0 border-l border-border/10 flex flex-col overflow-hidden">
-          {/* Tab bar */}
+          {/* Tab bar — settings + AI assistant */}
           <div className="flex h-8 border-b border-border/10 shrink-0">
-            {(['info', 'build', 'chat'] as const).map((tab) => {
-              const icons = { info: Blocks, build: Play, chat: MessageSquare };
+            {(['info', 'chat'] as const).map((tab) => {
+              const icons = { info: Blocks, chat: MessageSquare };
+              const labels = { info: 'Settings', chat: 'AI Assistant' };
               const Icon = icons[tab];
               return (
                 <button
                   key={tab}
                   onClick={() => setRightTab(tab)}
-                  title={tab}
-                  className={`flex-1 flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider transition-colors ${
+                  title={labels[tab]}
+                  className={`flex-1 flex items-center justify-center gap-1.5 text-[9px] uppercase tracking-wider transition-colors ${
                     rightTab === tab
                       ? 'text-foreground/70 border-b border-foreground/30'
                       : 'text-muted-foreground/30 hover:text-muted-foreground/60'
                   }`}>
                   <Icon size={11} />
-                  {tab === 'build' && hasBuild && !buildDone && (
+                  {labels[tab]}
+                  {tab === 'chat' && (building || deploying) && (
                     <span className="w-1 h-1 rounded-full bg-amber-500 animate-pulse" />
                   )}
                 </button>
@@ -3761,6 +3988,56 @@ function AppsPanel() {
               <div className="flex-1 overflow-auto">
                 {selectedApp && app ? (
                   <div className="p-3 space-y-3">
+                    {/* ─── Hot reload status banner (top of panel) ─── */}
+                    {app.dev_mode && (
+                      <div className={`px-2.5 py-2 rounded-lg border flex items-center gap-2 text-[11px] ${
+                        app.dev_running
+                          ? 'bg-amber-500/10 border-amber-500/25 text-amber-200'
+                          : 'bg-red-500/10 border-red-500/30 text-red-200'
+                      }`}>
+                        {app.dev_running ? (
+                          <Zap size={12} className="animate-pulse" fill="currentColor" />
+                        ) : (
+                          <Zap size={12} />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium">
+                            {app.dev_running
+                              ? '⚡ Hot reload active'
+                              : '⚡ Hot mode ON · dev container is NOT running'}
+                          </div>
+                          <div className="text-[9px] opacity-70 truncate">
+                            {app.dev_running
+                              ? 'AI changes & Save apply via vite watch · page auto-reloads'
+                              : 'Click Persist→Hot to revive, or Restart'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ─── Live build/deploy events (right-panel, replaces bottom log) ─── */}
+                    {(deploying || building || deployEvents.length > 0) && (
+                      <div className="space-y-1">
+                        <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 flex items-center gap-1.5 px-1">
+                          <Activity size={9} /> Live Events
+                          {(deploying || building) && (
+                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                          )}
+                        </div>
+                        <div className={`p-2 rounded-lg max-h-48 overflow-auto border ${
+                          deployEvents.some((e) => e.step === 'hot-reload')
+                            ? 'bg-amber-500/5 border-amber-500/20'
+                            : 'bg-white/[0.02] border-border/10'
+                        }`}>
+                          {deployEvents.length > 0 ? (
+                            <EventLog events={deployEvents} />
+                          ) : (
+                            <div className="text-[10px] text-muted-foreground/40 italic">Working…</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* ─── Identity ─── */}
                     <div className="flex items-center gap-3 p-2 rounded-lg bg-white/[0.02] border border-border/10">
                       <span className="text-2xl">
@@ -3811,54 +4088,58 @@ function AppsPanel() {
                         <Activity size={9} /> Resources
                       </div>
                       <div className="grid grid-cols-2 gap-1.5">
-                      <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                        <span className="text-muted-foreground/40">Files</span>
-                        <p className="text-foreground/60 mt-0.5">
-                          {files.length}
-                        </p>
-                      </div>
-                      <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                        <span className="text-muted-foreground/40">Route</span>
-                        <p className="text-foreground/60 mt-0.5 font-mono">
-                          {app.route}
-                        </p>
-                      </div>
-                      {containerStats && (
-                        <>
-                          <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                            <span className="text-muted-foreground/40">
-                              CPU
-                            </span>
-                            <p className="text-foreground/60 mt-0.5 font-mono">
-                              {containerStats.cpu || '—'}
-                            </p>
-                          </div>
-                          <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                            <span className="text-muted-foreground/40">
-                              Memory
-                            </span>
-                            <p className="text-foreground/60 mt-0.5 font-mono text-[9px]">
-                              {containerStats.mem || '—'}
-                            </p>
-                          </div>
-                          <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                            <span className="text-muted-foreground/40">
-                              Network
-                            </span>
-                            <p className="text-foreground/60 mt-0.5 font-mono text-[9px]">
-                              {containerStats.net || '—'}
-                            </p>
-                          </div>
-                          <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                            <span className="text-muted-foreground/40">
-                              PIDs
-                            </span>
-                            <p className="text-foreground/60 mt-0.5 font-mono">
-                              {containerStats.pids || '—'}
-                            </p>
-                          </div>
-                        </>
-                      )}
+                        <div className="p-2 bg-white/[0.02] rounded text-[10px]">
+                          <span className="text-muted-foreground/40">
+                            Files
+                          </span>
+                          <p className="text-foreground/60 mt-0.5">
+                            {files.length}
+                          </p>
+                        </div>
+                        <div className="p-2 bg-white/[0.02] rounded text-[10px]">
+                          <span className="text-muted-foreground/40">
+                            Route
+                          </span>
+                          <p className="text-foreground/60 mt-0.5 font-mono">
+                            {app.route}
+                          </p>
+                        </div>
+                        {containerStats && (
+                          <>
+                            <div className="p-2 bg-white/[0.02] rounded text-[10px]">
+                              <span className="text-muted-foreground/40">
+                                CPU
+                              </span>
+                              <p className="text-foreground/60 mt-0.5 font-mono">
+                                {containerStats.cpu || '—'}
+                              </p>
+                            </div>
+                            <div className="p-2 bg-white/[0.02] rounded text-[10px]">
+                              <span className="text-muted-foreground/40">
+                                Memory
+                              </span>
+                              <p className="text-foreground/60 mt-0.5 font-mono text-[9px]">
+                                {containerStats.mem || '—'}
+                              </p>
+                            </div>
+                            <div className="p-2 bg-white/[0.02] rounded text-[10px]">
+                              <span className="text-muted-foreground/40">
+                                Network
+                              </span>
+                              <p className="text-foreground/60 mt-0.5 font-mono text-[9px]">
+                                {containerStats.net || '—'}
+                              </p>
+                            </div>
+                            <div className="p-2 bg-white/[0.02] rounded text-[10px]">
+                              <span className="text-muted-foreground/40">
+                                PIDs
+                              </span>
+                              <p className="text-foreground/60 mt-0.5 font-mono">
+                                {containerStats.pids || '—'}
+                              </p>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -3867,140 +4148,79 @@ function AppsPanel() {
                       <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 flex items-center gap-1.5 px-1">
                         <Play size={9} /> Quick Actions
                       </div>
-                      <div className="flex gap-1.5">
-                      {app.status === 'running' && (
-                        <button
-                          onClick={() =>
-                            window.open(
-                              `${API_BASE}/apps/${app.name}/`,
-                              '_blank',
-                            )
-                          }
-                          className="flex-1 py-1.5 text-[10px] text-emerald-400/80 bg-emerald-500/5 rounded hover:bg-emerald-500/10 transition-colors">
-                          Open <ExternalLink size={10} className="inline" />
-                        </button>
-                      )}
-                      {app.status === 'running' && (
-                        <button
-                          onClick={() => stopApp(app.name)}
-                          className="py-1.5 px-3 text-[10px] text-muted-foreground/50 hover:bg-white/[0.03] rounded transition-colors">
-                          Stop
-                        </button>
-                      )}
-                      {(app.status === 'running' ||
-                        app.status === 'failed' ||
-                        app.status === 'stopped') && (
-                        <button
-                          onClick={() => restartApp(app.name)}
-                          title="Restart container (no rebuild)"
-                          className="py-1.5 px-3 text-[10px] text-sky-400/70 hover:text-sky-300 bg-sky-500/5 hover:bg-sky-500/10 rounded transition-colors">
-                          <RefreshCw size={10} className="inline mr-0.5" />{' '}
-                          Restart
-                        </button>
-                      )}
-                      <button
-                        onClick={() => {
-                          if (confirm(`Delete ${app.name}?`))
-                            deleteApp(app.name);
-                        }}
-                        className="py-1.5 px-3 text-[10px] text-red-400/50 hover:text-red-400 hover:bg-red-500/5 rounded transition-colors">
-                        Delete
-                      </button>
-                      </div>
-                    </div>
-
-                    {/* ─── Make Changes (AI) ─── */}
-                    <div className="pt-1 space-y-1.5">
-                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 flex items-center gap-1.5 px-1">
-                        <Sparkles size={9} /> Make Changes
-                      </div>
-                      <div className="space-y-2 p-2 rounded-lg bg-white/[0.02] border border-border/10">
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => setActionType('feature')}
-                          className={`flex-1 py-1 text-[9px] rounded transition-colors ${
-                            actionType === 'feature'
-                              ? 'text-violet-400 bg-violet-500/10 border border-violet-500/20'
-                              : 'text-muted-foreground/40 hover:bg-white/[0.03] border border-transparent'
-                          }`}>
-                          <Sparkles size={10} className="inline mr-0.5" />{' '}
-                          Feature
-                        </button>
-                        <button
-                          onClick={() => setActionType('fix')}
-                          className={`flex-1 py-1 text-[9px] rounded transition-colors ${
-                            actionType === 'fix'
-                              ? 'text-amber-400 bg-amber-500/10 border border-amber-500/20'
-                              : 'text-muted-foreground/40 hover:bg-white/[0.03] border border-transparent'
-                          }`}>
-                          <Wrench size={10} className="inline mr-0.5" /> Fix
-                        </button>
-                        <button
-                          onClick={() => setActionType('bug')}
-                          className={`flex-1 py-1 text-[9px] rounded transition-colors ${
-                            actionType === 'bug'
-                              ? 'text-red-400 bg-red-500/10 border border-red-500/20'
-                              : 'text-muted-foreground/40 hover:bg-white/[0.03] border border-transparent'
-                          }`}>
-                          <Bug size={10} className="inline mr-0.5" /> Bug Report
-                        </button>
-                      </div>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={changeInput}
-                          onChange={(e) => setChangeInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && changeInput.trim()) {
-                              if (actionType === 'feature') {
-                                startRebuild(changeInput);
-                              } else if (actionType === 'fix') {
-                                startFix(changeInput);
-                              } else {
-                                startFix(changeInput);
-                              }
-                              setChangeInput('');
+                      <div className="flex flex-wrap gap-1.5">
+                        {app.status === 'running' && (
+                          <button
+                            onClick={() =>
+                              window.open(
+                                `${API_BASE}/apps/${app.name}/`,
+                                '_blank',
+                              )
                             }
-                          }}
-                          placeholder={
-                            actionType === 'feature'
-                              ? 'e.g. add dark mode, change colors...'
-                              : actionType === 'fix'
-                                ? 'Describe what needs fixing...'
-                                : 'Describe the bug you found...'
+                            className="flex-1 min-w-0 py-1.5 text-[10px] text-emerald-400/80 bg-emerald-500/5 rounded hover:bg-emerald-500/10 transition-colors">
+                            Open <ExternalLink size={10} className="inline" />
+                          </button>
+                        )}
+                        <button
+                          onClick={deployApp}
+                          disabled={deploying || building}
+                          title={
+                            app?.dev_mode
+                              ? 'Full Docker rebuild + redeploy. (Hot reload normally avoids this — only use it for prod-style validation.)'
+                              : 'Build the Docker image and restart the container.'
                           }
+                          className="py-1.5 px-3 text-[10px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded hover:bg-emerald-500/15 disabled:opacity-30 transition-colors flex items-center gap-1">
+                            <Rocket size={10} /> {deploying ? '...' : 'Deploy'}
+                        </button>
+                        <button
+                          onClick={toggleDev}
                           disabled={building}
-                          className="w-full bg-transparent border border-border/15 rounded text-[11px] py-1.5 px-2.5 pr-14 focus:outline-none focus:border-violet-500/40 placeholder:text-muted-foreground/20 transition-colors disabled:opacity-30"
-                        />
+                          title={
+                            app?.dev_mode
+                              ? '⚡ Hot reload ON. Click to switch to a persistent (production-style) container.'
+                              : '📦 Persistent container. Click to switch to ⚡ Hot reload (instant changes, vite watch).'
+                          }
+                          className={`py-1.5 px-3 text-[10px] rounded border transition-colors flex items-center gap-1 disabled:opacity-30 ${
+                            app?.dev_mode
+                              ? 'text-amber-300 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/15'
+                              : 'text-muted-foreground/70 hover:text-foreground bg-white/[0.02] border-border/15 hover:bg-white/[0.04]'
+                          }`}>
+                          {app?.dev_mode ? (
+                            <>
+                              <Zap size={10} fill="currentColor" /> Hot
+                            </>
+                          ) : (
+                            <>
+                              <Package size={10} /> Persist
+                            </>
+                          )}
+                        </button>
+                        {app.status === 'running' && (
+                          <button
+                            onClick={() => stopApp(app.name)}
+                            className="py-1.5 px-3 text-[10px] text-muted-foreground/50 hover:bg-white/[0.03] rounded transition-colors">
+                            Stop
+                          </button>
+                        )}
+                        {(app.status === 'running' ||
+                          app.status === 'failed' ||
+                          app.status === 'stopped') && (
+                          <button
+                            onClick={() => restartApp(app.name)}
+                            title="Restart container (no rebuild)"
+                            className="py-1.5 px-3 text-[10px] text-sky-400/70 hover:text-sky-300 bg-sky-500/5 hover:bg-sky-500/10 rounded transition-colors">
+                            <RefreshCw size={10} className="inline mr-0.5" />{' '}
+                            Restart
+                          </button>
+                        )}
                         <button
                           onClick={() => {
-                            if (actionType === 'feature') {
-                              startRebuild(changeInput);
-                            } else {
-                              startFix(changeInput);
-                            }
-                            setChangeInput('');
+                            if (confirm(`Delete ${app.name}?`))
+                              deleteApp(app.name);
                           }}
-                          disabled={building || !changeInput.trim()}
-                          className={`absolute right-1 top-1/2 -translate-y-1/2 text-[9px] px-2 py-0.5 rounded disabled:opacity-20 transition-colors ${
-                            actionType === 'feature'
-                              ? 'text-violet-400/60 hover:text-violet-400 bg-violet-500/5'
-                              : actionType === 'fix'
-                                ? 'text-amber-400/60 hover:text-amber-400 bg-amber-500/5'
-                                : 'text-red-400/60 hover:text-red-400 bg-red-500/5'
-                          }`}>
-                          {actionType === 'feature' ? 'Add' : 'Fix'}
+                          className="py-1.5 px-3 text-[10px] text-red-400/50 hover:text-red-400 hover:bg-red-500/5 rounded transition-colors">
+                          Delete
                         </button>
-                      </div>
-                      {actionType !== 'feature' && (
-                        <button
-                          onClick={() => startFix()}
-                          disabled={building}
-                          className="w-full py-1.5 text-[10px] text-amber-400/80 bg-amber-500/5 border border-amber-500/10 rounded hover:bg-amber-500/10 transition-colors disabled:opacity-30">
-                          <Wrench size={10} className="inline mr-0.5" />{' '}
-                          Auto-fix from Logs (no description)
-                        </button>
-                      )}
                       </div>
                     </div>
 
@@ -4188,26 +4408,6 @@ function AppsPanel() {
                       )}
                     </div>
 
-                    {app?.dev_mode && (
-                      <div className="px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/20 flex items-center gap-2 text-[11px] text-amber-200">
-                        <Zap size={11} className="animate-pulse" fill="currentColor" />
-                        <span className="font-medium">Hot reload active</span>
-                        <span className="text-amber-200/60 truncate">
-                          AI changes apply via vite watch · no Docker rebuild
-                        </span>
-                      </div>
-                    )}
-
-                    {deployEvents.length > 0 && (
-                      <div className={`p-2 rounded max-h-32 overflow-auto ${
-                        deployEvents.some((e) => e.step === 'hot-reload')
-                          ? 'bg-amber-500/5 border border-amber-500/15'
-                          : 'bg-white/[0.02]'
-                      }`}>
-                        <EventLog events={deployEvents} />
-                      </div>
-                    )}
-
                     {/* Git diff modal */}
                     {diffSha && (
                       <div
@@ -4294,129 +4494,118 @@ function AppsPanel() {
               </div>
             )}
 
-            {/* ── Build tab ── */}
-            {rightTab === 'build' && (
-              <div className="flex-1 flex flex-col overflow-hidden">
-                {hasBuild ? (
-                  <>
-                    <div className="px-3 py-2 border-b border-border/10">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] text-muted-foreground/40">
-                          Pipeline
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {building && (
-                            <button
-                              onClick={cancelBuild}
-                              className="text-[9px] text-red-400/60 hover:text-red-400 transition-colors">
-                              Cancel
-                            </button>
-                          )}
-                          {buildDone && (
-                            <button
-                              onClick={() => setEvents([])}
-                              className="text-[9px] text-muted-foreground/30 hover:text-muted-foreground transition-colors">
-                              clear
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <PipelineProgress events={events} />
-                    </div>
-                    <BuildNodeStats building={building} />
-                    <div className="flex-1 overflow-auto">
-                      <TaskBoard events={events} />
-                    </div>
-                    {selectedApp && buildDone && (
-                      <div className="p-2.5 border-t border-border/10 space-y-1.5">
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => setActionType('feature')}
-                            className={`flex-1 py-0.5 text-[8px] rounded transition-colors ${
-                              actionType === 'feature'
-                                ? 'text-violet-400 bg-violet-500/10'
-                                : 'text-muted-foreground/30 hover:bg-white/[0.03]'
-                            }`}>
-                            <Sparkles size={9} className="inline mr-0.5" />{' '}
-                            Feature
-                          </button>
-                          <button
-                            onClick={() => setActionType('fix')}
-                            className={`flex-1 py-0.5 text-[8px] rounded transition-colors ${
-                              actionType === 'fix'
-                                ? 'text-amber-400 bg-amber-500/10'
-                                : 'text-muted-foreground/30 hover:bg-white/[0.03]'
-                            }`}>
-                            <Wrench size={9} className="inline mr-0.5" /> Fix
-                          </button>
-                          <button
-                            onClick={() => setActionType('bug')}
-                            className={`flex-1 py-0.5 text-[8px] rounded transition-colors ${
-                              actionType === 'bug'
-                                ? 'text-red-400 bg-red-500/10'
-                                : 'text-muted-foreground/30 hover:bg-white/[0.03]'
-                            }`}>
-                            <Bug size={9} className="inline mr-0.5" /> Bug
-                          </button>
-                        </div>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={changeInput}
-                            onChange={(e) => setChangeInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && changeInput.trim()) {
-                                if (actionType === 'feature') {
-                                  startRebuild(changeInput);
-                                } else {
-                                  startFix(changeInput);
-                                }
-                                setChangeInput('');
-                              }
-                            }}
-                            placeholder={
-                              actionType === 'feature'
-                                ? 'Request a feature...'
-                                : actionType === 'fix'
-                                  ? 'Describe what to fix...'
-                                  : 'Describe the bug...'
-                            }
-                            className="w-full bg-transparent border-0 border-b border-border/15 text-xs py-1.5 pr-8 focus:outline-none focus:border-violet-500/40 placeholder:text-muted-foreground/25 transition-colors"
-                          />
-                          <button
-                            onClick={() => {
-                              if (actionType === 'feature') {
-                                startRebuild(changeInput);
-                              } else {
-                                startFix(changeInput);
-                              }
-                              setChangeInput('');
-                            }}
-                            disabled={building || !changeInput.trim()}
-                            className={`absolute right-0 top-1/2 -translate-y-1/2 text-[10px] disabled:opacity-20 transition-colors ${
-                              actionType === 'feature'
-                                ? 'text-violet-400/50 hover:text-violet-400'
-                                : 'text-amber-400/50 hover:text-amber-400'
-                            }`}>
-                            {actionType === 'feature' ? 'Add' : 'Fix'}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex-1 flex items-center justify-center">
-                    <p className="text-[10px] text-muted-foreground/20">
-                      No build in progress
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── Chat tab ── */}
+            {/* ── AI Assistant tab (Make Changes + Chat) ── */}
             {rightTab === 'chat' && (
               <div className="flex-1 flex flex-col overflow-hidden">
+                {/* ─── Make Changes (top of AI tab) ─── */}
+                <div className="p-2.5 border-b border-border/10 space-y-2">
+                  <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 flex items-center gap-1.5">
+                    <Sparkles size={9} /> Make Changes
+                  </div>
+                  {/* Compute-node picker */}
+                  <div className="flex items-center gap-1.5">
+                    <Cpu
+                      size={9}
+                      className="text-muted-foreground/40 shrink-0"
+                    />
+                    <select
+                      value={selectedBuildNode}
+                      onChange={(e) => setSelectedBuildNode(e.target.value)}
+                      disabled={building}
+                      title="Compute node to run this task"
+                      className="flex-1 bg-transparent border border-border/15 rounded text-[10px] py-1 px-1.5 focus:outline-none focus:border-violet-500/40 disabled:opacity-30">
+                      <option value="">Auto (best available)</option>
+                      {workerNodes.map((n) => (
+                        <option key={n.id} value={n.id}>
+                          {n.name}
+                          {n.tier ? ` · ${n.tier}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setActionType('feature')}
+                      className={`flex-1 py-1 text-[9px] rounded transition-colors ${
+                        actionType === 'feature'
+                          ? 'text-violet-400 bg-violet-500/10 border border-violet-500/20'
+                          : 'text-muted-foreground/40 hover:bg-white/[0.03] border border-transparent'
+                      }`}>
+                      <Sparkles size={10} className="inline mr-0.5" /> Feature
+                    </button>
+                    <button
+                      onClick={() => setActionType('fix')}
+                      className={`flex-1 py-1 text-[9px] rounded transition-colors ${
+                        actionType === 'fix'
+                          ? 'text-amber-400 bg-amber-500/10 border border-amber-500/20'
+                          : 'text-muted-foreground/40 hover:bg-white/[0.03] border border-transparent'
+                      }`}>
+                      <Wrench size={10} className="inline mr-0.5" /> Fix
+                    </button>
+                    <button
+                      onClick={() => setActionType('bug')}
+                      className={`flex-1 py-1 text-[9px] rounded transition-colors ${
+                        actionType === 'bug'
+                          ? 'text-red-400 bg-red-500/10 border border-red-500/20'
+                          : 'text-muted-foreground/40 hover:bg-white/[0.03] border border-transparent'
+                      }`}>
+                      <Bug size={10} className="inline mr-0.5" /> Bug
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={changeInput}
+                      onChange={(e) => setChangeInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && changeInput.trim()) {
+                          if (actionType === 'feature') startRebuild(changeInput);
+                          else startFix(changeInput);
+                          setChangeInput('');
+                        }
+                      }}
+                      placeholder={
+                        actionType === 'feature'
+                          ? 'Add a feature... (e.g. dark mode, undo button)'
+                          : actionType === 'fix'
+                            ? 'Describe what to fix...'
+                            : 'Describe the bug...'
+                      }
+                      disabled={building}
+                      className="w-full bg-transparent border border-border/15 rounded text-[11px] py-1.5 px-2.5 pr-12 focus:outline-none focus:border-violet-500/40 placeholder:text-muted-foreground/20 transition-colors disabled:opacity-30"
+                    />
+                    <button
+                      onClick={() => {
+                        if (actionType === 'feature') startRebuild(changeInput);
+                        else startFix(changeInput);
+                        setChangeInput('');
+                      }}
+                      disabled={building || !changeInput.trim()}
+                      className={`absolute right-1 top-1/2 -translate-y-1/2 text-[9px] px-2 py-0.5 rounded disabled:opacity-20 transition-colors ${
+                        actionType === 'feature'
+                          ? 'text-violet-400/60 hover:text-violet-400 bg-violet-500/5'
+                          : actionType === 'fix'
+                            ? 'text-amber-400/60 hover:text-amber-400 bg-amber-500/5'
+                            : 'text-red-400/60 hover:text-red-400 bg-red-500/5'
+                      }`}>
+                      {actionType === 'feature' ? 'Add' : 'Fix'}
+                    </button>
+                  </div>
+                  {actionType !== 'feature' && (
+                    <button
+                      onClick={() => startFix()}
+                      disabled={building}
+                      className="w-full py-1.5 text-[10px] text-amber-400/80 bg-amber-500/5 border border-amber-500/10 rounded hover:bg-amber-500/10 transition-colors disabled:opacity-30">
+                      <Wrench size={10} className="inline mr-0.5" /> Auto-fix from Logs
+                    </button>
+                  )}
+                </div>
+
+                {/* ─── Chat header ─── */}
+                <div className="px-3 pt-2 pb-1 text-[9px] uppercase tracking-wider text-muted-foreground/40 flex items-center gap-1.5">
+                  <MessageSquare size={9} /> Chat with code assistant
+                </div>
+
                 {/* Messages */}
                 <div
                   ref={chatRef}
@@ -4431,8 +4620,13 @@ function AppsPanel() {
                         {selectedApp || 'app'}
                       </p>
                       <p className="text-[9px] text-muted-foreground/30 mt-2">
-                        Type <span className="text-blue-400/70 font-mono">@</span> to mention a file ·{' '}
-                        <span className="text-amber-400/70 font-mono">@app</span> = all files
+                        Type{' '}
+                        <span className="text-blue-400/70 font-mono">@</span> to
+                        mention a file ·{' '}
+                        <span className="text-amber-400/70 font-mono">
+                          @app
+                        </span>{' '}
+                        = all files
                       </p>
                     </div>
                   )}
@@ -4511,23 +4705,31 @@ function AppsPanel() {
                     <div className="relative flex-1">
                       {(() => {
                         // Compute the matching mention list (files + @app)
-                        const opts: { value: string; desc: string }[] = mentionOpen
-                          ? [
-                              { value: 'app', desc: `all ${files.length} files` },
-                              ...files
-                                .map((f) => f.path)
-                                .filter((p) =>
-                                  p.toLowerCase().includes(mentionQuery.toLowerCase()),
-                                )
-                                .slice(0, 12)
-                                .map((p) => ({ value: p, desc: '' })),
-                            ].filter((o) =>
-                              mentionQuery
-                                ? o.value.toLowerCase().includes(mentionQuery.toLowerCase()) ||
-                                  o.value === 'app'
-                                : true,
-                            )
-                          : [];
+                        const opts: { value: string; desc: string }[] =
+                          mentionOpen
+                            ? [
+                                {
+                                  value: 'app',
+                                  desc: `all ${files.length} files`,
+                                },
+                                ...files
+                                  .map((f) => f.path)
+                                  .filter((p) =>
+                                    p
+                                      .toLowerCase()
+                                      .includes(mentionQuery.toLowerCase()),
+                                  )
+                                  .slice(0, 12)
+                                  .map((p) => ({ value: p, desc: '' })),
+                              ].filter((o) =>
+                                mentionQuery
+                                  ? o.value
+                                      .toLowerCase()
+                                      .includes(mentionQuery.toLowerCase()) ||
+                                    o.value === 'app'
+                                  : true,
+                              )
+                            : [];
                         const insertMention = (val: string) => {
                           // Replace the last "@<query>" with "@val "
                           const re = /@[\w./-]*$/;
@@ -4537,7 +4739,9 @@ function AppsPanel() {
                           setMentionQuery('');
                           setMentionIndex(0);
                           // Refocus input
-                          requestAnimationFrame(() => chatInputRef.current?.focus());
+                          requestAnimationFrame(() =>
+                            chatInputRef.current?.focus(),
+                          );
                         };
                         return (
                           <>
@@ -4549,7 +4753,9 @@ function AppsPanel() {
                                 const v = e.target.value;
                                 setChatInput(v);
                                 // Detect "@..." at the end (or before a space)
-                                const m = v.slice(0, e.target.selectionStart || v.length).match(/@([\w./-]*)$/);
+                                const m = v
+                                  .slice(0, e.target.selectionStart || v.length)
+                                  .match(/@([\w./-]*)$/);
                                 if (m) {
                                   setMentionQuery(m[1]);
                                   setMentionOpen(true);
@@ -4562,15 +4768,23 @@ function AppsPanel() {
                                 if (mentionOpen && opts.length > 0) {
                                   if (e.key === 'ArrowDown') {
                                     e.preventDefault();
-                                    setMentionIndex((i) => (i + 1) % opts.length);
+                                    setMentionIndex(
+                                      (i) => (i + 1) % opts.length,
+                                    );
                                     return;
                                   }
                                   if (e.key === 'ArrowUp') {
                                     e.preventDefault();
-                                    setMentionIndex((i) => (i - 1 + opts.length) % opts.length);
+                                    setMentionIndex(
+                                      (i) =>
+                                        (i - 1 + opts.length) % opts.length,
+                                    );
                                     return;
                                   }
-                                  if (e.key === 'Tab' || (e.key === 'Enter' && mentionOpen)) {
+                                  if (
+                                    e.key === 'Tab' ||
+                                    (e.key === 'Enter' && mentionOpen)
+                                  ) {
                                     e.preventDefault();
                                     insertMention(opts[mentionIndex].value);
                                     return;
@@ -4602,7 +4816,12 @@ function AppsPanel() {
                                         ? 'bg-blue-500/15 text-foreground'
                                         : 'text-foreground/70 hover:bg-white/[0.04]'
                                     }`}>
-                                    <span className={o.value === 'app' ? 'text-amber-400' : 'text-blue-400/70'}>
+                                    <span
+                                      className={
+                                        o.value === 'app'
+                                          ? 'text-amber-400'
+                                          : 'text-blue-400/70'
+                                      }>
                                       @{o.value}
                                     </span>
                                     {o.desc && (
@@ -5691,7 +5910,6 @@ function ChatPanel() {
       } catch {
         /* ignore */
       }
-      setSideOpen(false);
       setTimeout(() => inputRef.current?.focus(), 50);
       return s.id;
     },
@@ -6486,7 +6704,15 @@ function ChatPanel() {
   // ── Composer send ──
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text || loading || !active) return;
+    if (!text || loading) return;
+    if (!active) {
+      // No active session — create one and ask the user to press Send again
+      // (closure captures the old `active`; next render will have it set).
+      newSession();
+      setStatusMsg('Started a new chat — press Send again');
+      setTimeout(() => setStatusMsg(null), 3000);
+      return;
+    }
     if (text.startsWith('/')) {
       if (runSlash(text)) return;
     }
@@ -6592,6 +6818,7 @@ function ChatPanel() {
     sendCompare,
     compareRoutes,
     webEnabled,
+    newSession,
   ]);
 
   // ── Edit user message + resend ──
@@ -6940,106 +7167,159 @@ function ChatPanel() {
 
       {/* Sessions sidebar */}
       <div
-        className={`${sideOpen ? 'w-64' : 'w-0'} transition-all overflow-hidden border-r border-border/20 bg-muted/10 shrink-0 flex flex-col`}>
-        <div className="p-2 space-y-1 flex flex-col h-full">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => newSession()}
-            className="w-full text-xs mb-1">
-            <Plus size={12} /> New Chat
-          </Button>
-          <div className="flex gap-1 text-[10px]">
-            {(['all', 'pinned', 'archived'] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setShowFilter(f)}
-                className={`flex-1 py-1 rounded transition-colors ${showFilter === f ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground/60 hover:bg-white/5'}`}>
-                {f}
-              </button>
-            ))}
+        className={`${sideOpen ? 'w-60' : 'w-0'} transition-all overflow-hidden border-r border-border/10 bg-background/40 shrink-0 flex flex-col`}>
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <div className="px-3 pt-2.5 pb-1.5 flex items-center justify-between">
+            <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 font-medium">
+              Chats
+            </div>
+            <div className="text-[9px] text-muted-foreground/30 tabular-nums">
+              {sessions.length}
+            </div>
           </div>
-          <button
-            onClick={() => setSearchOpen(true)}
-            className="w-full flex items-center gap-2 px-2 py-1.5 text-[11px] text-muted-foreground/60 border border-border/20 rounded hover:bg-white/5 transition-colors">
-            <Search size={11} />
-            Search… <span className="ml-auto text-[9px] opacity-50">⌘K</span>
-          </button>
-          <button
-            onClick={() => setSchedulesOpen(true)}
-            className="w-full flex items-center gap-2 px-2 py-1.5 text-[11px] text-muted-foreground/60 border border-border/20 rounded hover:bg-white/5 transition-colors">
-            <Clock size={11} />
-            Schedules…
-          </button>
-          <div className="flex-1 overflow-auto -mx-2 px-2 mt-1 space-y-0.5">
-            {filteredSessions.map((s) => (
-              <div
-                key={s.id}
-                className={`group flex items-center gap-1 px-2 py-1.5 rounded text-xs cursor-pointer transition-colors ${s.id === activeId ? 'bg-muted/50 text-foreground' : 'text-muted-foreground hover:bg-muted/30'}`}
-                onClick={() => {
-                  setActiveId(s.id);
-                  try {
-                    localStorage.setItem('chat-active', s.id);
-                  } catch {
-                    /* ignore */
-                  }
-                }}>
-                {s.pinned && (
-                  <Pin size={9} className="text-violet-400 shrink-0" />
-                )}
-                {s.starred && (
-                  <Star size={9} className="text-amber-400 shrink-0" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="truncate">{s.title || 'Untitled'}</div>
-                  <div className="flex items-center gap-1 text-[9px] text-muted-foreground/40 mt-0.5">
-                    <span>{relTime(s.updatedAt)}</span>
-                    <span>·</span>
-                    <span>
-                      {
-                        s.messages.filter(
-                          (m) => m.role !== 'system' && !m.stepType,
-                        ).length
-                      }{' '}
-                      msg
-                    </span>
-                  </div>
-                </div>
-                <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5">
-                  <button
-                    title={s.pinned ? 'Unpin' : 'Pin'}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      togglePin(s.id);
-                    }}
-                    className="p-0.5 text-muted-foreground/60 hover:text-violet-300">
-                    <Pin size={10} />
-                  </button>
-                  <button
-                    title={s.archived ? 'Unarchive' : 'Archive'}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleArchive(s.id);
-                    }}
-                    className="p-0.5 text-muted-foreground/60 hover:text-foreground">
-                    <Archive size={10} />
-                  </button>
-                  <button
-                    title="Delete"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirm(`Delete "${s.title}"?`)) deleteSession(s.id);
-                    }}
-                    className="p-0.5 text-red-400 hover:text-red-300">
-                    <Trash2 size={10} />
-                  </button>
-                </div>
+
+          {/* New Chat */}
+          <div className="px-2.5 pb-2">
+            <button
+              onClick={() => newSession()}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-violet-300 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 rounded transition-colors">
+              <Plus size={11} /> New Chat
+            </button>
+          </div>
+
+          {/* Filter pills */}
+          <div className="px-2.5 pb-1.5">
+            <div className="flex gap-0.5 text-[9.5px] bg-white/[0.02] rounded p-0.5">
+              {(['all', 'pinned', 'archived'] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setShowFilter(f)}
+                  className={`flex-1 py-1 rounded transition-colors capitalize ${
+                    showFilter === f
+                      ? 'bg-foreground/10 text-foreground'
+                      : 'text-muted-foreground/50 hover:text-foreground'
+                  }`}>
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Search + Schedules */}
+          <div className="px-2.5 pb-2 space-y-1">
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="w-full flex items-center gap-1.5 px-2 py-1.5 text-[10px] text-muted-foreground/50 hover:text-foreground border border-border/15 rounded hover:bg-white/[0.03] transition-colors">
+              <Search size={10} />
+              <span className="flex-1 text-left">Search…</span>
+              <span className="text-[9px] opacity-50">⌘K</span>
+            </button>
+            <button
+              onClick={() => setSchedulesOpen(true)}
+              className="w-full flex items-center gap-1.5 px-2 py-1.5 text-[10px] text-muted-foreground/50 hover:text-foreground border border-border/15 rounded hover:bg-white/[0.03] transition-colors">
+              <Clock size={10} />
+              <span className="flex-1 text-left">Schedules…</span>
+            </button>
+          </div>
+
+          {/* Session list */}
+          <div className="flex-1 overflow-auto pb-2 px-1">
+            {filteredSessions.length === 0 ? (
+              <div className="px-3 py-4 text-center">
+                <p className="text-[10px] text-muted-foreground/30">
+                  No sessions
+                </p>
               </div>
-            ))}
-            {filteredSessions.length === 0 && (
-              <div className="text-[10px] text-muted-foreground/40 italic px-2 py-2">
-                No sessions.
-              </div>
+            ) : (
+              filteredSessions.map((s) => {
+                const isActive = s.id === activeId;
+                const msgCount = s.messages.filter(
+                  (m) => m.role !== 'system' && !m.stepType,
+                ).length;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => {
+                      setActiveId(s.id);
+                      try {
+                        localStorage.setItem('chat-active', s.id);
+                      } catch {
+                        /* ignore */
+                      }
+                    }}
+                    title={s.title || 'Untitled'}
+                    className={`group relative w-full flex items-start gap-1.5 pl-3 pr-1.5 py-1.5 text-left rounded transition-colors ${
+                      isActive
+                        ? 'bg-white/[0.05]'
+                        : 'hover:bg-white/[0.025]'
+                    }`}>
+                    {/* Active accent bar */}
+                    <span
+                      className={`absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r ${
+                        isActive ? 'bg-violet-400/70' : 'bg-transparent'
+                      }`}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        {s.pinned && (
+                          <Pin size={9} className="text-violet-400 shrink-0" />
+                        )}
+                        {s.starred && (
+                          <Star size={9} className="text-amber-400 shrink-0" />
+                        )}
+                        <span
+                          className={`flex-1 truncate text-[11px] ${
+                            isActive
+                              ? 'text-foreground font-medium'
+                              : 'text-muted-foreground/75 group-hover:text-foreground/85'
+                          }`}>
+                          {s.title || 'Untitled'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 text-[9px] text-muted-foreground/35 mt-0.5">
+                        <span>{relTime(s.updatedAt)}</span>
+                        {msgCount > 0 && (
+                          <>
+                            <span>·</span>
+                            <span>{msgCount} msg</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 shrink-0">
+                      <span
+                        title={s.pinned ? 'Unpin' : 'Pin'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          togglePin(s.id);
+                        }}
+                        className="p-0.5 text-muted-foreground/50 hover:text-violet-300 cursor-pointer">
+                        <Pin size={10} />
+                      </span>
+                      <span
+                        title={s.archived ? 'Unarchive' : 'Archive'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleArchive(s.id);
+                        }}
+                        className="p-0.5 text-muted-foreground/50 hover:text-foreground cursor-pointer">
+                        <Archive size={10} />
+                      </span>
+                      <span
+                        title="Delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Delete "${s.title}"?`))
+                            deleteSession(s.id);
+                        }}
+                        className="p-0.5 text-red-400/70 hover:text-red-300 cursor-pointer">
+                        <Trash2 size={10} />
+                      </span>
+                    </div>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
@@ -7622,101 +7902,115 @@ function ChatPanel() {
               </div>
             )}
 
-            <div className="flex gap-2 items-end">
-              <button
-                onClick={onPickFiles}
-                title="Attach file"
-                disabled={loading}
-                className="p-2 text-muted-foreground/60 hover:text-foreground rounded hover:bg-white/5 disabled:opacity-30">
-                <Plus size={14} />
-              </button>
-              {micSupported && (
+            <div className="flex flex-col gap-1.5">
+              {/* Toolbar row — kept separate so the Send button is always visible */}
+              <div className="flex items-center gap-1 flex-wrap">
                 <button
-                  onClick={() => (listening ? micStop() : micStart())}
-                  title={listening ? 'Stop listening' : 'Voice input'}
-                  className={`p-2 rounded hover:bg-white/5 ${listening ? 'text-red-400 animate-pulse' : 'text-muted-foreground/60 hover:text-foreground'}`}>
-                  <Mic size={14} />
+                  onClick={onPickFiles}
+                  title="Attach file"
+                  disabled={loading}
+                  className="p-1.5 text-muted-foreground/60 hover:text-foreground rounded hover:bg-white/5 disabled:opacity-30">
+                  <Plus size={14} />
                 </button>
-              )}
-              <button
-                onClick={() => setWebEnabled((v) => !v)}
-                title={
-                  webEnabled
-                    ? 'Web search: ON (next message)'
-                    : 'Enable web search for next message'
-                }
-                disabled={loading}
-                className={`p-2 rounded hover:bg-white/5 disabled:opacity-30 ${webEnabled ? 'text-sky-300 bg-sky-500/10' : 'text-muted-foreground/60 hover:text-foreground'}`}>
-                <Globe size={14} />
-              </button>
-              <select
-                value={pendingModel}
-                onChange={(e) => setPendingModel(e.target.value)}
-                title="Override route for next turn"
-                className="text-[10px] bg-black/30 border border-border/30 rounded px-1 py-1 text-muted-foreground/70 focus:outline-none focus:text-foreground">
-                <option value="">auto</option>
-                <option value="light">light</option>
-                <option value="heavy">heavy</option>
-                {nodesList.map((n) => (
-                  <option key={n.name} value={n.name}>
-                    {n.name}
-                  </option>
-                ))}
-              </select>
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onPaste={onPasteCompose}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === 'Enter' &&
-                    !e.shiftKey &&
-                    (e.metaKey || e.ctrlKey || !e.altKey)
-                  ) {
-                    if (!e.shiftKey) {
-                      e.preventDefault();
-                      send();
-                    }
-                  } else if (e.key === 'ArrowUp' && !input && lastUserMsg) {
-                    e.preventDefault();
-                    startEdit(lastUserMsg);
-                  } else if (
-                    e.key === 'Tab' &&
-                    mentionState &&
-                    mentionState.items.length > 0
-                  ) {
-                    e.preventDefault();
-                    insertMention(mentionState.items[0].name);
+                {micSupported && (
+                  <button
+                    onClick={() => (listening ? micStop() : micStart())}
+                    title={listening ? 'Stop listening' : 'Voice input'}
+                    className={`p-1.5 rounded hover:bg-white/5 ${listening ? 'text-red-400 animate-pulse' : 'text-muted-foreground/60 hover:text-foreground'}`}>
+                    <Mic size={14} />
+                  </button>
+                )}
+                <button
+                  onClick={() => setWebEnabled((v) => !v)}
+                  title={
+                    webEnabled
+                      ? 'Web search: ON for next message'
+                      : 'Enable web search for next message'
                   }
-                }}
-                placeholder={
-                  loading
-                    ? 'Generating… press Esc to stop'
-                    : 'Message…   /  for commands,  @  to mention,  ⌘↵ to send'
-                }
-                rows={1}
-                className="flex-1 bg-muted/30 border border-border/40 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none overflow-hidden"
-              />
-              {loading ? (
-                <Button
-                  onClick={stop}
-                  size="sm"
-                  variant="destructive"
-                  className="px-3"
-                  title="Stop (Esc)">
-                  <Square size={14} />
-                </Button>
-              ) : (
-                <Button
-                  onClick={send}
-                  disabled={!input.trim() && attachments.length === 0}
-                  size="sm"
-                  className="px-3"
-                  title="Send (⌘↵)">
-                  <Send size={14} />
-                </Button>
-              )}
+                  disabled={loading}
+                  className={`flex items-center gap-1 px-2 py-1.5 rounded text-[11px] hover:bg-white/5 disabled:opacity-30 transition-colors ${webEnabled ? 'text-sky-300 bg-sky-500/10 border border-sky-500/30' : 'text-muted-foreground/60 hover:text-foreground border border-transparent'}`}>
+                  <Globe size={12} />
+                  <span>Web</span>
+                </button>
+                <select
+                  value={pendingModel}
+                  onChange={(e) => setPendingModel(e.target.value)}
+                  title="Override route for next turn"
+                  className="text-[10px] bg-black/30 border border-border/30 rounded px-1.5 py-1 text-muted-foreground/70 focus:outline-none focus:text-foreground">
+                  <option value="">auto</option>
+                  <option value="light">light</option>
+                  <option value="heavy">heavy</option>
+                  {nodesList.map((n) => (
+                    <option key={n.name} value={n.name}>
+                      {n.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex-1" />
+                <span className="text-[9px] text-muted-foreground/40 hidden sm:inline">
+                  ⌘↵ to send
+                </span>
+              </div>
+
+              {/* Input row */}
+              <div className="flex gap-2 items-end">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onPaste={onPasteCompose}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === 'Enter' &&
+                      !e.shiftKey &&
+                      (e.metaKey || e.ctrlKey || !e.altKey)
+                    ) {
+                      if (!e.shiftKey) {
+                        e.preventDefault();
+                        send();
+                      }
+                    } else if (e.key === 'ArrowUp' && !input && lastUserMsg) {
+                      e.preventDefault();
+                      startEdit(lastUserMsg);
+                    } else if (
+                      e.key === 'Tab' &&
+                      mentionState &&
+                      mentionState.items.length > 0
+                    ) {
+                      e.preventDefault();
+                      insertMention(mentionState.items[0].name);
+                    }
+                  }}
+                  placeholder={
+                    loading
+                      ? 'Generating… press Esc to stop'
+                      : webEnabled
+                        ? '🌐 Web is ON — your message will search the web first…'
+                        : 'Message…   /  for commands,  @  to mention'
+                  }
+                  rows={1}
+                  className="flex-1 min-w-0 bg-muted/30 border border-border/40 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none overflow-hidden"
+                />
+                {loading ? (
+                  <Button
+                    onClick={stop}
+                    size="sm"
+                    variant="destructive"
+                    className="px-3 shrink-0"
+                    title="Stop (Esc)">
+                    <Square size={14} />
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={send}
+                    disabled={!input.trim() && attachments.length === 0}
+                    size="sm"
+                    className="px-3 shrink-0"
+                    title="Send (⌘↵)">
+                    <Send size={14} />
+                  </Button>
+                )}
+              </div>
             </div>
 
             {/* Slash menu */}
