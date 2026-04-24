@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Home AI",
+    "slug": "home-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "home-ai",
+    "platforms": ["ios", "android"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.acanturgut.homeai"
+    },
+    "android": {
+      "package": "com.acanturgut.homeai",
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0a0a"
+      }
+    },
+    "plugins": ["expo-router"]
+  }
+}

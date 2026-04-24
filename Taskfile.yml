@@ -1,0 +1,134 @@
+version: '3'
+
+vars:
+  PI_HOST: acanturgut@192.168.50.199
+  PI_DIR: /home/acanturgut/home-server
+  DOCKER_COMPOSE: docker compose
+
+tasks:
+  # ─── LOCAL DEV ──────────────────────────────────────────
+  server:dev:
+    desc: Run Go server locally
+    dir: server
+    cmd: go run .
+
+  app:dev:
+    desc: Start Expo dev server
+    dir: app
+    cmd: npx expo start
+
+  app:install:
+    desc: Install app dependencies
+    dir: app
+    cmd: npm install
+
+  # ─── BUILD ─────────────────────────────────────────────
+  server:build:
+    desc: Build Go binary for Pi (arm64)
+    dir: server
+    cmd: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o ../dist/home-server .
+
+  agent:build:
+    desc: Build agent for Windows (amd64)
+    dir: agent
+    cmds:
+      - go-winres make
+      - CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X main.defaultServer=http://192.168.50.199:8080" -o ../dist/home-agent.exe .
+
+  agent:build:linux:
+    desc: Build agent for Linux (arm64)
+    dir: agent
+    cmd: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o ../dist/home-agent-linux .
+
+  docker:build:
+    desc: Build Docker images on Pi
+    cmd: ssh {{.PI_HOST}} "cd {{.PI_DIR}} && {{.DOCKER_COMPOSE}} build"
+
+  # ─── DEPLOY ────────────────────────────────────────────
+  web:build:
+    desc: Build web UI and copy to server embed
+    cmds:
+      - cd web && npm run build
+      - rm -rf server/api/web && mkdir -p server/api/web
+      - cp -r web/dist/* server/api/web/
+
+  agent:deploy:
+    desc: Build agent binaries and copy into web embed for download
+    cmds:
+      - task: agent:build
+      - mkdir -p server/api/web
+      - cp dist/home-agent.exe server/api/web/home-agent.exe
+
+  deploy:
+    desc: Deploy everything to Pi
+    cmds:
+      - task: web:build
+      - task: deploy:sync
+      - task: deploy:up
+
+  deploy:sync:
+    desc: Sync project files to Pi
+    cmd: >-
+      rsync -avz --delete
+      --exclude 'node_modules'
+      --exclude '.expo'
+      --exclude 'dist'
+      --exclude '.git'
+      --exclude 'app'
+      --exclude '/web'
+      ./ {{.PI_HOST}}:{{.PI_DIR}}/
+
+  deploy:up:
+    desc: Start services on Pi
+    cmd: ssh {{.PI_HOST}} "cd {{.PI_DIR}} && sudo systemctl restart docker && sleep 2 && {{.DOCKER_COMPOSE}} up -d --build"
+
+  deploy:down:
+    desc: Stop services on Pi
+    cmd: ssh {{.PI_HOST}} "cd {{.PI_DIR}} && {{.DOCKER_COMPOSE}} down"
+
+  deploy:logs:
+    desc: Tail Pi logs
+    cmd: ssh {{.PI_HOST}} "cd {{.PI_DIR}} && {{.DOCKER_COMPOSE}} logs -f --tail=100"
+
+  deploy:restart:
+    desc: Restart services on Pi
+    cmd: ssh {{.PI_HOST}} "cd {{.PI_DIR}} && {{.DOCKER_COMPOSE}} restart"
+
+  deploy:status:
+    desc: Show Pi service status
+    cmd: ssh {{.PI_HOST}} "cd {{.PI_DIR}} && {{.DOCKER_COMPOSE}} ps"
+
+  # ─── PI MANAGEMENT ────────────────────────────────────
+  pi:ssh:
+    desc: SSH into Pi
+    cmd: ssh {{.PI_HOST}}
+
+  pi:stats:
+    desc: Show Pi system stats
+    cmd: ssh {{.PI_HOST}} "echo '=== CPU ===' && top -bn1 | head -5 && echo '=== MEM ===' && free -h && echo '=== DISK ===' && df -h / && echo '=== TEMP ===' && cat /sys/class/thermal/thermal_zone0/temp | awk '{printf \"%.1f°C\\n\", $$1/1000}'"
+
+  pi:update:
+    desc: Update Pi system packages
+    cmd: ssh {{.PI_HOST}} "sudo apt update && sudo apt upgrade -y"
+
+  pi:reboot:
+    desc: Reboot Pi
+    cmd: ssh {{.PI_HOST}} "sudo reboot"
+
+  # ─── OLLAMA ────────────────────────────────────────────
+  ollama:pull:
+    desc: Pull gemma3:1b model on Pi
+    cmd: ssh {{.PI_HOST}} "docker exec ollama ollama pull gemma3:1b"
+
+  ollama:models:
+    desc: List models on Pi
+    cmd: ssh {{.PI_HOST}} "docker exec ollama ollama list"
+
+  # ─── FUTURE: WAKE ON LAN ──────────────────────────────
+  # wol:5070:
+  #   desc: Wake 5070 system
+  #   cmd: ssh {{.PI_HOST}} "wakeonlan <MAC_ADDRESS_5070>"
+  #
+  # wol:5090:
+  #   desc: Wake 5090 system
+  #   cmd: ssh {{.PI_HOST}} "wakeonlan <MAC_ADDRESS_5090>"

@@ -1,0 +1,43 @@
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: home-server
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PORT=8080
+      - OLLAMA_HOST=http://localhost:11434
+      - ROUTER_MODEL=gemma3:1b
+      - LOG_DIR=/var/log/home-server
+      - DATA_DIR=/data
+      - HOMEKIT_PIN=00102003
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - server-logs:/var/log/home-server
+      - server-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      ollama:
+        condition: service_started
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - home-net
+
+volumes:
+  server-logs:
+  server-data:
+  ollama-data:
+
+networks:
+  home-net:
+    driver: bridge

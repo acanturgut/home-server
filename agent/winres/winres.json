@@ -1,0 +1,49 @@
+{
+    "RT_MANIFEST": {
+        "#1": {
+            "0409": {
+                "identity": {
+                    "name": "HomeAgent",
+                    "version": "1.0.0.0"
+                },
+                "description": "Home Agent — system monitor",
+                "minimum-os": "vista",
+                "execution-level": "asInvoker",
+                "ui-access": false,
+                "auto-elevate": false,
+                "dpi-awareness": "system",
+                "disable-theming": false,
+                "disable-window-filtering": false,
+                "high-resolution-scrolling-aware": false,
+                "ultra-high-resolution-scrolling-aware": false,
+                "long-path-aware": true,
+                "printer-driver-isolation": false,
+                "gdi-scaling": false,
+                "segment-heap": false,
+                "use-common-controls-v6": false
+            }
+        }
+    },
+    "RT_VERSION": {
+        "#1": {
+            "0000": {
+                "fixed": {
+                    "file_version": "1.0.0.0",
+                    "product_version": "1.0.0.0"
+                },
+                "info": {
+                    "0409": {
+                        "CompanyName": "Home Server",
+                        "FileDescription": "Home Agent — System Monitor & Remote Control",
+                        "FileVersion": "1.0.0.0",
+                        "InternalName": "home-agent",
+                        "LegalCopyright": "Copyright (c) 2026",
+                        "OriginalFilename": "home-agent.exe",
+                        "ProductName": "Home Agent",
+                        "ProductVersion": "1.0.0.0"
+                    }
+                }
+            }
+        }
+    }
+}
