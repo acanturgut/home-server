@@ -1361,30 +1361,28 @@ function DiffView({
 }) {
   const files = useMemo(() => parseUnifiedDiff(diff), [diff]);
   const [selected, setSelected] = useState(0);
+  const fileRefs = useRef<Array<HTMLDivElement | null>>([]);
   useEffect(() => { setSelected(0); }, [diff]);
   if (!files.length) {
     return <div className="p-4 text-[11px] text-muted-foreground/60">No changes.</div>;
   }
-  if (layout === 'all') {
-    return (
-      <div className="space-y-4">
-        {files.map((f, fi) => (
-          <FileBlock key={fi} f={f} mode={mode} />
-        ))}
-      </div>
-    );
-  }
-  const cur = files[Math.min(selected, files.length - 1)];
+  const onPick = (fi: number) => {
+    setSelected(fi);
+    if (layout === 'all') {
+      fileRefs.current[fi]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
   return (
     <div className="flex gap-3 h-full min-h-0">
       <div className="w-56 shrink-0 overflow-auto border-r border-white/10 pr-2 -mr-1">
         <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 px-2 py-1">
-          {files.length} file{files.length === 1 ? '' : 's'}
+          {files.length} file{files.length === 1 ? '' : 's'} changed
         </div>
         {files.map((f, fi) => (
           <button
             key={fi}
-            onClick={() => setSelected(fi)}
+            onClick={() => onPick(fi)}
+            title={f.path}
             className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-left text-[11px] mb-0.5 ${
               fi === selected ? 'bg-violet-500/15 text-foreground' : 'text-muted-foreground/70 hover:bg-white/5'
             }`}>
@@ -1396,7 +1394,17 @@ function DiffView({
         ))}
       </div>
       <div className="flex-1 overflow-auto min-w-0">
-        <FileBlock f={cur} mode={mode} />
+        {layout === 'all' ? (
+          <div className="space-y-4">
+            {files.map((f, fi) => (
+              <div key={fi} ref={(el) => { fileRefs.current[fi] = el; }}>
+                <FileBlock f={f} mode={mode} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <FileBlock f={files[Math.min(selected, files.length - 1)]} mode={mode} />
+        )}
       </div>
     </div>
   );
@@ -3727,7 +3735,7 @@ function AppsPanel() {
                               <X size={12} />
                             </button>
                           </div>
-                          <div className={`flex-1 p-3 min-h-0 ${diffLayout === 'single' ? 'overflow-hidden' : 'overflow-auto'}`}>
+                          <div className="flex-1 p-3 min-h-0 overflow-hidden">
                             {diffText === 'Loading…' ? (
                               <div className="text-[11px] text-muted-foreground/60">Loading…</div>
                             ) : (
