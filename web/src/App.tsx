@@ -1278,8 +1278,8 @@ function DiffView({ diff, mode }: { diff: string; mode: 'split' | 'unified' }) {
                     </div>
                   );
                 }
-                const leftFill = row.kind === 'add' || row.kind === 'gap';
-                const rightFill = row.kind === 'del' || row.kind === 'gap';
+                const leftFill = row.kind === 'add';
+                const rightFill = row.kind === 'del';
                 const leftBg =
                   row.kind === 'del' ? 'bg-red-500/10' :
                   row.kind === 'mod' ? 'bg-red-500/8' :
