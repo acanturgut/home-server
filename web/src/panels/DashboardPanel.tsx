@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { API_BASE } from '@/lib/api';
 import { formatUptime } from '@/lib/format';
 import type { SystemInfo } from '@/lib/types';
+import { Spinner } from '@/components/ui/spinner';
 
 /** Compact server-stats card (CPU / memory / disk bars) used on the dashboard. */
 export function DashboardPanel() {
@@ -28,8 +29,7 @@ export function DashboardPanel() {
       <div className="rounded-lg border border-border/30 p-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
         {loading ? (
           <>
-            <span className="inline-block w-3.5 h-3.5 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
-            Loading...
+            <Spinner /> Loading...
           </>
         ) : (
           'Server unreachable'

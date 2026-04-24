@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { API_BASE } from '@/lib/api';
 import { formatUptime } from '@/lib/format';
 import type { NodeStats } from '@/lib/types';
+import { Spinner } from '@/components/ui/spinner';
+import { StatusDot } from '@/components/ui/status-dot';
+import { EmptyState } from '@/components/ui/empty-state';
 
 /** Live, auto-refreshing list of cluster nodes with CPU/Mem/Disk/GPU bars. */
 export function NodesPanel() {
@@ -33,8 +36,7 @@ export function NodesPanel() {
   if (loading)
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-        <span className="inline-block w-3.5 h-3.5 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
-        Loading nodes...
+        <Spinner /> Loading nodes...
       </div>
     );
 
@@ -55,9 +57,7 @@ export function NodesPanel() {
       {onlineNodes.length === 0 &&
         agentOnlyNodes.length === 0 &&
         offlineNodes.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            No nodes configured
-          </p>
+          <EmptyState message="No nodes configured" />
         )}
       {[...onlineNodes, ...agentOnlyNodes].map((n) => {
         const s = stats[n.id];
@@ -68,8 +68,10 @@ export function NodesPanel() {
             key={n.id}
             className="rounded-lg border border-border/30 p-3 space-y-2.5">
             <div className="flex items-center gap-2">
-              <span
-                className={`w-2 h-2 rounded-full shrink-0 ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`}
+              <StatusDot
+                status={isOnline ? 'running' : 'failed'}
+                size={8}
+                className="shrink-0"
               />
               <span className="text-sm font-medium">
                 {s.hostname || n.name}
@@ -152,7 +154,7 @@ export function NodesPanel() {
             <div
               key={n.id}
               className="flex items-center gap-2 text-[11px] text-muted-foreground/60">
-              <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
+              <StatusDot status="stopped" />
               {n.name}
             </div>
           ))}

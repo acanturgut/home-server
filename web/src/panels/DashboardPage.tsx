@@ -11,6 +11,7 @@ import { guessIcon } from '@/lib/icons';
 import type { AppInfo } from '@/lib/types';
 import { DashboardPanel } from '@/panels/DashboardPanel';
 import { NodesPanel } from '@/panels/NodesPanel';
+import { StatusDot } from '@/components/ui/status-dot';
 
 const cpuChartConfig: ChartConfig = {
   cpu: { label: 'CPU', color: '#3b82f6' },
@@ -216,14 +217,9 @@ function AppsQuickView() {
                 {app.name}
               </span>
               {/* Status dot */}
-              <span
-                className={`absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full ${
-                  isRunning
-                    ? 'bg-emerald-500'
-                    : isFailed
-                      ? 'bg-red-500'
-                      : 'bg-zinc-500'
-                }`}
+              <StatusDot
+                status={app.status}
+                className="absolute top-1.5 right-1.5"
               />
             </button>
           );

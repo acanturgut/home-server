@@ -5,6 +5,7 @@ import {
   Settings,
   Hexagon,
 } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 
 export interface NavItem {
   id: string;
@@ -33,17 +34,14 @@ export function Sidebar({ page, onNavigate, items = NAV_ITEMS }: SidebarProps) {
         <Hexagon size={20} />
       </div>
       {items.map((n) => (
-        <button
+        <IconButton
           key={n.id}
+          icon={n.icon}
+          label={n.label}
+          size={40}
+          active={page === n.id}
           onClick={() => onNavigate(n.id)}
-          title={n.label}
-          className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm transition-all ${
-            page === n.id
-              ? 'bg-foreground/10 text-foreground'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
-          }`}>
-          {n.icon}
-        </button>
+        />
       ))}
     </aside>
   );

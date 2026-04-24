@@ -1,6 +1,8 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { formatUptime } from '@/lib/format';
 import type { SystemInfo } from '@/lib/types';
+import { Spinner } from '@/components/ui/spinner';
+import { StatusDot } from '@/components/ui/status-dot';
 
 interface StatusBarProps {
   sys: SystemInfo | null;
@@ -22,7 +24,7 @@ export function StatusBar({
       {sys ? (
         <>
           <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <StatusDot status="running" />
             {sys.hostname}
           </span>
           <span className="text-border/60">│</span>
@@ -94,7 +96,7 @@ export function StatusBar({
         </>
       ) : (
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 border border-zinc-500/50 border-t-zinc-400 rounded-full animate-spin" />
+          <Spinner size={10} />
           Connecting...
         </span>
       )}
