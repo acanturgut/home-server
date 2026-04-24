@@ -64,6 +64,8 @@ import {
   Plus,
   Clock,
   Globe,
+  PanelLeft,
+  Rows3,
 } from 'lucide-react';
 import {
   EditorView,
@@ -1251,24 +1253,18 @@ function parseUnifiedDiff(diff: string): DiffFile[] {
   return files;
 }
 
-function DiffView({ diff, mode }: { diff: string; mode: 'split' | 'unified' }) {
-  const files = useMemo(() => parseUnifiedDiff(diff), [diff]);
-  if (!files.length) {
-    return <div className="p-4 text-[11px] text-muted-foreground/60">No changes.</div>;
-  }
+function FileBlock({ f, mode }: { f: DiffFile; mode: 'split' | 'unified' }) {
   return (
-    <div className="space-y-4">
-      {files.map((f, fi) => (
-        <div key={fi} className="rounded border border-white/10 overflow-hidden">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] border-b border-white/10 text-[11px]">
-            <FileCode2 size={11} className="text-violet-400/70 shrink-0" />
-            <span className="font-mono text-foreground/80 truncate flex-1">{f.path}</span>
-            {f.isNew && <span className="text-[9px] uppercase text-emerald-400/80">new</span>}
-            {f.isDeleted && <span className="text-[9px] uppercase text-red-400/80">deleted</span>}
-            <span className="text-[10px] tabular-nums text-emerald-400/80">+{f.added}</span>
-            <span className="text-[10px] tabular-nums text-red-400/80">−{f.removed}</span>
-          </div>
-          {mode === 'split' ? (
+    <div className="rounded border border-white/10 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] border-b border-white/10 text-[11px]">
+        <FileCode2 size={11} className="text-violet-400/70 shrink-0" />
+        <span className="font-mono text-foreground/80 truncate flex-1">{f.path}</span>
+        {f.isNew && <span className="text-[9px] uppercase text-emerald-400/80">new</span>}
+        {f.isDeleted && <span className="text-[9px] uppercase text-red-400/80">deleted</span>}
+        <span className="text-[10px] tabular-nums text-emerald-400/80">+{f.added}</span>
+        <span className="text-[10px] tabular-nums text-red-400/80">−{f.removed}</span>
+      </div>
+      {mode === 'split' ? (
             <div className="grid grid-cols-2 text-[10px] font-mono">
               {f.rows.map((row, ri) => {
                 if (row.kind === 'gap') {
@@ -1350,8 +1346,58 @@ function DiffView({ diff, mode }: { diff: string; mode: 'split' | 'unified' }) {
               })}
             </div>
           )}
+    </div>
+  );
+}
+
+function DiffView({
+  diff,
+  mode,
+  layout,
+}: {
+  diff: string;
+  mode: 'split' | 'unified';
+  layout: 'all' | 'single';
+}) {
+  const files = useMemo(() => parseUnifiedDiff(diff), [diff]);
+  const [selected, setSelected] = useState(0);
+  useEffect(() => { setSelected(0); }, [diff]);
+  if (!files.length) {
+    return <div className="p-4 text-[11px] text-muted-foreground/60">No changes.</div>;
+  }
+  if (layout === 'all') {
+    return (
+      <div className="space-y-4">
+        {files.map((f, fi) => (
+          <FileBlock key={fi} f={f} mode={mode} />
+        ))}
+      </div>
+    );
+  }
+  const cur = files[Math.min(selected, files.length - 1)];
+  return (
+    <div className="flex gap-3 h-full min-h-0">
+      <div className="w-56 shrink-0 overflow-auto border-r border-white/10 pr-2 -mr-1">
+        <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 px-2 py-1">
+          {files.length} file{files.length === 1 ? '' : 's'}
         </div>
-      ))}
+        {files.map((f, fi) => (
+          <button
+            key={fi}
+            onClick={() => setSelected(fi)}
+            className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-left text-[11px] mb-0.5 ${
+              fi === selected ? 'bg-violet-500/15 text-foreground' : 'text-muted-foreground/70 hover:bg-white/5'
+            }`}>
+            <FileCode2 size={10} className="shrink-0 opacity-60" />
+            <span className="truncate flex-1 font-mono">{f.path.split('/').pop()}</span>
+            <span className="text-[9px] tabular-nums text-emerald-400/70">+{f.added}</span>
+            <span className="text-[9px] tabular-nums text-red-400/70">−{f.removed}</span>
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-auto min-w-0">
+        <FileBlock f={cur} mode={mode} />
+      </div>
     </div>
   );
 }
@@ -2440,6 +2486,7 @@ function AppsPanel() {
   const [diffSha, setDiffSha] = useState<string | null>(null);
   const [diffText, setDiffText] = useState('');
   const [diffMode, setDiffMode] = useState<'split' | 'unified'>('split');
+  const [diffLayout, setDiffLayout] = useState<'all' | 'single'>('single');
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -3650,6 +3697,20 @@ function AppsPanel() {
                             </span>
                             <div className="flex items-center bg-white/5 rounded text-[10px] overflow-hidden">
                               <button
+                                onClick={() => setDiffLayout('single')}
+                                title="One file at a time (sidebar)"
+                                className={`px-2 py-1 ${diffLayout === 'single' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/50 hover:text-foreground'}`}>
+                                <PanelLeft size={11} className="inline mr-0.5" /> Files
+                              </button>
+                              <button
+                                onClick={() => setDiffLayout('all')}
+                                title="Scroll all files"
+                                className={`px-2 py-1 ${diffLayout === 'all' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/50 hover:text-foreground'}`}>
+                                <Rows3 size={11} className="inline mr-0.5" /> All
+                              </button>
+                            </div>
+                            <div className="flex items-center bg-white/5 rounded text-[10px] overflow-hidden">
+                              <button
                                 onClick={() => setDiffMode('split')}
                                 className={`px-2 py-1 ${diffMode === 'split' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/50 hover:text-foreground'}`}>
                                 <Columns2 size={11} className="inline mr-0.5" /> Split
@@ -3666,11 +3727,11 @@ function AppsPanel() {
                               <X size={12} />
                             </button>
                           </div>
-                          <div className="flex-1 overflow-auto p-3">
+                          <div className={`flex-1 p-3 min-h-0 ${diffLayout === 'single' ? 'overflow-hidden' : 'overflow-auto'}`}>
                             {diffText === 'Loading…' ? (
                               <div className="text-[11px] text-muted-foreground/60">Loading…</div>
                             ) : (
-                              <DiffView diff={diffText} mode={diffMode} />
+                              <DiffView diff={diffText} mode={diffMode} layout={diffLayout} />
                             )}
                           </div>
                         </div>
