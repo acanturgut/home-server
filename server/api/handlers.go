@@ -565,6 +565,45 @@ func (h *Handler) RestartApp(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "running"})
 }
 
+// POST /api/apps/{name}/dev/start  (NDJSON stream of pipeline events)
+func (h *Handler) DevStart(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if _, ok := h.apps.Get(name); !ok {
+		writeJSON(w, http.StatusNotFound, errorResp{Error: "app not found"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-cache")
+	flusher, _ := w.(http.Flusher)
+	emit := func(ev apps.PipelineEvent) {
+		_ = json.NewEncoder(w).Encode(ev)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+	if err := h.pipeline.StartDev(ctx, name, emit); err != nil {
+		emit(apps.PipelineEvent{Step: "error", Message: err.Error(), Timestamp: time.Now().Format(time.RFC3339)})
+	}
+}
+
+// POST /api/apps/{name}/dev/stop
+func (h *Handler) DevStop(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if _, ok := h.apps.Get(name); !ok {
+		writeJSON(w, http.StatusNotFound, errorResp{Error: "app not found"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	if err := h.pipeline.StopDev(ctx, name); err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResp{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"dev_mode": false})
+}
+
 // GET /api/apps/{name}/git/log?limit=50
 func (h *Handler) AppGitLog(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")

@@ -854,6 +854,19 @@ func (p *Pipeline) Rebuild(ctx context.Context, name, changeRequest string, heav
 
 	patchViteBase(projectDir)
 
+	// Hot-reload short-circuit: dev container has a bind mount, the AI's
+	// changes are already visible inside it. Skip docker build/run entirely.
+	if app.DevMode && p.IsDevRunning(ctx, name) {
+		emit(newEvent("deploying", "⚡ Hot reload — skipping Docker build (dev mode)"))
+		// Touch a sentinel so vite's --watch picks the change up reliably.
+		os.Chtimes(filepath.Join(projectDir, "package.json"), time.Now(), time.Now())
+		app.Status = StatusRunning
+		p.addBuild(app, "rebuild", changeRequest, heavy.Name, "success", time.Since(start))
+		p.store.Set(app)
+		emit(newEventLatency("done", fmt.Sprintf("App '%s' updated (hot reload)", name), fmt.Sprintf("Port: %d", port), time.Since(start).String()))
+		return
+	}
+
 	emit(newEvent("deploying", "Rebuilding Docker image..."))
 	runCmd(ctx, ".", "docker", "rm", "-f", name)
 	out, err = runCmd(ctx, projectDir, "docker", "build", "-t", name, ".")
@@ -965,7 +978,6 @@ func (p *Pipeline) FixErrors(ctx context.Context, name, userDescription string, 
 
 	// ── Rebuild + Deploy ───────────────────────────────
 	emit(newEvent("deploying", "Rebuilding and restarting container..."))
-	runCmd(ctx, ".", "docker", "rm", "-f", name)
 
 	out, err := runCmd(ctx, projectDir, "npm", "install")
 	if err != nil {
@@ -975,6 +987,19 @@ func (p *Pipeline) FixErrors(ctx context.Context, name, userDescription string, 
 
 	patchViteBase(projectDir)
 
+	// Hot-reload short-circuit (dev mode).
+	if app.DevMode && p.IsDevRunning(ctx, name) {
+		emit(newEvent("deploying", "⚡ Hot reload — skipping Docker build (dev mode)"))
+		os.Chtimes(filepath.Join(projectDir, "package.json"), time.Now(), time.Now())
+		app.Status = StatusRunning
+		app.Error = ""
+		p.addBuild(app, "fix", userDescription, heavy.Name, "success", time.Since(start))
+		p.store.Set(app)
+		emit(newEventLatency("done", fmt.Sprintf("App '%s' fixed (hot reload)", name), fmt.Sprintf("Port: %d", port), time.Since(start).String()))
+		return
+	}
+
+	runCmd(ctx, ".", "docker", "rm", "-f", name)
 	out, err = runCmd(ctx, projectDir, "docker", "build", "-t", name, ".")
 	if err != nil {
 		p.fail(app, emit, fmt.Sprintf("Docker build failed: %v\n%s", err, truncate(out, 2000)))

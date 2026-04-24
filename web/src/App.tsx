@@ -68,6 +68,7 @@ import {
   Rows3,
   Undo2,
   Rocket,
+  Zap,
 } from 'lucide-react';
 import {
   EditorView,
@@ -979,6 +980,7 @@ interface AppInfo {
   created_at: string;
   updated_at: string;
   builds?: BuildRecord[];
+  dev_mode?: boolean;
 }
 
 interface BuildEvent {
@@ -3207,8 +3209,7 @@ function AppsPanel() {
     await fetch(`${API_BASE}/api/apps/${name}/stop`, { method: 'POST' });
     refresh();
   };
-  const restartApp = async (name: string) => {
-    try {
+  const restartApp = async (name: string) => {    try {
       const r = await fetch(`${API_BASE}/api/apps/${name}/restart`, {
         method: 'POST',
       });
@@ -3220,6 +3221,16 @@ function AppsPanel() {
       /* ignore */
     }
     refresh();
+  };
+
+  const toggleDev = async () => {
+    if (!selectedApp || !app) return;
+    if (app.dev_mode) {
+      await fetch(`${API_BASE}/api/apps/${selectedApp}/dev/stop`, { method: 'POST' });
+      refresh();
+    } else {
+      streamNDJSON(`${API_BASE}/api/apps/${selectedApp}/dev/start`, {});
+    }
   };
 
   const saveFile = async () => {
@@ -3520,6 +3531,17 @@ function AppsPanel() {
                     disabled={!fileDirty || fileSaving}
                     className="px-2 py-0.5 text-muted-foreground/50 hover:text-foreground disabled:opacity-20 transition-colors">
                     {fileSaving ? '...' : 'Save'}
+                  </button>
+                  <span className="text-border/20">│</span>
+                  <button
+                    onClick={toggleDev}
+                    disabled={building}
+                    title={app?.dev_mode ? 'Hot reload ON — file changes apply instantly. Click to disable.' : 'Enable hot reload — AI changes apply without rebuilding the Docker image.'}
+                    className={`px-2 py-0.5 transition-colors disabled:opacity-30 flex items-center gap-1 ${
+                      app?.dev_mode ? 'text-amber-300' : 'text-muted-foreground/50 hover:text-amber-300'
+                    }`}>
+                    <Zap size={10} className={app?.dev_mode ? 'animate-pulse' : ''} fill={app?.dev_mode ? 'currentColor' : 'none'} />
+                    {app?.dev_mode ? 'Hot' : 'Dev'}
                   </button>
                   <span className="text-border/20">│</span>
                   <button
