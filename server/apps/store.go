@@ -152,3 +152,8 @@ func (s *Store) Delete(name string) {
 func (s *Store) ProjectDir(name string) string {
 	return filepath.Join(s.appsDir, name)
 }
+
+// AppsDir returns the root directory containing all app project folders.
+func (s *Store) AppsDir() string {
+	return s.appsDir
+}

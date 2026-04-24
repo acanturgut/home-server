@@ -73,6 +73,22 @@ func (h *Handler) FetchURL(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// parseHTTPURL validates a URL is http(s) and not a blocked host.
+func parseHTTPURL(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("invalid scheme")
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" || isBlockedHost(host) {
+		return nil, fmt.Errorf("host not allowed")
+	}
+	return u, nil
+}
+
 func isBlockedHost(host string) bool {
 	if host == "localhost" {
 		return true

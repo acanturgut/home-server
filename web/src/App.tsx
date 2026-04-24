@@ -3978,6 +3978,8 @@ const SLASH_COMMANDS: SlashCmd[] = [
   { cmd: '/build', hint: 'Send the last assistant reply to the Apps wizard as an idea', example: '/build' },
   { cmd: '/save', hint: 'Save the last assistant reply as a snippet', example: '/save Useful regex' },
   { cmd: '/web', hint: 'Fetch a URL and use it as context for the next message', example: '/web https://example.com' },
+  { cmd: '/rag', hint: 'Search indexed app source code and attach top results', example: '/rag docker healthcheck' },
+  { cmd: '/tools', hint: 'Enable tool-calling for the next reply (assistant may call listApps, appLogs, ragSearch, ...)', example: '/tools on' },
   { cmd: '/export', hint: 'Download this chat as Markdown', example: '/export' },
   { cmd: '/help', hint: 'Show all slash commands', example: '/help' },
 ];
@@ -4003,7 +4005,11 @@ function MarkdownView({ text }: { text: string }) {
     <div className="space-y-2">
       {segments.map((seg, i) =>
         seg.kind === 'code' ? (
-          <CodeBlock key={i} lang={seg.lang || ''} code={seg.body.replace(/\n$/, '')} />
+          (seg.lang || '').toLowerCase() === 'tool' ? (
+            <ToolCallBlock key={i} payload={seg.body} />
+          ) : (
+            <CodeBlock key={i} lang={seg.lang || ''} code={seg.body.replace(/\n$/, '')} />
+          )
         ) : (
           <InlineMarkdown key={i} text={seg.body} />
         ),
@@ -4136,6 +4142,70 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   );
 }
 
+// ToolCallBlock renders an assistant-suggested tool invocation.  Payload is
+// a JSON object: { "name": "ragSearch", "args": { "q": "docker" } }.
+// User can click "Run" to execute it against /api/tools/run/{name}; the
+// result is displayed inline and can be inserted back into the input.
+function ToolCallBlock({ payload }: { payload: string }) {
+  const [result, setResult] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  let parsed: { name?: string; args?: Record<string, unknown> } = {};
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    parsed = {};
+  }
+  const name = parsed.name || '(unknown)';
+  const run = async () => {
+    if (!parsed.name) return;
+    setRunning(true);
+    setErr(null);
+    try {
+      const r = await fetch(`${API_BASE}/api/tools/run/${encodeURIComponent(parsed.name)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed.args || {}),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error || 'failed');
+      setResult(JSON.stringify(data.result, null, 2));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'failed');
+    } finally {
+      setRunning(false);
+    }
+  };
+  return (
+    <div className="rounded-md border border-violet-400/30 bg-violet-500/5 overflow-hidden">
+      <div className="flex items-center justify-between px-2 py-1 border-b border-violet-400/20 bg-violet-500/10">
+        <span className="text-[10px] uppercase tracking-wider text-violet-300/80 font-mono">
+          tool · {name}
+        </span>
+        <button
+          onClick={run}
+          disabled={running || !parsed.name}
+          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-violet-200 hover:bg-violet-500/20 rounded transition-colors disabled:opacity-40">
+          {running ? 'Running…' : 'Run'}
+        </button>
+      </div>
+      <pre className="text-[11px] font-mono p-2 overflow-auto text-violet-100/70">
+        {JSON.stringify(parsed.args || {}, null, 2)}
+      </pre>
+      {err && (
+        <div className="px-2 py-1 text-[10px] text-red-300 border-t border-violet-400/20 bg-red-500/10">
+          {err}
+        </div>
+      )}
+      {result && (
+        <pre className="text-[11px] font-mono p-2 overflow-auto max-h-72 border-t border-violet-400/20 text-foreground/80 bg-black/30">
+          {result}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 // ── Voice input + TTS helpers ──
 function useSpeechRecognition(onResult: (text: string) => void) {
   const recRef = useRef<any>(null);
@@ -4223,6 +4293,7 @@ function ChatPanel() {
   const [collapsedReasoning, setCollapsedReasoning] = useState<Record<string, boolean>>({});
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [pendingModel, setPendingModel] = useState<string>(''); // one-shot override
+  const [toolsEnabled, setToolsEnabled] = useState<boolean>(false); // one-shot tool-call hint
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -4452,6 +4523,22 @@ function ChatPanel() {
           setInput('');
           return true;
         }
+        case '/rag': {
+          if (!arg) {
+            setStatusMsg('Usage: /rag <query>');
+          } else {
+            ragSearchAndAttach(arg);
+          }
+          setInput('');
+          return true;
+        }
+        case '/tools': {
+          const on = arg !== 'off';
+          setToolsEnabled(on);
+          setStatusMsg(on ? 'Tool calling enabled for next reply.' : 'Tool calling disabled.');
+          setInput('');
+          return true;
+        }
         case '/export':
           exportSession();
           setInput('');
@@ -4543,6 +4630,42 @@ function ChatPanel() {
     }
   }
 
+  // ── RAG: search indexed app source and attach hits as one "codebase" attachment ──
+  async function ragSearchAndAttach(q: string) {
+    setStatusMsg(`Searching codebase for "${q}"…`);
+    try {
+      const r = await fetch(`${API_BASE}/api/rag/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q, k: 5 }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error || 'search failed');
+      const hits: Array<{ path: string; app: string; score: number; snippet: string }> = data.hits || [];
+      if (hits.length === 0) {
+        setStatusMsg(`No matches for "${q}".`);
+        return;
+      }
+      const text = hits
+        .map((h) => `--- ${h.path} (score=${h.score.toFixed(2)}) ---\n${h.snippet}`)
+        .join('\n\n');
+      const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+      setAttachments((prev) => [
+        ...prev,
+        {
+          id,
+          name: `codebase: "${q}" (${hits.length} hits)`,
+          type: 'text/rag',
+          size: text.length,
+          text: `Codebase search query: ${q}\n\n${text}`,
+        },
+      ]);
+      setStatusMsg(`Attached ${hits.length} codebase snippet${hits.length === 1 ? '' : 's'}.`);
+    } catch (e) {
+      setStatusMsg(`RAG failed: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+  }
+
   // ── Send (used by initial send, regenerate, and resend-from-edit) ──
   const sendWithMessages = useCallback(
     async (newMessages: ChatMsg[], opts?: { titleSeed?: string; modelOverride?: string }) => {
@@ -4566,8 +4689,20 @@ function ChatPanel() {
         const sysMsg = active.system?.trim()
           ? [{ role: 'system' as const, content: active.system.trim() }]
           : [];
+        const toolSys = toolsEnabled
+          ? [{
+              role: 'system' as const,
+              content:
+                'You may call tools by emitting a fenced code block with language `tool` ' +
+                'containing a JSON object: {"name":"<tool>","args":{...}}. ' +
+                'Available tools: ragSearch(q,k), listApps(), appStatus(name), appLogs(name,tail), httpGet(url). ' +
+                'After the user runs the tool, its JSON result will appear in the next user message; use it to answer. ' +
+                'Emit at most one tool call per turn.',
+            }]
+          : [];
         const apiMsgs = [
           ...sysMsg,
+          ...toolSys,
           ...newMessages
             .filter((m) => m.role !== 'system')
             .map(({ role, content }) => ({ role, content })),
@@ -4715,7 +4850,7 @@ function ChatPanel() {
         try { localStorage.removeItem('chat-loading'); } catch { /* ignore */ }
       }
     },
-    [active, sessions, persist, autoTitle],
+    [active, sessions, persist, autoTitle, toolsEnabled],
   );
 
   // ── Composer send ──
@@ -5372,6 +5507,18 @@ function ChatPanel() {
                 <span className="text-muted-foreground/60">Next turn →</span>
                 <span className="px-2 py-0.5 rounded bg-violet-500/15 border border-violet-400/30 text-violet-200">{pendingModel}</span>
                 <button onClick={() => setPendingModel('')} className="text-muted-foreground/60 hover:text-foreground">
+                  <X size={10} />
+                </button>
+              </div>
+            )}
+
+            {/* Tool-calling pill */}
+            {toolsEnabled && (
+              <div className="flex items-center gap-1 text-[10px]">
+                <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-400/30 text-emerald-200">
+                  tools: on
+                </span>
+                <button onClick={() => setToolsEnabled(false)} className="text-muted-foreground/60 hover:text-foreground">
                   <X size={10} />
                 </button>
               </div>

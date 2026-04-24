@@ -64,6 +64,11 @@ func NewRouter(h *Handler) http.Handler {
 	mux.HandleFunc("POST /api/snippets", h.CreateSnippet)
 	mux.HandleFunc("DELETE /api/snippets/{id}", h.DeleteSnippet)
 
+	// RAG + tools
+	mux.HandleFunc("POST /api/rag/search", h.RAGSearch)
+	mux.HandleFunc("GET /api/tools", h.ListTools)
+	mux.HandleFunc("POST /api/tools/run/{name}", h.RunTool)
+
 	// Serve web UI at root
 	webFS := webHandler()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

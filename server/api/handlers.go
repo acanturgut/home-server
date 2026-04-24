@@ -37,6 +37,7 @@ type Handler struct {
 	settings *apps.SettingsStore
 	chats    *apps.ChatStore
 	snippets *apps.SnippetStore
+	rag      *apps.RAGIndex
 	version  string
 	started  time.Time
 }
@@ -54,6 +55,7 @@ func NewHandler(router *ai.Router, cfg *config.Config, nodes *config.NodeStore, 
 		settings: settings,
 		chats:    apps.NewChatStore(cfg.DataDir),
 		snippets: apps.NewSnippetStore(cfg.DataDir),
+		rag:      apps.NewRAGIndex(appStore.AppsDir()),
 		version:  version,
 		started:  time.Now(),
 	}
