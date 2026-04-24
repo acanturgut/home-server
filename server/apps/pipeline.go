@@ -865,15 +865,24 @@ func (p *Pipeline) Rebuild(ctx context.Context, name, changeRequest string, heav
 
 	// Hot-reload short-circuit: dev container has a bind mount, the AI's
 	// changes are already visible inside it. Skip docker build/run entirely.
-	if app.DevMode && p.IsDevRunning(ctx, name) {
-		emit(newEvent("hot-reload", "⚡ Hot reload — vite is rebuilding inside the dev container (skipped Docker build, ~60s saved)"))
-		// Touch a sentinel so vite's --watch picks the change up reliably.
-		os.Chtimes(filepath.Join(projectDir, "package.json"), time.Now(), time.Now())
-		app.Status = StatusRunning
-		p.addBuild(app, "rebuild", changeRequest, heavy.Name, "success", time.Since(start))
-		p.store.Set(app)
-		emit(newEventLatency("done", fmt.Sprintf("⚡ '%s' updated via hot reload", name), fmt.Sprintf("Port: %d · No Docker rebuild", port), time.Since(start).String()))
-		return
+	if app.DevMode {
+		if !p.IsDevRunning(ctx, name) {
+			emit(newEvent("hot-reload", "⚡ Dev container is not running — reviving for hot reload..."))
+			if err := p.StartDev(ctx, name, emit); err != nil {
+				emit(newEvent("deploying", fmt.Sprintf("Could not revive dev container (%v) — falling back to full rebuild", err)))
+			}
+		}
+		if p.IsDevRunning(ctx, name) {
+			emit(newEvent("hot-reload", "⚡ Hot reload — vite is rebuilding inside the dev container (skipped Docker build, ~60s saved)"))
+			os.Chtimes(filepath.Join(projectDir, "package.json"), time.Now(), time.Now())
+			app.Status = StatusRunning
+			p.addBuild(app, "rebuild", changeRequest, heavy.Name, "success", time.Since(start))
+			p.store.Set(app)
+			emit(newEventLatency("done", fmt.Sprintf("⚡ '%s' updated via hot reload", name), fmt.Sprintf("Port: %d · No Docker rebuild", port), time.Since(start).String()))
+			return
+		}
+	} else {
+		emit(newEvent("deploying", "💡 Tip: enable ⚡ Hot reload on this app to skip Docker build (~60s faster)."))
 	}
 
 	emit(newEvent("deploying", "Rebuilding Docker image..."))
@@ -997,15 +1006,25 @@ func (p *Pipeline) FixErrors(ctx context.Context, name, userDescription string, 
 	patchViteBase(projectDir)
 
 	// Hot-reload short-circuit (dev mode).
-	if app.DevMode && p.IsDevRunning(ctx, name) {
-		emit(newEvent("hot-reload", "⚡ Hot reload — vite is rebuilding inside the dev container (skipped Docker build, ~60s saved)"))
-		os.Chtimes(filepath.Join(projectDir, "package.json"), time.Now(), time.Now())
-		app.Status = StatusRunning
-		app.Error = ""
-		p.addBuild(app, "fix", userDescription, heavy.Name, "success", time.Since(start))
-		p.store.Set(app)
-		emit(newEventLatency("done", fmt.Sprintf("⚡ '%s' fixed via hot reload", name), fmt.Sprintf("Port: %d · No Docker rebuild", port), time.Since(start).String()))
-		return
+	if app.DevMode {
+		if !p.IsDevRunning(ctx, name) {
+			emit(newEvent("hot-reload", "⚡ Dev container is not running — reviving for hot reload..."))
+			if err := p.StartDev(ctx, name, emit); err != nil {
+				emit(newEvent("deploying", fmt.Sprintf("Could not revive dev container (%v) — falling back to full rebuild", err)))
+			}
+		}
+		if p.IsDevRunning(ctx, name) {
+			emit(newEvent("hot-reload", "⚡ Hot reload — vite is rebuilding inside the dev container (skipped Docker build, ~60s saved)"))
+			os.Chtimes(filepath.Join(projectDir, "package.json"), time.Now(), time.Now())
+			app.Status = StatusRunning
+			app.Error = ""
+			p.addBuild(app, "fix", userDescription, heavy.Name, "success", time.Since(start))
+			p.store.Set(app)
+			emit(newEventLatency("done", fmt.Sprintf("⚡ '%s' fixed via hot reload", name), fmt.Sprintf("Port: %d · No Docker rebuild", port), time.Since(start).String()))
+			return
+		}
+	} else {
+		emit(newEvent("deploying", "💡 Tip: enable ⚡ Hot reload on this app to skip Docker build (~60s faster)."))
 	}
 
 	runCmd(ctx, ".", "docker", "rm", "-f", name)

@@ -1016,7 +1016,6 @@ const PIPELINE_STEPS = [
 const STEP_LABELS: Record<string, string> = {
   planning: 'Plan',
   task: 'Tasks',
-  merging: 'Merge',
   validating: 'Validate',
   deploying: 'Deploy',
   'hot-reload': '⚡ Hot',
@@ -1027,7 +1026,6 @@ const STEP_LABELS: Record<string, string> = {
 const STEP_COLORS: Record<string, string> = {
   planning: 'text-violet-400',
   task: 'text-cyan-400',
-  merging: 'text-amber-400',
   validating: 'text-orange-400',
   deploying: 'text-emerald-400',
   'hot-reload': 'text-amber-400 font-semibold',
