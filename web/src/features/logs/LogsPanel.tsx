@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { API_BASE } from '@/lib/api';
+import { logsApi } from '@/features/logs/api';
 import type { LogEntry } from '@/lib/types';
 
 /** Filterable, auto-polling viewer for the server's structured logs. */
@@ -10,12 +10,9 @@ export function LogsPanel() {
   const [levelFilter, setLevelFilter] = useState<string>('ALL');
 
   const fetchLogs = useCallback(() => {
-    fetch(`${API_BASE}/api/logs?n=500`)
-      .then((r) => r.json())
-      .then((data: LogEntry[]) =>
-        setLogs(Array.isArray(data) ? data.reverse() : []),
-      )
-      .catch(() => setLogs([]));
+    logsApi.list(500).then((data) =>
+      setLogs(Array.isArray(data) ? [...data].reverse() : []),
+    );
   }, []);
 
   useEffect(() => {

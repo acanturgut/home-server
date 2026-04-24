@@ -1,21 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { API_BASE } from '@/lib/api';
 import type { NodeConfig } from '@/features/settings/components/NodeFormInline';
+import { settingsApi, type SystemConfigDTO } from '@/features/settings/api';
 
-export type SystemConfig = {
-  router_model: string;
-  ollama_host: string;
-  version: string;
-  started_at: string;
-  uptime_seconds: number;
-  data_dir: string;
-  log_dir: string;
-  port: string;
-  anthropic_set: boolean;
-  homekit_pin: string;
-  apps_count: number;
-  nodes_count: number;
-};
+export type SystemConfig = SystemConfigDTO;
 
 export type RuntimeSettings = {
   autoFixOnCrash: boolean;
@@ -86,25 +73,18 @@ export function useSettings() {
   const [promptsDirty, setPromptsDirty] = useState(false);
 
   /* prompts */
-  const refreshPrompts = useCallback(() => {
-    fetch(`${API_BASE}/api/prompts`)
-      .then((r) => r.json())
-      .then((d) => {
-        setPrompts(d);
-        setPromptsDirty(false);
-      })
-      .catch(() => {});
+  const refreshPrompts = useCallback(async () => {
+    const d = await settingsApi.getPrompts();
+    if (d) {
+      setPrompts(d);
+      setPromptsDirty(false);
+    }
   }, []);
 
   const savePrompts = useCallback(async () => {
     setPromptsSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/api/prompts`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(prompts),
-      });
-      const d = await res.json();
+      const d = await settingsApi.putPrompts(prompts);
       setPrompts(d);
       setPromptsDirty(false);
     } catch {
@@ -117,10 +97,7 @@ export function useSettings() {
     if (!confirm('Reset all prompts to defaults?')) return;
     setPromptsSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/api/prompts/reset`, {
-        method: 'POST',
-      });
-      const d = await res.json();
+      const d = await settingsApi.resetPrompts();
       setPrompts(d);
       setPromptsDirty(false);
     } catch {
@@ -138,17 +115,13 @@ export function useSettings() {
   const refresh = useCallback(() => {
     setLoading(true);
     setLoadError(null);
-    Promise.all([
-      fetch(`${API_BASE}/api/config`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/health`).then((r) => r.json()),
-    ])
+    Promise.all([settingsApi.getConfig(), settingsApi.getHealth()])
       .then(([cfg, health]) => {
-        setSysCfg(cfg as SystemConfig);
+        setSysCfg(cfg);
         setRouterModel(cfg.router_model || '');
         setOllamaHost(cfg.ollama_host || '');
         setOllamaOnline(health.backends?.ollama || false);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setNodes((health.backends?.nodes || []).map((n: any) => ({ ...n })));
+        setNodes((health.backends?.nodes || []).map((n) => ({ ...n })));
       })
       .catch((e) =>
         setLoadError(e instanceof Error ? e.message : 'Failed to load'),
@@ -159,13 +132,14 @@ export function useSettings() {
   /* runtime settings */
   const refreshSettings = useCallback(() => {
     setSettingsLoading(true);
-    fetch(`${API_BASE}/api/settings`)
-      .then((r) => r.json())
+    settingsApi
+      .getSettings()
       .then((d) => {
-        setSettings({ ...DEFAULT_RUNTIME_SETTINGS, ...d });
-        setSettingsDirty(false);
+        if (d) {
+          setSettings({ ...DEFAULT_RUNTIME_SETTINGS, ...d });
+          setSettingsDirty(false);
+        }
       })
-      .catch(() => {})
       .finally(() => setSettingsLoading(false));
   }, []);
 
@@ -185,12 +159,7 @@ export function useSettings() {
   const saveSettings = useCallback(async () => {
     setSettingsSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/api/settings`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      });
-      const d = await res.json();
+      const d = await settingsApi.putSettings(settings);
       setSettings({ ...DEFAULT_RUNTIME_SETTINGS, ...d });
       setSettingsDirty(false);
     } catch {
@@ -203,10 +172,7 @@ export function useSettings() {
     if (!confirm('Reset all runtime settings to defaults?')) return;
     setSettingsSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/api/settings/reset`, {
-        method: 'POST',
-      });
-      const d = await res.json();
+      const d = await settingsApi.resetSettings();
       setSettings({ ...DEFAULT_RUNTIME_SETTINGS, ...d });
       setSettingsDirty(false);
     } catch {
@@ -218,12 +184,7 @@ export function useSettings() {
   const saveConfig = useCallback(async () => {
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/api/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ router_model: routerModel }),
-      });
-      const data = await res.json();
+      const data = await settingsApi.putConfig({ router_model: routerModel });
       setRouterModel(data.router_model);
     } catch {
       /* ignore */
@@ -245,20 +206,13 @@ export function useSettings() {
     });
     setModels([]);
     if (n.online) {
-      fetch(`${API_BASE}/api/nodes/${n.id}/models`)
-        .then((r) => r.json())
-        .then((d) => setModels(d.models || []))
-        .catch(() => {});
+      settingsApi.getNodeModels(n.id).then((d) => setModels(d?.models || []));
     }
   }, []);
 
   const saveNode = useCallback(async () => {
     if (!editId) return;
-    await fetch(`${API_BASE}/api/nodes/${editId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    });
+    await settingsApi.updateNode(editId, form);
     setEditId(null);
     refresh();
   }, [editId, form, refresh]);
@@ -266,7 +220,7 @@ export function useSettings() {
   const removeNode = useCallback(
     async (id: string) => {
       if (!confirm('Remove this node?')) return;
-      await fetch(`${API_BASE}/api/nodes/${id}`, { method: 'DELETE' });
+      await settingsApi.deleteNode(id);
       setEditId(null);
       refresh();
     },
@@ -275,18 +229,14 @@ export function useSettings() {
 
   const addNode = useCallback(async () => {
     if (!form.name || !form.host) return;
-    await fetch(`${API_BASE}/api/nodes`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    });
+    await settingsApi.addNode(form);
     setShowAdd(false);
     setForm({ ...EMPTY_FORM, temperature: settings.defaultTemperature });
     refresh();
   }, [form, settings.defaultTemperature, refresh]);
 
   const wakeNode = useCallback(async (id: string) => {
-    await fetch(`${API_BASE}/api/nodes/${id}/wake`, { method: 'POST' });
+    await settingsApi.wakeNode(id);
   }, []);
 
   return {

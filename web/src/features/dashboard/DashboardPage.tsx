@@ -7,6 +7,7 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { API_BASE } from '@/lib/api';
+import { dashboardApi } from '@/features/dashboard/api';
 import { guessIcon } from '@/lib/icons';
 import type { AppInfo } from '@/lib/types';
 import { DashboardPanel } from '@/features/dashboard/components/ServerStats';
@@ -34,12 +35,9 @@ function SystemCharts() {
 
   useEffect(() => {
     const load = () =>
-      fetch(`${API_BASE}/api/system/history`)
-        .then((r) => r.json())
-        .then((d) => {
-          if (Array.isArray(d)) setHistory(d);
-        })
-        .catch(() => {});
+      dashboardApi.systemHistory().then((d) => {
+        if (Array.isArray(d)) setHistory(d);
+      });
     load();
     const id = setInterval(load, 5000);
     return () => clearInterval(id);
@@ -177,10 +175,7 @@ function SystemCharts() {
 function AppsQuickView() {
   const [apps, setApps] = useState<AppInfo[]>([]);
   useEffect(() => {
-    fetch(`${API_BASE}/api/apps`)
-      .then((r) => r.json())
-      .then((d) => setApps(Array.isArray(d) ? d : []))
-      .catch(() => {});
+    dashboardApi.apps().then((d) => setApps(Array.isArray(d) ? d : []));
   }, []);
 
   if (apps.length === 0) return null;

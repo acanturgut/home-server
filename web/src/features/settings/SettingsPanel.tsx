@@ -13,7 +13,7 @@ import { API_BASE } from '@/lib/api';
 import { formatUptime } from '@/lib/format';
 import { ENDPOINTS } from '@/lib/endpoints';
 import { EndpointCard } from '@/features/settings/components/EndpointCard';
-import { HomeKitPanel } from '@/features/homekit/HomeKitPanel';
+import { HomeKitPanel } from '@/features/homekit';
 import {
   SettingsCard,
   SkeletonRows,

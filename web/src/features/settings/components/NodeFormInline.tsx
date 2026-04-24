@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Circle } from 'lucide-react';
-import { API_BASE } from '@/lib/api';
+import { settingsApi } from '@/features/settings/api';
 
 /** Persisted compute-node configuration row. */
 export interface NodeConfig {
@@ -49,12 +49,8 @@ export function NodeFormInline({
     if (!nodeId) return;
     setLoadingModel(model);
     try {
-      const res = await fetch(`${API_BASE}/api/nodes/${nodeId}/models/load`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model }),
-      });
-      if (res.ok) setLocalModels((prev) => [...new Set([...prev, model])]);
+      await settingsApi.loadNodeModel(nodeId, model);
+      setLocalModels((prev) => [...new Set([...prev, model])]);
     } catch {
       // Ignore: keep current model list, surface error via parent if needed.
     }
@@ -65,11 +61,7 @@ export function NodeFormInline({
     if (!nodeId) return;
     setLoadingModel(model);
     try {
-      await fetch(`${API_BASE}/api/nodes/${nodeId}/models/unload`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model }),
-      });
+      await settingsApi.unloadNodeModel(nodeId, model);
       setLocalModels((prev) => prev.filter((m) => m !== model));
     } catch {
       // Ignore: leave optimistic UI alone.

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { API_BASE } from '@/lib/api';
+import { dashboardApi } from '@/features/dashboard/api';
 import { formatUptime } from '@/lib/format';
 import type { SystemInfo } from '@/lib/types';
 import { Spinner } from '@/components/ui/spinner';
@@ -11,10 +11,9 @@ export function DashboardPanel() {
 
   const refresh = useCallback(() => {
     setLoading(true);
-    fetch(`${API_BASE}/api/system`)
-      .then((r) => r.json())
-      .then(setSys)
-      .catch(() => setSys(null))
+    dashboardApi
+      .system()
+      .then((d) => setSys(d))
       .finally(() => setLoading(false));
   }, []);
 

@@ -1,5 +1,6 @@
 import { Activity, Blocks, Bug, Circle, Columns2, Cpu, ExternalLink, GitBranch, History, ListTree, MessageSquare, Package, PanelLeft, Play, RefreshCw, Rocket, Rows3, Search, Settings, Sparkles, Undo2, Wrench, X, Zap } from 'lucide-react';
 import { API_BASE } from '@/lib/api';
+import { appsApi } from '@/features/apps/api';
 import { guessIcon } from '@/lib/icons';
 import { ClarifyWizard } from '@/features/apps/components/ClarifyWizard';
 import { AppSidebar } from '@/features/apps/components/AppSidebar';
@@ -754,18 +755,10 @@ export function AppsPanel() {
                                       )
                                         return;
                                       try {
-                                        const res = await fetch(
-                                          `${API_BASE}/api/apps/${selectedApp}/git/revert/${c.sha}`,
-                                          { method: 'POST' },
+                                        await appsApi.revertCommit(
+                                          selectedApp!,
+                                          c.sha,
                                         );
-                                        const data = await res.json();
-                                        if (!res.ok) {
-                                          alert(
-                                            'Revert failed: ' +
-                                              (data.error || 'unknown'),
-                                          );
-                                          return;
-                                        }
                                         loadCommits();
                                       } catch (e) {
                                         alert(
@@ -1309,9 +1302,9 @@ export function AppsPanel() {
         onRefreshLogs={() => {
           if (!selectedApp) return;
           setAppLogsLoading(true);
-          fetch(`${API_BASE}/api/apps/${selectedApp}/logs?tail=200`)
-            .then((r) => r.json())
-            .then((d) => setAppLogs(d.logs || ''))
+          appsApi
+            .getLogs(selectedApp, 200)
+            .then((d) => setAppLogs(d?.logs || ''))
             .catch(() => setAppLogs('Failed'))
             .finally(() => setAppLogsLoading(false));
         }}

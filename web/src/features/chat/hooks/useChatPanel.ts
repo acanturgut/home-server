@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { API_BASE } from '@/lib/api';
+import { chatApi } from '@/features/chat/api';
 import { gotoPage } from '@/lib/format';
 import { speak, useSpeechRecognition } from '@/lib/voice';
 import { SLASH_COMMANDS } from '@/lib/slash';
 import { BUILTIN_PERSONAS, DEFAULT_SYSTEM_PROMPT, type ChatAttachment, type ChatMsg, type ChatSession, type Persona } from '@/features/chat/types';
 import type { AppInfo } from '@/lib/types';
-import type { NodeConfig } from '@/features/settings/components/NodeFormInline';
+import type { NodeConfig } from '@/features/settings';
 
 export function useChatPanel() {
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
@@ -84,17 +84,13 @@ export function useChatPanel() {
     }
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      fetch(`${API_BASE}/api/chats`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated),
-      }).catch(() => {});
+      chatApi.saveSessions(updated).catch(() => {});
     }, 600);
   }, []);
   // Initial server load (overrides localStorage if present and non-empty)
   useEffect(() => {
-    fetch(`${API_BASE}/api/chats`)
-      .then((r) => (r.ok ? r.json() : null))
+    chatApi
+      .loadSessions()
       .then((arr) => {
         if (Array.isArray(arr) && arr.length > 0) {
           setSessions(arr);
@@ -104,8 +100,7 @@ export function useChatPanel() {
             /* ignore */
           }
         }
-      })
-      .catch(() => {});
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const persistPersonas = useCallback((arr: Persona[]) => {
@@ -194,22 +189,18 @@ export function useChatPanel() {
   const autoTitle = useCallback(
     async (sessionId: string, firstUser: string, firstAssistant: string) => {
       try {
-        const r = await fetch(`${API_BASE}/api/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: [
-              {
-                role: 'system',
-                content:
-                  'You write extremely short chat titles. Reply with 2-5 words, no quotes, no punctuation.',
-              },
-              {
-                role: 'user',
-                content: `User: ${firstUser}\n\nAssistant: ${firstAssistant.slice(0, 600)}\n\nTitle:`,
-              },
-            ],
-          }),
+        const r = await chatApi.postChat({
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You write extremely short chat titles. Reply with 2-5 words, no quotes, no punctuation.',
+            },
+            {
+              role: 'user',
+              content: `User: ${firstUser}\n\nAssistant: ${firstAssistant.slice(0, 600)}\n\nTitle:`,
+            },
+          ],
         });
         if (!r.ok) return;
         const data = await r.json();
@@ -479,11 +470,7 @@ export function useChatPanel() {
     kind?: string;
   }) {
     try {
-      const r = await fetch(`${API_BASE}/api/snippets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, body, kind: kind || 'reply' }),
-      });
+      const r = await chatApi.saveSnippet({ title, body, kind: kind || 'reply' });
       if (!r.ok) throw new Error('save failed');
       setStatusMsg('Snippet saved.');
     } catch (e) {
@@ -497,13 +484,7 @@ export function useChatPanel() {
   async function fetchAndAttach(rawUrl: string) {
     setStatusMsg(`Fetching ${rawUrl}…`);
     try {
-      const r = await fetch(`${API_BASE}/api/fetch-url`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: rawUrl }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data?.error || 'fetch failed');
+      const data = await chatApi.fetchUrl(rawUrl);
       const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
       setAttachments((prev) => [
         ...prev,
@@ -527,13 +508,7 @@ export function useChatPanel() {
   async function ragSearchAndAttach(q: string) {
     setStatusMsg(`Searching codebase for "${q}"…`);
     try {
-      const r = await fetch(`${API_BASE}/api/rag/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q, k: 5 }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data?.error || 'search failed');
+      const data = await chatApi.ragSearch(q, 5);
       const hits: Array<{
         path: string;
         app: string;
@@ -576,13 +551,7 @@ export function useChatPanel() {
       return;
     }
     try {
-      const r = await fetch(`${API_BASE}/api/schedules`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cron, prompt, enabled: true }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data?.error || 'failed');
+      const data = await chatApi.createSchedule({ cron, prompt, enabled: true });
       setStatusMsg(`Scheduled "${data.title}" — cron: ${data.cron}`);
     } catch (e) {
       setStatusMsg(
@@ -622,17 +591,11 @@ export function useChatPanel() {
           .filter((m) => m.role !== 'system' && m.id !== placeholder.id)
           .map(({ role, content }) => ({ role, content })),
       ];
-      const r = await fetch(`${API_BASE}/api/chat/compare`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: apiMsgs,
-          routes,
-          temperature: active.temperature,
-        }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data?.error || 'compare failed');
+      const data = (await chatApi.compare({
+        messages: apiMsgs,
+        routes,
+        temperature: active.temperature,
+      })) as { runs: unknown };
       persist(
         sessions.map((s) => {
           if (s.id !== sid) return s;
@@ -739,12 +702,7 @@ export function useChatPanel() {
         if (override && override !== 'auto') body.route = override;
         if (active.temperature != null) body.temperature = active.temperature;
 
-        const res = await fetch(`${API_BASE}/api/chat/stream`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          signal: ctrl.signal,
-        });
+        const res = await chatApi.streamChat(body, ctrl.signal);
         if (!res.ok || !res.body) throw new Error('Stream failed');
 
         const reader = res.body.getReader();
@@ -967,12 +925,10 @@ export function useChatPanel() {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 15000); // hard cap 15s
       try {
-        const r = await fetch(`${API_BASE}/api/web/search-fetch`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ q: text, k: 3, perPageChars: 3500 }),
-          signal: ctrl.signal,
-        });
+        const r = await chatApi.webSearchFetch(
+          { q: text, k: 3, perPageChars: 3500 },
+          ctrl.signal,
+        );
         if (r.ok) {
           const data = await r.json();
           const results: Array<{
@@ -1234,20 +1190,14 @@ export function useChatPanel() {
     Array<{ name: string; tier?: string }>
   >([]);
   useEffect(() => {
-    fetch(`${API_BASE}/api/apps`)
-      .then((r) => r.json())
-      .then((d) => Array.isArray(d) && setAppsList(d))
-      .catch(() => {});
-    fetch(`${API_BASE}/api/nodes`)
-      .then((r) => r.json())
-      .then(
-        (d) =>
-          Array.isArray(d) &&
-          setNodesList(
-            d.map((n: NodeConfig) => ({ name: n.name, tier: n.tier })),
-          ),
-      )
-      .catch(() => {});
+    chatApi.listApps().then((d) => Array.isArray(d) && setAppsList(d));
+    chatApi.listNodes().then(
+      (d) =>
+        Array.isArray(d) &&
+        setNodesList(
+          (d as NodeConfig[]).map((n) => ({ name: n.name, tier: n.tier })),
+        ),
+    );
   }, []);
   const mentionState = useMemo(() => {
     const m = /(^|\s)@([a-zA-Z0-9_-]*)$/.exec(input);

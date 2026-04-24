@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Activity, Cpu, HardDrive, Thermometer } from 'lucide-react';
-import { API_BASE } from '@/lib/api';
+import { appsApi } from '@/features/apps/api';
 import { fmtTime } from '@/lib/format';
 import type { BuildEvent } from '@/lib/types';
 
@@ -44,10 +44,7 @@ export function BuildNodeStats({ building }: { building: boolean }) {
   useEffect(() => {
     if (!building) return;
     const poll = () => {
-      fetch(`${API_BASE}/api/nodes/stats`)
-        .then((r) => r.json())
-        .then((s) => setStats(s || {}))
-        .catch(() => {});
+      appsApi.nodeStats().then((s) => setStats(s || {}));
     };
     poll();
     const id = setInterval(poll, 3000);

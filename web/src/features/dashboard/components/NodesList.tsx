@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { API_BASE } from '@/lib/api';
+import { dashboardApi } from '@/features/dashboard/api';
 import { formatUptime } from '@/lib/format';
 import type { NodeStats } from '@/lib/types';
 import { Spinner } from '@/components/ui/spinner';
@@ -15,15 +15,11 @@ export function NodesPanel() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(() => {
-    Promise.all([
-      fetch(`${API_BASE}/api/nodes/stats`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/nodes`).then((r) => r.json()),
-    ])
+    Promise.all([dashboardApi.nodeStats(), dashboardApi.nodes()])
       .then(([s, n]) => {
         setStats(s && typeof s === 'object' && !Array.isArray(s) ? s : {});
         setNodes(Array.isArray(n) ? n : []);
       })
-      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 

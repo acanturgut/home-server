@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Clock, Play, Trash2, X } from 'lucide-react';
-import { API_BASE } from '@/lib/api';
+import { chatApi } from '@/features/chat/api';
 
 /** Persisted scheduled-prompt record returned from `/api/schedules`. */
 type ScheduleRec = {
@@ -25,8 +25,7 @@ export function SchedulesModal({ onClose }: { onClose: () => void }) {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API_BASE}/api/schedules`);
-      const arr = await r.json();
+      const arr = await chatApi.listSchedules<ScheduleRec>();
       setItems(Array.isArray(arr) ? arr : []);
     } catch {
       setItems([]);
@@ -41,11 +40,7 @@ export function SchedulesModal({ onClose }: { onClose: () => void }) {
   const toggle = async (sc: ScheduleRec) => {
     setBusy(sc.id);
     try {
-      await fetch(`${API_BASE}/api/schedules`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...sc, enabled: !sc.enabled }),
-      });
+      await chatApi.upsertSchedule({ ...sc, enabled: !sc.enabled });
       await load();
     } finally {
       setBusy(null);
@@ -54,10 +49,7 @@ export function SchedulesModal({ onClose }: { onClose: () => void }) {
   const runNow = async (sc: ScheduleRec) => {
     setBusy(sc.id);
     try {
-      await fetch(
-        `${API_BASE}/api/schedules/${encodeURIComponent(sc.id)}/run`,
-        { method: 'POST' },
-      );
+      await chatApi.runSchedule(sc.id);
       await load();
     } finally {
       setBusy(null);
@@ -67,9 +59,7 @@ export function SchedulesModal({ onClose }: { onClose: () => void }) {
     if (!confirm(`Delete schedule "${sc.title}"?`)) return;
     setBusy(sc.id);
     try {
-      await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(sc.id)}`, {
-        method: 'DELETE',
-      });
+      await chatApi.deleteSchedule(sc.id);
       await load();
     } finally {
       setBusy(null);

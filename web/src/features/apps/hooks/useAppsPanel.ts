@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '@/lib/api';
+import { appsApi } from '@/features/apps/api';
 import type { AppInfo, BuildEvent } from '@/lib/types';
 import { buildTree, type AppFile } from '@/features/apps/components/CodeEditor';
 
@@ -212,13 +213,10 @@ export function useAppsPanel() {
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      fetch(`${API_BASE}/api/nodes`)
-        .then((r) => r.json())
-        .then((n) => {
-          if (cancelled) return;
-          setWorkerNodes(Array.isArray(n) ? n : []);
-        })
-        .catch(() => {});
+      appsApi.listNodes().then((n) => {
+        if (cancelled) return;
+        setWorkerNodes(Array.isArray(n) ? (n as WorkerNode[]) : []);
+      });
     };
     load();
     const id = setInterval(load, 30000);
@@ -229,17 +227,14 @@ export function useAppsPanel() {
   }, []);
 
   const refresh = useCallback(() => {
-    fetch(`${API_BASE}/api/apps`)
-      .then((r) => r.json())
-      .then((data) => {
-        const arr = Array.isArray(data) ? data : [];
-        const sorted = arr.sort((a: AppInfo, b: AppInfo) =>
-          a.name.localeCompare(b.name),
-        );
-        setApps(sorted);
-        if (!selectedApp && sorted.length > 0) setSelectedApp(sorted[0].name);
-      })
-      .catch(() => {});
+    appsApi.listApps().then((data) => {
+      const arr = Array.isArray(data) ? data : [];
+      const sorted = arr.sort((a: AppInfo, b: AppInfo) =>
+        a.name.localeCompare(b.name),
+      );
+      setApps(sorted);
+      if (!selectedApp && sorted.length > 0) setSelectedApp(sorted[0].name);
+    });
   }, [selectedApp]);
 
   useEffect(() => {
@@ -253,10 +248,11 @@ export function useAppsPanel() {
       setCommits([]);
       return;
     }
-    fetch(`${API_BASE}/api/apps/${selectedApp}/git/log?limit=50`)
-      .then((r) => r.json())
-      .then((d) => setCommits(Array.isArray(d.commits) ? d.commits : []))
-      .catch(() => setCommits([]));
+    appsApi
+      .getCommits(selectedApp, 50)
+      .then((d) =>
+        setCommits(Array.isArray(d?.commits) ? (d!.commits as GitCommit[]) : []),
+      );
   }, [selectedApp]);
   useEffect(() => {
     loadCommits();
@@ -269,9 +265,9 @@ export function useAppsPanel() {
       return;
     }
     setDiffText('Loading…');
-    fetch(`${API_BASE}/api/apps/${selectedApp}/git/diff/${diffSha}`)
-      .then((r) => r.json())
-      .then((d) => setDiffText(d.diff || '(empty diff)'))
+    appsApi
+      .getDiff(selectedApp, diffSha)
+      .then((d) => setDiffText(d?.diff || '(empty diff)'))
       .catch(() => setDiffText('Failed to load diff'));
   }, [selectedApp, diffSha]);
 
@@ -294,10 +290,10 @@ export function useAppsPanel() {
       setFiles([]);
       return;
     }
-    fetch(`${API_BASE}/api/apps/${selectedApp}/files`)
-      .then((r) => r.json())
-      .then((data: AppFile[]) => {
-        const arr = Array.isArray(data) ? data : [];
+    appsApi
+      .listFiles(selectedApp)
+      .then((data) => {
+        const arr = Array.isArray(data) ? (data as AppFile[]) : [];
         setFiles(arr);
         if (arr.length > 0 && !selectedFile) {
           const main =
@@ -330,9 +326,9 @@ export function useAppsPanel() {
     if (!selectedApp || !selectedFile) return;
     setFileLoading(true);
     setFileDirty(false);
-    fetch(`${API_BASE}/api/apps/${selectedApp}/files/${selectedFile}`)
-      .then((r) => r.json())
-      .then((data) => setFileContent(data.content || ''))
+    appsApi
+      .getFile(selectedApp, selectedFile)
+      .then((data) => setFileContent(data?.content || ''))
       .catch(() => setFileContent('// Failed to load file'))
       .finally(() => setFileLoading(false));
   }, [selectedApp, selectedFile]);
@@ -353,9 +349,9 @@ export function useAppsPanel() {
     if (!logsActive || !selectedApp) return;
     const load = () => {
       setAppLogsLoading(true);
-      fetch(`${API_BASE}/api/apps/${selectedApp}/logs?tail=200`)
-        .then((r) => r.json())
-        .then((d) => setAppLogs(d.logs || ''))
+      appsApi
+        .getLogs(selectedApp, 200)
+        .then((d) => setAppLogs(d?.logs || ''))
         .catch(() => setAppLogs('Failed to load logs'))
         .finally(() => setAppLogsLoading(false));
     };
@@ -374,9 +370,9 @@ export function useAppsPanel() {
   useEffect(() => {
     if (rightTab !== 'info' || !selectedApp) return;
     const load = () => {
-      fetch(`${API_BASE}/api/apps/${selectedApp}/stats`)
-        .then((r) => r.json())
-        .then((d) => setContainerStats(d))
+      appsApi
+        .getStats(selectedApp)
+        .then((d) => setContainerStats((d as Record<string, string>) || null))
         .catch(() => setContainerStats(null));
     };
     load();
@@ -397,11 +393,15 @@ export function useAppsPanel() {
   const doSearch = useCallback(() => {
     if (!fileSearch.trim() || !selectedApp) return;
     setSearching(true);
-    fetch(
-      `${API_BASE}/api/apps/${selectedApp}/search?q=${encodeURIComponent(fileSearch)}`,
-    )
-      .then((r) => r.json())
-      .then((d) => setSearchResults(Array.isArray(d) ? d : []))
+    appsApi
+      .search(selectedApp, fileSearch)
+      .then((d) =>
+        setSearchResults(
+          Array.isArray(d)
+            ? (d as { file: string; line: number; text: string }[])
+            : [],
+        ),
+      )
       .catch(() => setSearchResults([]))
       .finally(() => setSearching(false));
   }, [fileSearch, selectedApp]);
@@ -413,12 +413,7 @@ export function useAppsPanel() {
     const cmd = termCmd.trim();
     setTermCmd('');
     try {
-      const res = await fetch(`${API_BASE}/api/apps/${selectedApp}/exec`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: cmd }),
-      });
-      const data = await res.json();
+      const data = await appsApi.exec(selectedApp, cmd);
       setTermHistory((prev) => [
         ...prev,
         {
@@ -445,13 +440,9 @@ export function useAppsPanel() {
   // Save app settings
   const saveSettings = async () => {
     if (!selectedApp) return;
-    await fetch(`${API_BASE}/api/apps/${selectedApp}/settings`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        icon: editIcon || undefined,
-        route: editRoute || undefined,
-      }),
+    await appsApi.putAppSettings(selectedApp, {
+      icon: editIcon || undefined,
+      route: editRoute || undefined,
     });
     refresh();
     setSettingsOpen(false);
@@ -536,9 +527,7 @@ export function useAppsPanel() {
     // Call server-side cancel API first
     if (selectedApp) {
       try {
-        await fetch(`${API_BASE}/api/apps/${selectedApp}/cancel`, {
-          method: 'POST',
-        });
+        await appsApi.cancelBuild(selectedApp);
       } catch {
         /* ignore */
       }
@@ -577,13 +566,7 @@ export function useAppsPanel() {
     if (!prompt.trim()) return;
     setClarifyLoading(true);
     try {
-      const r = await fetch(`${API_BASE}/api/apps/clarify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: prompt.trim() }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data?.error || 'Failed');
+      const data = await appsApi.clarify(prompt.trim());
       setClaritySummary(typeof data.summary === 'string' ? data.summary : '');
       if (typeof data.suggestedName === 'string' && data.suggestedName) {
         setClarifyName(
@@ -673,22 +656,20 @@ export function useAppsPanel() {
     });
   };
   const deleteApp = async (name: string) => {
-    await fetch(`${API_BASE}/api/apps/${name}`, { method: 'DELETE' });
+    await appsApi.deleteApp(name);
     if (selectedApp === name) setSelectedApp(null);
     refresh();
   };
   const stopApp = async (name: string) => {
-    await fetch(`${API_BASE}/api/apps/${name}/stop`, { method: 'POST' });
+    await appsApi.stopApp(name);
     refresh();
   };
   const restartApp = async (name: string) => {
     try {
-      const r = await fetch(`${API_BASE}/api/apps/${name}/restart`, {
-        method: 'POST',
-      });
+      const r = await appsApi.restartApp(name);
       if (!r.ok) {
         // Fall back to a full deploy if quick restart fails (e.g. image missing).
-        await fetch(`${API_BASE}/api/apps/${name}/deploy`, { method: 'POST' });
+        await appsApi.deployApp(name);
       }
     } catch {
       /* ignore */
@@ -699,9 +680,7 @@ export function useAppsPanel() {
   const toggleDev = async () => {
     if (!selectedApp || !app) return;
     if (app.dev_mode) {
-      await fetch(`${API_BASE}/api/apps/${selectedApp}/dev/stop`, {
-        method: 'POST',
-      });
+      await appsApi.stopDev(selectedApp);
       refresh();
     } else {
       streamNDJSON(`${API_BASE}/api/apps/${selectedApp}/dev/start`, {});
@@ -712,11 +691,7 @@ export function useAppsPanel() {
     if (!selectedApp || !selectedFile) return;
     setFileSaving(true);
     try {
-      await fetch(`${API_BASE}/api/apps/${selectedApp}/files/${selectedFile}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: fileContent }),
-      });
+      await appsApi.saveFile(selectedApp, selectedFile, fileContent);
       setFileDirty(false);
       // Visible feedback (esp. important since hot reload happens silently).
       setSaveToast(
@@ -742,15 +717,7 @@ export function useAppsPanel() {
     if (!msg.trim()) return;
     setCommitting(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/apps/${selectedApp}/git/commit`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msg.trim() }),
-        },
-      );
-      const data = await res.json();
+      const data = await appsApi.commit(selectedApp, msg.trim());
       if (data.sha) {
         setSaveToast(`Committed ${data.sha} · ${msg.trim()}`);
         loadCommits?.();
@@ -817,17 +784,12 @@ export function useAppsPanel() {
     setChatLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE}/api/apps/${selectedApp}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: chatMessages
-            .map((m) => ({ role: m.role, content: m.content }))
-            .concat({ role: 'user', content: userMsg.content }),
-          currentFile: selectedFile || '',
-        }),
+      const data = await appsApi.chatWithApp(selectedApp, {
+        messages: chatMessages
+          .map((m) => ({ role: m.role, content: m.content }))
+          .concat({ role: 'user', content: userMsg.content }),
+        currentFile: selectedFile || '',
       });
-      const data = await res.json();
       const reply =
         data.response || data.content || data.message || 'No response';
       setChatMessages((prev) => [
@@ -870,11 +832,7 @@ export function useAppsPanel() {
     }
     // Otherwise save directly via API
     try {
-      await fetch(`${API_BASE}/api/apps/${selectedApp}/files/${path}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: code }),
-      });
+      await appsApi.saveFile(selectedApp, path, code);
       loadFiles();
     } catch {
       /* ignore */

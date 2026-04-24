@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { API_BASE } from '@/lib/api';
+import { appApi } from '@/app/api';
 import type { SystemInfo } from '@/lib/types';
 
 export interface SystemStatus {
@@ -16,18 +16,13 @@ export function useSystemStatus(intervalMs = 8000): SystemStatus {
 
   useEffect(() => {
     const poll = () => {
-      fetch(`${API_BASE}/api/system`)
-        .then((r) => r.json())
-        .then(setSys)
-        .catch(() => {});
-      fetch(`${API_BASE}/api/nodes/stats`)
-        .then((r) => r.json())
-        .then((s) => setNodeCount(Object.keys(s || {}).length))
-        .catch(() => {});
-      fetch(`${API_BASE}/api/apps`)
-        .then((r) => r.json())
-        .then((a) => setAppCount(Array.isArray(a) ? a.length : 0))
-        .catch(() => {});
+      appApi.getSystem().then((s) => s && setSys(s));
+      appApi
+        .getNodesStats()
+        .then((s) => setNodeCount(Object.keys(s || {}).length));
+      appApi
+        .listApps()
+        .then((a) => setAppCount(Array.isArray(a) ? a.length : 0));
     };
     poll();
     const id = setInterval(poll, intervalMs);

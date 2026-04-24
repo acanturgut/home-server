@@ -9,7 +9,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { API_BASE } from '@/lib/api';
+import { homekitApi } from '@/features/homekit/api';
 import type { HKInfo, LogEntry } from '@/lib/types';
 
 /** HomeKit bridge dashboard: pairing QR, accessory list with WoL, agent download, bridge logs. */
@@ -20,37 +20,29 @@ export function HomeKitPanel() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/homekit`)
-      .then((r) => r.json())
-      .then(setInfo)
-      .catch(() => setInfo(null));
+    homekitApi.info().then((d) => setInfo(d));
     fetchLogs();
   }, []);
 
   const fetchLogs = () => {
-    fetch(`${API_BASE}/api/logs?n=200`)
-      .then((r) => r.json())
-      .then((all: LogEntry[]) => {
-        const hk = (all || []).filter(
-          (l) =>
-            l.message.toLowerCase().includes('homekit') ||
-            l.message.toLowerCase().includes('hap') ||
-            l.message.toLowerCase().includes('bridge') ||
-            l.message.toLowerCase().includes('mdns') ||
-            l.message.toLowerCase().includes('dnssd'),
-        );
-        setLogs(hk.reverse());
-      })
-      .catch(() => setLogs([]));
+    homekitApi.recentLogs(200).then((all) => {
+      const hk = (all || []).filter(
+        (l) =>
+          l.message.toLowerCase().includes('homekit') ||
+          l.message.toLowerCase().includes('hap') ||
+          l.message.toLowerCase().includes('bridge') ||
+          l.message.toLowerCase().includes('mdns') ||
+          l.message.toLowerCase().includes('dnssd'),
+      );
+      setLogs(hk.reverse());
+    });
   };
 
   const wake = async (id: string, name: string) => {
     setWaking(id);
     setWakeResult((prev) => ({ ...prev, [id]: '' }));
     try {
-      const res = await fetch(`${API_BASE}/api/nodes/${id}/wake`, {
-        method: 'POST',
-      });
+      const res = await homekitApi.wakeNode(id);
       if (res.ok) {
         setWakeResult((prev) => ({ ...prev, [id]: `✓ WoL sent to ${name}` }));
       } else {
