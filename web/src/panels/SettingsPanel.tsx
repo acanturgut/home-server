@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import {
   Activity,
   Blocks,
@@ -22,277 +22,25 @@ import {
   NumberRow,
 } from '@/components/settings/SettingsRows';
 import { PromptsEditor } from '@/components/settings/PromptsEditor';
-import {
-  NodeFormInline,
-  type NodeConfig,
-} from '@/components/settings/NodeFormInline';
+import { NodeFormInline } from '@/components/settings/NodeFormInline';
+import { useSettings } from '@/lib/useSettings';
 
 /* ── Settings Panel (Config + Node CRUD) ── */
 export function SettingsPanel() {
   const [tab, setTab] = useState<
     'general' | 'nodes' | 'homekit' | 'api' | 'prompts'
   >('general');
-  const [routerModel, setRouterModel] = useState('');
-  const [ollamaHost, setOllamaHost] = useState('');
-  const [ollamaOnline, setOllamaOnline] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  // Extended config / system info
-  type SystemConfig = {
-    router_model: string;
-    ollama_host: string;
-    version: string;
-    started_at: string;
-    uptime_seconds: number;
-    data_dir: string;
-    log_dir: string;
-    port: string;
-    anthropic_set: boolean;
-    homekit_pin: string;
-    apps_count: number;
-    nodes_count: number;
-  };
-  const [sysCfg, setSysCfg] = useState<SystemConfig | null>(null);
-  // Persisted runtime settings
-  type RuntimeSettings = {
-    autoFixOnCrash: boolean;
-    defaultTemperature: number;
-    buildTimeoutMin: number;
-    keepBuildHistory: number;
-  };
-  const defaultSettings: RuntimeSettings = {
-    autoFixOnCrash: false,
-    defaultTemperature: 0.7,
-    buildTimeoutMin: 30,
-    keepBuildHistory: 20,
-  };
-  const [settings, setSettings] = useState<RuntimeSettings>(defaultSettings);
-  const [settingsDirty, setSettingsDirty] = useState(false);
-  const [settingsSaving, setSettingsSaving] = useState(false);
-  const [settingsLoading, setSettingsLoading] = useState(true);
-  const [nodes, setNodes] = useState<NodeConfig[]>([]);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({
-    name: '',
-    host: '',
-    tier: 'high-end',
-    gpu: '',
-    mac: '',
-    model: '',
-    temperature: 0.7,
-  });
-  const [models, setModels] = useState<string[]>([]);
-  const [prompts, setPrompts] = useState<Record<string, string>>({});
-  const [promptsSaving, setPromptsSaving] = useState(false);
-  const [promptsDirty, setPromptsDirty] = useState(false);
 
-  const refreshPrompts = useCallback(() => {
-    fetch(`${API_BASE}/api/prompts`)
-      .then((r) => r.json())
-      .then((d) => {
-        setPrompts(d);
-        setPromptsDirty(false);
-      })
-      .catch(() => {});
-  }, []);
-
-  const savePrompts = async () => {
-    setPromptsSaving(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/prompts`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(prompts),
-      });
-      const d = await res.json();
-      setPrompts(d);
-      setPromptsDirty(false);
-    } catch {
-      // ignore
-    }
-    setPromptsSaving(false);
-  };
-
-  const resetPrompts = async () => {
-    if (!confirm('Reset all prompts to defaults?')) return;
-    setPromptsSaving(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/prompts/reset`, {
-        method: 'POST',
-      });
-      const d = await res.json();
-      setPrompts(d);
-      setPromptsDirty(false);
-    } catch {
-      // ignore
-    }
-    setPromptsSaving(false);
-  };
-
-  const updatePrompt = (key: string, val: string) => {
-    setPrompts((prev) => ({ ...prev, [key]: val }));
-    setPromptsDirty(true);
-  };
-
-  const refresh = useCallback(() => {
-    setLoading(true);
-    setLoadError(null);
-    Promise.all([
-      fetch(`${API_BASE}/api/config`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/health`).then((r) => r.json()),
-    ])
-      .then(([cfg, health]) => {
-        setSysCfg(cfg as SystemConfig);
-        setRouterModel(cfg.router_model || '');
-        setOllamaHost(cfg.ollama_host || '');
-        setOllamaOnline(health.backends?.ollama || false);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setNodes((health.backends?.nodes || []).map((n: any) => ({ ...n })));
-      })
-      .catch((e) =>
-        setLoadError(e instanceof Error ? e.message : 'Failed to load'),
-      )
-      .finally(() => setLoading(false));
-  }, []);
-
-  const refreshSettings = useCallback(() => {
-    setSettingsLoading(true);
-    fetch(`${API_BASE}/api/settings`)
-      .then((r) => r.json())
-      .then((d) => {
-        setSettings({ ...defaultSettings, ...d });
-        setSettingsDirty(false);
-      })
-      .catch(() => {})
-      .finally(() => setSettingsLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    refreshSettings();
-  }, [refresh, refreshSettings]);
-
-  const updateSetting = <K extends keyof RuntimeSettings>(
-    k: K,
-    v: RuntimeSettings[K],
-  ) => {
-    setSettings((prev) => ({ ...prev, [k]: v }));
-    setSettingsDirty(true);
-  };
-
-  const saveSettings = async () => {
-    setSettingsSaving(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/settings`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      });
-      const d = await res.json();
-      setSettings({ ...defaultSettings, ...d });
-      setSettingsDirty(false);
-    } catch {
-      // ignore
-    }
-    setSettingsSaving(false);
-  };
-
-  const resetSettings = async () => {
-    if (!confirm('Reset all runtime settings to defaults?')) return;
-    setSettingsSaving(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/settings/reset`, {
-        method: 'POST',
-      });
-      const d = await res.json();
-      setSettings({ ...defaultSettings, ...d });
-      setSettingsDirty(false);
-    } catch {
-      // ignore
-    }
-    setSettingsSaving(false);
-  };
-
-  const saveConfig = async () => {
-    setSaving(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ router_model: routerModel }),
-      });
-      const data = await res.json();
-      setRouterModel(data.router_model);
-    } catch {
-      // ignore
-    }
-    setSaving(false);
-  };
-
-  const startEdit = (n: NodeConfig) => {
-    setEditId(n.id);
-    setForm({
-      name: n.name,
-      host: n.host,
-      tier: n.tier,
-      gpu: n.gpu || '',
-      mac: n.mac || '',
-      model: n.model || '',
-      temperature: n.temperature ?? 0.7,
-    });
-    setModels([]);
-    if (n.online) {
-      fetch(`${API_BASE}/api/nodes/${n.id}/models`)
-        .then((r) => r.json())
-        .then((d) => setModels(d.models || []))
-        .catch(() => {});
-    }
-  };
-
-  const saveNode = async () => {
-    if (!editId) return;
-    await fetch(`${API_BASE}/api/nodes/${editId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    });
-    setEditId(null);
-    refresh();
-  };
-
-  const removeNode = async (id: string) => {
-    if (!confirm('Remove this node?')) return;
-    await fetch(`${API_BASE}/api/nodes/${id}`, { method: 'DELETE' });
-    setEditId(null);
-    refresh();
-  };
-
-  const addNode = async () => {
-    if (!form.name || !form.host) return;
-    await fetch(`${API_BASE}/api/nodes`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    });
-    setShowAdd(false);
-    setForm({
-      name: '',
-      host: '',
-      tier: 'high-end',
-      gpu: '',
-      mac: '',
-      model: '',
-      temperature: settings.defaultTemperature,
-    });
-    refresh();
-  };
-
-  const wakeNode = async (id: string) => {
-    await fetch(`${API_BASE}/api/nodes/${id}/wake`, { method: 'POST' });
-  };
+  const {
+    sysCfg, routerModel, setRouterModel, ollamaHost, ollamaOnline,
+    saving, loading, loadError, refresh, saveConfig,
+    settings, settingsDirty, settingsSaving, settingsLoading,
+    updateSetting, saveSettings, resetSettings, refreshSettings,
+    prompts, promptsDirty, promptsSaving,
+    refreshPrompts, savePrompts, resetPrompts, updatePrompt,
+    nodes, editId, setEditId, showAdd, setShowAdd, form, setForm, models,
+    startEdit, saveNode, removeNode, addNode, wakeNode,
+  } = useSettings();
 
   const tabs = [
     { id: 'general' as const, label: 'General' },
