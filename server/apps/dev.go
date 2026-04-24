@@ -94,16 +94,18 @@ func (p *Pipeline) StartDev(ctx context.Context, name string, emit func(Pipeline
 	}
 	hostProject := filepath.Join(hostDir, name)
 
-	// Write Dockerfile.dev if missing.
+	// Always (re)write Dockerfile.dev so users pick up updates to the recipe.
 	devDockerfile := filepath.Join(projectDir, "Dockerfile.dev")
-	if _, err := os.Stat(devDockerfile); err != nil {
+	{
 		content := fmt.Sprintf(`FROM node:20-alpine
 WORKDIR /app
 EXPOSE %d
-# Source is bind-mounted at runtime. On start: install (cached after first
-# run via the bind-mounted node_modules) then run vite watch + node --watch
-# concurrently so both client and server changes are picked up live.
-CMD ["sh","-c","npm install --no-audit --no-fund --prefer-offline 2>&1 | tail -5 && (test -f vite.config.js -o -f vite.config.ts) && (npx --yes concurrently --kill-others-on-fail \"npx vite build --watch --mode development\" \"node --watch server.js\") || node --watch server.js"]
+# Source is bind-mounted at runtime. Startup:
+#  1. npm install (cached after first run via the bind-mounted node_modules)
+#  2. one synchronous vite build so dist/index.html exists before the server starts
+#  3. concurrently: vite build --watch (rebuilds dist/ on every change)
+#                   node --watch server.js (restarts on server.js changes)
+CMD ["sh","-c","set -e; npm install --no-audit --no-fund --prefer-offline 2>&1 | tail -5; if [ -f vite.config.js ] || [ -f vite.config.ts ]; then echo '[dev] initial vite build...'; npx vite build --mode development; npx --yes concurrently --kill-others-on-fail --names vite,node -c yellow,cyan \"npx vite build --watch --mode development\" \"node --watch server.js\"; else node --watch server.js; fi"]
 `, app.Port)
 		if err := os.WriteFile(devDockerfile, []byte(content), 0644); err != nil {
 			return fmt.Errorf("write Dockerfile.dev: %v", err)
@@ -131,9 +133,10 @@ CMD ["sh","-c","npm install --no-audit --no-fund --prefer-offline 2>&1 | tail -5
 		return fmt.Errorf("docker run dev: %v\n%s", err, truncate(out, 1500))
 	}
 
-	// Health check (be lenient — npm install + vite warmup take a moment).
+	// Health check (lenient — npm install + first vite build can take a while
+	// on slower hosts).
 	healthURL := fmt.Sprintf("http://localhost:%d/health", app.Port)
-	deadline := time.Now().Add(60 * time.Second)
+	deadline := time.Now().Add(120 * time.Second)
 	healthy := false
 	for time.Now().Before(deadline) {
 		time.Sleep(2 * time.Second)
