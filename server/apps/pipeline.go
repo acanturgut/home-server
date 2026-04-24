@@ -459,7 +459,8 @@ func discoverModel(host string) (string, error) {
 }
 
 // runAider runs aider in the given directory with the specified message, using the heavy node's LM Studio API.
-func (p *Pipeline) runAider(ctx context.Context, projectDir string, message string, heavy NodeInfo, emit func(PipelineEvent)) error {
+// If minimalFiles is true, only a small set of "primary editable" files is fed to aider (much faster context).
+func (p *Pipeline) runAider(ctx context.Context, projectDir string, message string, heavy NodeInfo, emit func(PipelineEvent), minimalFiles bool) error {
 	// Extract base URL — ensure it ends with /v1
 	apiBase := strings.TrimSuffix(heavy.Host, "/v1")
 	if !strings.HasSuffix(apiBase, "/v1") {
@@ -491,8 +492,16 @@ func (p *Pipeline) runAider(ctx context.Context, projectDir string, message stri
 		"--openai-api-base", apiBase,
 	}
 
-	// Explicitly add all source files so aider can edit them (critical for fix phase)
-	sourceFiles := listSourceFiles(projectDir)
+	// Explicitly add source files so aider can edit them. In dev mode we feed
+	// only a small set of primary editable files for ~3-5x faster aider runs;
+	// aider can request more on its own if needed.
+	var sourceFiles []string
+	if minimalFiles {
+		sourceFiles = listMinimalFiles(projectDir)
+		emit(newEvent("task", fmt.Sprintf("⚡ Hot mode — feeding aider %d files (vs full project)", len(sourceFiles))))
+	} else {
+		sourceFiles = listSourceFiles(projectDir)
+	}
 	for _, f := range sourceFiles {
 		args = append(args, "--file", f)
 	}
@@ -607,7 +616,7 @@ The app is already scaffolded with package.json, server.js, vite.config.js, etc.
 Focus on implementing the actual features in src/App.jsx (and additional components).
 Add API routes to server.js if needed. The app listens on port %d.`, p.prompts.Get().Build, prompt, port)
 
-	if err := p.runAider(ctx, projectDir, aiderMsg, heavy, emit); err != nil {
+	if err := p.runAider(ctx, projectDir, aiderMsg, heavy, emit, false); err != nil {
 		if p.cancelled(ctx, app, emit) {
 			return
 		}
@@ -832,7 +841,7 @@ func (p *Pipeline) Rebuild(ctx context.Context, name, changeRequest string, heav
 
 	aiderMsg := strings.NewReplacer("{{change}}", changeRequest, "{{port}}", fmt.Sprintf("%d", port)).Replace(p.prompts.Get().Rebuild)
 
-	if err := p.runAider(ctx, projectDir, aiderMsg, heavy, emit); err != nil {
+	if err := p.runAider(ctx, projectDir, aiderMsg, heavy, emit, app.DevMode); err != nil {
 		if p.cancelled(ctx, app, emit) {
 			return
 		}
@@ -857,13 +866,13 @@ func (p *Pipeline) Rebuild(ctx context.Context, name, changeRequest string, heav
 	// Hot-reload short-circuit: dev container has a bind mount, the AI's
 	// changes are already visible inside it. Skip docker build/run entirely.
 	if app.DevMode && p.IsDevRunning(ctx, name) {
-		emit(newEvent("deploying", "⚡ Hot reload — skipping Docker build (dev mode)"))
+		emit(newEvent("hot-reload", "⚡ Hot reload — vite is rebuilding inside the dev container (skipped Docker build, ~60s saved)"))
 		// Touch a sentinel so vite's --watch picks the change up reliably.
 		os.Chtimes(filepath.Join(projectDir, "package.json"), time.Now(), time.Now())
 		app.Status = StatusRunning
 		p.addBuild(app, "rebuild", changeRequest, heavy.Name, "success", time.Since(start))
 		p.store.Set(app)
-		emit(newEventLatency("done", fmt.Sprintf("App '%s' updated (hot reload)", name), fmt.Sprintf("Port: %d", port), time.Since(start).String()))
+		emit(newEventLatency("done", fmt.Sprintf("⚡ '%s' updated via hot reload", name), fmt.Sprintf("Port: %d · No Docker rebuild", port), time.Since(start).String()))
 		return
 	}
 
@@ -964,7 +973,7 @@ func (p *Pipeline) FixErrors(ctx context.Context, name, userDescription string, 
 		aiderMsg = strings.NewReplacer("{{logs}}", logs, "{{port}}", portStr).Replace(p.prompts.Get().FixAuto)
 	}
 
-	if err := p.runAider(ctx, projectDir, aiderMsg, heavy, emit); err != nil {
+	if err := p.runAider(ctx, projectDir, aiderMsg, heavy, emit, app.DevMode); err != nil {
 		if p.cancelled(ctx, app, emit) {
 			return
 		}
@@ -989,13 +998,13 @@ func (p *Pipeline) FixErrors(ctx context.Context, name, userDescription string, 
 
 	// Hot-reload short-circuit (dev mode).
 	if app.DevMode && p.IsDevRunning(ctx, name) {
-		emit(newEvent("deploying", "⚡ Hot reload — skipping Docker build (dev mode)"))
+		emit(newEvent("hot-reload", "⚡ Hot reload — vite is rebuilding inside the dev container (skipped Docker build, ~60s saved)"))
 		os.Chtimes(filepath.Join(projectDir, "package.json"), time.Now(), time.Now())
 		app.Status = StatusRunning
 		app.Error = ""
 		p.addBuild(app, "fix", userDescription, heavy.Name, "success", time.Since(start))
 		p.store.Set(app)
-		emit(newEventLatency("done", fmt.Sprintf("App '%s' fixed (hot reload)", name), fmt.Sprintf("Port: %d", port), time.Since(start).String()))
+		emit(newEventLatency("done", fmt.Sprintf("⚡ '%s' fixed via hot reload", name), fmt.Sprintf("Port: %d · No Docker rebuild", port), time.Since(start).String()))
 		return
 	}
 
@@ -1201,6 +1210,48 @@ func fileNames(files []GeneratedFile) []string {
 		names[i] = f.Path
 	}
 	return names
+}
+
+// listMinimalFiles returns the small set of "primary editable" files for hot
+// reload mode. We exclude generated shadcn UI components, build/CI configs,
+// lockfiles, .aider history, etc — aider can request more if it needs them.
+func listMinimalFiles(projectDir string) []string {
+	candidates := []string{
+		"server.js", "src/App.jsx", "src/App.tsx", "src/main.jsx", "src/main.tsx",
+		"src/index.css", "src/lib/utils.js", "package.json", "vite.config.js", "vite.config.ts",
+		"index.html",
+	}
+	var files []string
+	for _, c := range candidates {
+		if _, err := os.Stat(filepath.Join(projectDir, c)); err == nil {
+			files = append(files, c)
+		}
+	}
+	// Also include anything under src/ that isn't generated UI or boilerplate.
+	srcDir := filepath.Join(projectDir, "src")
+	filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(projectDir, path)
+		// Skip generated shadcn UI primitives and already-included files.
+		if strings.HasPrefix(rel, "src/components/ui/") {
+			return nil
+		}
+		for _, e := range files {
+			if e == rel {
+				return nil
+			}
+		}
+		ext := filepath.Ext(rel)
+		if ext == ".jsx" || ext == ".tsx" || ext == ".js" || ext == ".ts" || ext == ".css" {
+			if info.Size() < 100*1024 {
+				files = append(files, rel)
+			}
+		}
+		return nil
+	})
+	return files
 }
 
 // ReadAppConfig reads and parses the app.json from a project directory.

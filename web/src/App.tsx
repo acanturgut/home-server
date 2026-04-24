@@ -1019,6 +1019,7 @@ const STEP_LABELS: Record<string, string> = {
   merging: 'Merge',
   validating: 'Validate',
   deploying: 'Deploy',
+  'hot-reload': '⚡ Hot',
   done: 'Done',
   error: 'Error',
 };
@@ -1029,6 +1030,7 @@ const STEP_COLORS: Record<string, string> = {
   merging: 'text-amber-400',
   validating: 'text-orange-400',
   deploying: 'text-emerald-400',
+  'hot-reload': 'text-amber-400 font-semibold',
   done: 'text-green-400',
   error: 'text-red-400',
 };
@@ -4162,8 +4164,22 @@ function AppsPanel() {
                       )}
                     </div>
 
+                    {app?.dev_mode && (
+                      <div className="px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/20 flex items-center gap-2 text-[11px] text-amber-200">
+                        <Zap size={11} className="animate-pulse" fill="currentColor" />
+                        <span className="font-medium">Hot reload active</span>
+                        <span className="text-amber-200/60 truncate">
+                          AI changes apply via vite watch · no Docker rebuild
+                        </span>
+                      </div>
+                    )}
+
                     {deployEvents.length > 0 && (
-                      <div className="p-2 bg-white/[0.02] rounded max-h-32 overflow-auto">
+                      <div className={`p-2 rounded max-h-32 overflow-auto ${
+                        deployEvents.some((e) => e.step === 'hot-reload')
+                          ? 'bg-amber-500/5 border border-amber-500/15'
+                          : 'bg-white/[0.02]'
+                      }`}>
                         <EventLog events={deployEvents} />
                       </div>
                     )}
