@@ -741,6 +741,16 @@ func (p *Pipeline) Remove(ctx context.Context, name string) error {
 	return nil
 }
 
+// GitLog returns recent commits for an app's local git repo.
+func (p *Pipeline) GitLog(name string, limit int) []GitCommit {
+	return gitLog(p.store.ProjectDir(name), limit)
+}
+
+// GitDiff returns the diff for one commit, capped at maxBytes.
+func (p *Pipeline) GitDiff(name, sha string, maxBytes int) string {
+	return gitDiff(p.store.ProjectDir(name), sha, maxBytes)
+}
+
 // Deploy rebuilds the Docker image from current files and restarts the container (no AI).
 func (p *Pipeline) Deploy(ctx context.Context, name string, port int, emit func(PipelineEvent)) {
 	start := time.Now()
@@ -1040,6 +1050,12 @@ func (p *Pipeline) addBuild(app *App, action, prompt, node, status string, dur t
 	}
 	if len(app.Builds) > cap {
 		app.Builds = app.Builds[len(app.Builds)-cap:]
+	}
+	// Auto-commit successful changes to the per-app local git repo so the user
+	// has a real change log they can browse in the UI. Best-effort; failures
+	// here never break the build pipeline.
+	if status == "success" && action != "deploy" {
+		go gitCommit(p.store.ProjectDir(app.Name), action, prompt)
 	}
 }
 

@@ -2214,6 +2214,21 @@ function AppsPanel() {
   const [editRoute, setEditRoute] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // Git history (per-app local repo)
+  type GitCommit = {
+    sha: string;
+    short_sha: string;
+    subject: string;
+    body?: string;
+    timestamp: string;
+    action?: string;
+    files?: number;
+  };
+  const [gitOpen, setGitOpen] = useState(false);
+  const [commits, setCommits] = useState<GitCommit[]>([]);
+  const [diffSha, setDiffSha] = useState<string | null>(null);
+  const [diffText, setDiffText] = useState('');
+
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
@@ -2242,6 +2257,31 @@ function AppsPanel() {
     if (selectedApp) localStorage.setItem('selectedApp', selectedApp);
     else localStorage.removeItem('selectedApp');
   }, [selectedApp]);
+
+  // Refresh git log when the selected app changes (or after a build/fix completes).
+  useEffect(() => {
+    if (!selectedApp) {
+      setCommits([]);
+      return;
+    }
+    fetch(`${API_BASE}/api/apps/${selectedApp}/git/log?limit=50`)
+      .then((r) => r.json())
+      .then((d) => setCommits(Array.isArray(d.commits) ? d.commits : []))
+      .catch(() => setCommits([]));
+  }, [selectedApp, building]);
+
+  // Load diff lazily when the user opens a commit.
+  useEffect(() => {
+    if (!selectedApp || !diffSha) {
+      setDiffText('');
+      return;
+    }
+    setDiffText('Loading…');
+    fetch(`${API_BASE}/api/apps/${selectedApp}/git/diff/${diffSha}`)
+      .then((r) => r.json())
+      .then((d) => setDiffText(d.diff || '(empty diff)'))
+      .catch(() => setDiffText('Failed to load diff'));
+  }, [selectedApp, diffSha]);
 
   useEffect(() => {
     localStorage.setItem('buildEvents', JSON.stringify(events));
@@ -3298,6 +3338,45 @@ function AppsPanel() {
                       </div>
                     )}
 
+                    {/* Git change log (per-app local repo) */}
+                    {commits.length > 0 && (
+                      <div className="pt-3 border-t border-border/10 space-y-1.5">
+                        <button
+                          onClick={() => setGitOpen((v) => !v)}
+                          className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-muted-foreground/60 w-full">
+                          <GitBranch size={10} /> Changes ({commits.length})
+                          <span className="ml-auto text-muted-foreground/30">{gitOpen ? '−' : '+'}</span>
+                        </button>
+                        {gitOpen && (
+                          <div className="space-y-1 max-h-60 overflow-auto">
+                            {commits.map((c) => (
+                              <button
+                                key={c.sha}
+                                onClick={() => setDiffSha(c.sha)}
+                                className="w-full text-left flex items-center gap-2 text-[10px] py-1 px-1.5 rounded hover:bg-white/[0.03] transition-colors">
+                                <span className="font-mono text-muted-foreground/40 shrink-0">{c.short_sha}</span>
+                                {c.action && (
+                                  <span className={`text-[9px] uppercase shrink-0 ${
+                                    c.action === 'fix' ? 'text-amber-400/70' :
+                                    c.action === 'rebuild' ? 'text-violet-400/70' :
+                                    c.action === 'build' ? 'text-emerald-400/70' :
+                                    'text-muted-foreground/50'
+                                  }`}>{c.action}</span>
+                                )}
+                                <span className="text-foreground/70 flex-1 truncate">
+                                  {c.subject.replace(/^(build|fix|rebuild|deploy):\s*/, '')}
+                                </span>
+                                {c.files ? <span className="text-muted-foreground/40 tabular-nums shrink-0">{c.files}f</span> : null}
+                                <span className="text-muted-foreground/30 tabular-nums shrink-0">
+                                  {new Date(c.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Settings */}
                     <div className="pt-3 border-t border-border/10 space-y-2">
                       <button
@@ -3340,6 +3419,50 @@ function AppsPanel() {
                     {deployEvents.length > 0 && (
                       <div className="p-2 bg-white/[0.02] rounded max-h-32 overflow-auto">
                         <EventLog events={deployEvents} />
+                      </div>
+                    )}
+
+                    {/* Git diff modal */}
+                    {diffSha && (
+                      <div
+                        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6"
+                        onClick={() => setDiffSha(null)}>
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full max-w-4xl max-h-[85vh] bg-[#0a0a0a] border border-white/10 rounded-lg shadow-2xl flex flex-col">
+                          <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10">
+                            <GitBranch size={12} className="text-violet-400/70" />
+                            <span className="text-[11px] font-mono text-foreground/80">{diffSha.slice(0, 12)}</span>
+                            <span className="text-[11px] text-muted-foreground/60 truncate flex-1">
+                              {commits.find((c) => c.sha === diffSha)?.subject || ''}
+                            </span>
+                            <button
+                              onClick={() => setDiffSha(null)}
+                              className="p-1 text-muted-foreground/50 hover:text-foreground rounded hover:bg-white/5">
+                              <X size={12} />
+                            </button>
+                          </div>
+                          <pre className="flex-1 overflow-auto text-[10px] font-mono p-3 leading-relaxed whitespace-pre">
+                            {diffText.split('\n').map((line, i) => {
+                              const cls = line.startsWith('+++') || line.startsWith('---')
+                                ? 'text-muted-foreground/60'
+                                : line.startsWith('+')
+                                ? 'text-emerald-400/90'
+                                : line.startsWith('-')
+                                ? 'text-red-400/90'
+                                : line.startsWith('@@')
+                                ? 'text-sky-400/80'
+                                : line.startsWith('diff --git')
+                                ? 'text-violet-400/80 font-semibold'
+                                : 'text-foreground/70';
+                              return (
+                                <div key={i} className={cls}>
+                                  {line || ' '}
+                                </div>
+                              );
+                            })}
+                          </pre>
+                        </div>
                       </div>
                     )}
                   </div>

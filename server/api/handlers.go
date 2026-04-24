@@ -565,6 +565,47 @@ func (h *Handler) RestartApp(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "running"})
 }
 
+// GET /api/apps/{name}/git/log?limit=50
+func (h *Handler) AppGitLog(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if _, ok := h.apps.Get(name); !ok {
+		writeJSON(w, http.StatusNotFound, errorResp{Error: "app not found"})
+		return
+	}
+	limit := 50
+	if q := r.URL.Query().Get("limit"); q != "" {
+		if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
+	commits := h.pipeline.GitLog(name, limit)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":    name,
+		"commits": commits,
+		"count":   len(commits),
+	})
+}
+
+// GET /api/apps/{name}/git/diff/{sha}
+func (h *Handler) AppGitDiff(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	sha := r.PathValue("sha")
+	if _, ok := h.apps.Get(name); !ok {
+		writeJSON(w, http.StatusNotFound, errorResp{Error: "app not found"})
+		return
+	}
+	if sha == "" {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "sha required"})
+		return
+	}
+	diff := h.pipeline.GitDiff(name, sha, 200_000)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name": name,
+		"sha":  sha,
+		"diff": diff,
+	})
+}
+
 // POST /api/apps/{name}/cancel — cancel an active build/rebuild/fix
 func (h *Handler) CancelBuild(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
