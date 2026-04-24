@@ -297,12 +297,20 @@ func (r *Router) Chat(ctx context.Context, requestID string, messages []Message)
 }
 
 func (r *Router) chatNode(ctx context.Context, nodeID string, messages []Message) (*ChatResponse, error) {
+	return r.chatNodeOpts(ctx, nodeID, messages, nil)
+}
+
+func (r *Router) chatNodeOpts(ctx context.Context, nodeID string, messages []Message, temperature *float64) (*ChatResponse, error) {
 	node, ok := r.nodes.Get(nodeID)
 	if !ok {
 		return nil, fmt.Errorf("node %s not found", nodeID)
 	}
 
-	req := ChatRequest{Messages: messages, Model: node.Model, Temperature: node.Temperature}
+	temp := node.Temperature
+	if temperature != nil {
+		temp = temperature
+	}
+	req := ChatRequest{Messages: messages, Model: node.Model, Temperature: temp}
 	resp, err := r.client.CallLMStudio(ctx, node.Host, req)
 	if err != nil {
 		// Auto-load model if LM Studio says none loaded
@@ -410,7 +418,57 @@ func (r *Router) maybeSearchStream(ctx context.Context, messages []Message, last
 	return injected
 }
 
-func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Message, emit func(StreamEvent)) {
+// ChatStreamOpts lets the caller bypass the classifier or pin temperature.
+// Route may be: "" (auto), "light", "heavy", or a node name.
+type ChatStreamOpts struct {
+	Route       string
+	Temperature *float64
+}
+
+// resolveRouteOverride converts an opt.Route value into a RouteDecision when
+// the caller wants to bypass classification. Returns ok=false to fall through
+// to the classifier.
+func (r *Router) resolveRouteOverride(ctx context.Context, route string) (RouteDecision, bool) {
+	if route == "" || strings.EqualFold(route, "auto") {
+		return RouteDecision{}, false
+	}
+	highEnd := r.availableByTier(ctx, config.TierHighEnd)
+	lowEnd := r.availableByTier(ctx, config.TierLowEnd)
+	lc := strings.ToLower(route)
+	if lc == "heavy" || lc == "high" || lc == "high-end" {
+		if len(highEnd) > 0 {
+			n := highEnd[0]
+			return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: "high-end", Reason: "forced heavy by user"}, true
+		}
+		if len(lowEnd) > 0 {
+			n := lowEnd[0]
+			return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: "low-end", Reason: "heavy unavailable, forced fallback"}, true
+		}
+	}
+	if lc == "light" || lc == "low" || lc == "low-end" {
+		if len(lowEnd) > 0 {
+			n := lowEnd[0]
+			return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: "low-end", Reason: "forced light by user"}, true
+		}
+		if len(highEnd) > 0 {
+			n := highEnd[0]
+			return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: "high-end", Reason: "light unavailable, forced fallback"}, true
+		}
+	}
+	// Match by node name (case-insensitive)
+	for _, n := range append(append([]config.Node{}, highEnd...), lowEnd...) {
+		if strings.EqualFold(n.Name, route) || strings.EqualFold(n.ID, route) {
+			tier := "low-end"
+			if n.Tier == config.TierHighEnd {
+				tier = "high-end"
+			}
+			return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: tier, Reason: "forced node by user"}, true
+		}
+	}
+	return RouteDecision{}, false
+}
+
+func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Message, opts ChatStreamOpts, emit func(StreamEvent)) {
 	if len(messages) == 0 {
 		emit(StreamEvent{Step: "error", Message: "no messages provided"})
 		return
@@ -418,10 +476,15 @@ func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Me
 
 	lastMsg := messages[len(messages)-1].Content
 
-	// Step 1: Classifying
-	emit(StreamEvent{Step: "classifying", Message: "Analyzing your request with gemma3:1b..."})
-
-	decision := r.Classify(ctx, lastMsg)
+	var decision RouteDecision
+	if d, ok := r.resolveRouteOverride(ctx, opts.Route); ok {
+		decision = d
+		emit(StreamEvent{Step: "classifying", Message: "Using user-selected route…"})
+	} else {
+		// Step 1: Classifying
+		emit(StreamEvent{Step: "classifying", Message: "Analyzing your request with gemma3:1b..."})
+		decision = r.Classify(ctx, lastMsg)
+	}
 
 	// No nodes available
 	if decision.Route == "local" {
@@ -458,7 +521,7 @@ func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Me
 	})
 
 	start := time.Now()
-	response, err := r.chatNode(ctx, decision.Route, chatMessages)
+	response, err := r.chatNodeOpts(ctx, decision.Route, chatMessages, opts.Temperature)
 	latency := time.Since(start).String()
 
 	if err != nil {

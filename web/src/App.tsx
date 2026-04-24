@@ -50,6 +50,18 @@ import {
   Minus,
   Maximize2,
   Minimize2,
+  Square,
+  Copy,
+  GitBranch,
+  Pencil,
+  Pin,
+  Star,
+  Archive,
+  Mic,
+  Volume2,
+  Trash2,
+  Send,
+  Plus,
 } from 'lucide-react';
 import {
   EditorView,
@@ -2083,6 +2095,19 @@ function AppsPanel() {
     localStorage.getItem('selectedApp'),
   );
   const [prompt, setPrompt] = useState('');
+
+  // Listen for cross-panel handoff (e.g. from Chat → "Send to Apps")
+  useEffect(() => {
+    const onPrefill = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { prompt?: string } | undefined;
+      if (detail?.prompt) {
+        setPrompt(detail.prompt);
+        setSelectedApp(null);
+      }
+    };
+    window.addEventListener('apps:prefill-prompt', onPrefill as EventListener);
+    return () => window.removeEventListener('apps:prefill-prompt', onPrefill as EventListener);
+  }, []);
   // ── AI Clarify (pre-build wizard) ──
   type ClarifyQ = { id: string; question: string; hint?: string; suggestions?: string[]; required?: boolean; default?: string };
   const [clarifyOpen, setClarifyOpen] = useState(false);
@@ -3860,6 +3885,15 @@ function HomeKitPanel() {
 
 /* ── Chat Panel (Streaming with Sessions) ── */
 
+interface ChatAttachment {
+  id: string;
+  name: string;
+  type: string; // mime
+  size: number;
+  text?: string; // for text-like content
+  dataUrl?: string; // for images
+}
+
 interface ChatMsg {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -3874,6 +3908,12 @@ interface ChatMsg {
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
+  edited?: boolean;
+  attachments?: ChatAttachment[];
+  reasoningSteps?: Array<{ kind: string; text: string }>;
+  // For branching / regenerate
+  parentSessionId?: string;
+  branchFromMsgId?: string;
 }
 
 interface ChatSession {
@@ -3881,13 +3921,268 @@ interface ChatSession {
   title: string;
   messages: ChatMsg[];
   updatedAt: number;
+  createdAt?: number;
+  pinned?: boolean;
+  starred?: boolean;
+  archived?: boolean;
+  system?: string; // persona / system prompt
+  modelOverride?: string; // 'auto' | 'light' | 'heavy' | nodeName
+  temperature?: number;
+  totalPromptTokens?: number;
+  totalCompletionTokens?: number;
+  parentSessionId?: string;
+  branchFromMsgId?: string;
+}
+
+interface Persona {
+  id: string;
+  name: string;
+  emoji?: string;
+  system: string;
+}
+
+const BUILTIN_PERSONAS: Persona[] = [
+  { id: 'default', name: 'Default', emoji: '💬', system: '' },
+  { id: 'engineer', name: 'Senior Engineer', emoji: '🔧', system: 'You are a senior software engineer. Be concise, pragmatic, and code-first. Prefer trade-off analysis over verbose explanation.' },
+  { id: 'tutor', name: 'Patient Tutor', emoji: '🎓', system: 'You are a patient tutor. Explain step-by-step with small examples. Ask one clarifying question if the user\'s goal is ambiguous.' },
+  { id: 'editor', name: 'Sharp Editor', emoji: '✍️', system: 'You are a sharp editor. Tighten prose, kill filler, preserve voice. Show before/after when helpful.' },
+  { id: 'shell', name: 'Shell Wizard', emoji: '🖥️', system: 'You are a shell expert. Reply with a single fenced bash block plus one sentence of context unless asked otherwise.' },
+];
+
+// Cross-panel events for handoff & terminal integration
+function gotoPage(page: string, payload?: unknown) {
+  window.dispatchEvent(new CustomEvent('nav:goto', { detail: { page, payload } }));
+}
+function copyToClipboard(text: string) {
+  try {
+    navigator.clipboard?.writeText(text);
+  } catch {
+    // ignore
+  }
+}
+
+// ── Slash commands ──
+interface SlashCmd {
+  cmd: string;
+  hint: string;
+  example?: string;
+}
+const SLASH_COMMANDS: SlashCmd[] = [
+  { cmd: '/clear', hint: 'Clear all messages in this chat', example: '/clear' },
+  { cmd: '/new', hint: 'Start a new chat session', example: '/new' },
+  { cmd: '/system', hint: 'Set system prompt for this chat', example: '/system You are a Rust expert.' },
+  { cmd: '/model', hint: 'Override routing for the next turn (auto|light|heavy|<node>)', example: '/model heavy' },
+  { cmd: '/temp', hint: 'Set temperature for this chat (0–2)', example: '/temp 0.3' },
+  { cmd: '/persona', hint: 'Switch persona by id', example: '/persona engineer' },
+  { cmd: '/title', hint: 'Rename this chat', example: '/title Rust ownership notes' },
+  { cmd: '/build', hint: 'Send the last assistant reply to the Apps wizard as an idea', example: '/build' },
+  { cmd: '/export', hint: 'Download this chat as Markdown', example: '/export' },
+  { cmd: '/help', hint: 'Show all slash commands', example: '/help' },
+];
+
+// ── Tiny markdown renderer with code-block actions ──
+function MarkdownView({ text }: { text: string }) {
+  // Split into segments: text + ```fenced``` blocks
+  const segments = useMemo(() => {
+    const out: Array<{ kind: 'text' | 'code'; lang?: string; body: string }> = [];
+    const re = /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) out.push({ kind: 'text', body: text.slice(last, m.index) });
+      out.push({ kind: 'code', lang: m[1] || '', body: m[2] });
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) out.push({ kind: 'text', body: text.slice(last) });
+    return out;
+  }, [text]);
+
+  return (
+    <div className="space-y-2">
+      {segments.map((seg, i) =>
+        seg.kind === 'code' ? (
+          <CodeBlock key={i} lang={seg.lang || ''} code={seg.body.replace(/\n$/, '')} />
+        ) : (
+          <InlineMarkdown key={i} text={seg.body} />
+        ),
+      )}
+    </div>
+  );
+}
+
+function InlineMarkdown({ text }: { text: string }) {
+  // Render paragraphs separated by blank lines; handle **bold**, *italic*, `code`, and bullet lists.
+  const blocks = text.split(/\n{2,}/).filter((b) => b.length > 0);
+  return (
+    <>
+      {blocks.map((b, i) => {
+        const isList = b.split('\n').every((l) => /^\s*[-*]\s+/.test(l));
+        if (isList) {
+          return (
+            <ul key={i} className="list-disc pl-5 space-y-1">
+              {b.split('\n').map((l, j) => (
+                <li key={j} className="text-sm leading-relaxed">
+                  <InlineSpans text={l.replace(/^\s*[-*]\s+/, '')} />
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        const heading = /^(#{1,6})\s+(.*)$/.exec(b);
+        if (heading) {
+          const level = heading[1].length;
+          const sizes = ['text-base', 'text-base', 'text-sm', 'text-sm', 'text-xs', 'text-xs'];
+          return (
+            <p key={i} className={`font-semibold ${sizes[level - 1]} text-foreground`}>
+              <InlineSpans text={heading[2]} />
+            </p>
+          );
+        }
+        return (
+          <p key={i} className="text-sm whitespace-pre-wrap leading-relaxed">
+            <InlineSpans text={b} />
+          </p>
+        );
+      })}
+    </>
+  );
+}
+
+function InlineSpans({ text }: { text: string }) {
+  // Order matters: bold before italic, then inline code
+  const parts: Array<{ kind: 'text' | 'code' | 'bold' | 'italic' | 'link'; body: string; href?: string }> = [];
+  const re = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)]+)\))/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push({ kind: 'text', body: text.slice(last, m.index) });
+    if (m[2]) parts.push({ kind: 'bold', body: m[2] });
+    else if (m[4]) parts.push({ kind: 'italic', body: m[4] });
+    else if (m[6]) parts.push({ kind: 'code', body: m[6] });
+    else if (m[8]) parts.push({ kind: 'link', body: m[8], href: m[9] });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push({ kind: 'text', body: text.slice(last) });
+  return (
+    <>
+      {parts.map((p, i) => {
+        if (p.kind === 'bold') return <strong key={i} className="font-semibold">{p.body}</strong>;
+        if (p.kind === 'italic') return <em key={i}>{p.body}</em>;
+        if (p.kind === 'code') return <code key={i} className="px-1 py-px text-[12px] rounded bg-white/10 font-mono">{p.body}</code>;
+        if (p.kind === 'link')
+          return (
+            <a key={i} href={p.href} target="_blank" rel="noreferrer" className="underline text-violet-300 hover:text-violet-200">
+              {p.body}
+            </a>
+          );
+        return <span key={i}>{p.body}</span>;
+      })}
+    </>
+  );
+}
+
+function CodeBlock({ lang, code }: { lang: string; code: string }) {
+  const [copied, setCopied] = useState(false);
+  const isShell = /^(sh|bash|zsh|console|shell)$/i.test(lang);
+  const isDiff = lang.toLowerCase() === 'diff';
+  const onCopy = () => {
+    copyToClipboard(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  };
+  return (
+    <div className="rounded-md border border-white/10 bg-black/40 overflow-hidden">
+      <div className="flex items-center justify-between px-2 py-1 border-b border-white/5 bg-white/[0.02]">
+        <span className="text-[9px] uppercase tracking-wider text-muted-foreground/50 font-mono">{lang || 'text'}</span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onCopy}
+            className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground/60 hover:text-foreground rounded hover:bg-white/5 transition-colors">
+            <Copy size={10} />
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+          {isShell && (
+            <button
+              onClick={() => copyToClipboard(code)}
+              title="Copy command — paste into the bottom Terminal tab"
+              className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-violet-300/70 hover:text-violet-200 rounded hover:bg-white/5 transition-colors">
+              <Terminal size={10} />
+              Copy as cmd
+            </button>
+          )}
+        </div>
+      </div>
+      <pre className={`text-[12px] font-mono p-3 overflow-auto leading-relaxed ${isDiff ? 'diff-block' : ''}`}>
+        {isDiff
+          ? code.split('\n').map((l, i) => {
+              const cls = l.startsWith('+') && !l.startsWith('+++')
+                ? 'text-emerald-300 bg-emerald-500/5'
+                : l.startsWith('-') && !l.startsWith('---')
+                  ? 'text-red-300 bg-red-500/5'
+                  : l.startsWith('@@')
+                    ? 'text-violet-300/70'
+                    : 'text-foreground/70';
+              return (
+                <div key={i} className={`${cls} whitespace-pre`}>
+                  {l || ' '}
+                </div>
+              );
+            })
+          : <code className="text-foreground/85">{code}</code>}
+      </pre>
+    </div>
+  );
+}
+
+// ── Voice input + TTS helpers ──
+function useSpeechRecognition(onResult: (text: string) => void) {
+  const recRef = useRef<any>(null);
+  const [listening, setListening] = useState(false);
+  const supported = typeof window !== 'undefined' && (('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window));
+  const start = useCallback(() => {
+    if (!supported) return;
+    const Ctor: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const rec = new Ctor();
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = navigator.language || 'en-US';
+    rec.onresult = (e: any) => {
+      const t = Array.from(e.results).map((r: any) => r[0].transcript).join(' ');
+      onResult(t);
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    recRef.current = rec;
+    setListening(true);
+    rec.start();
+  }, [onResult, supported]);
+  const stop = useCallback(() => {
+    try { recRef.current?.stop(); } catch { /* ignore */ }
+    setListening(false);
+  }, []);
+  return { supported, listening, start, stop };
+}
+
+function speak(text: string) {
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.0;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  } catch {
+    // ignore
+  }
+}
+function stopSpeaking() {
+  try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
 }
 
 function ChatPanel() {
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
     try {
       const saved = localStorage.getItem('chat-sessions');
-      return saved ? JSON.parse(saved) : [];
+      const arr = saved ? JSON.parse(saved) : [];
+      return Array.isArray(arr) ? arr : [];
     } catch {
       return [];
     }
@@ -3899,38 +4194,92 @@ function ChatPanel() {
       return null;
     }
   });
+  const [personas, setPersonas] = useState<Persona[]>(() => {
+    try {
+      const saved = localStorage.getItem('chat-personas');
+      if (saved) {
+        const arr = JSON.parse(saved);
+        if (Array.isArray(arr) && arr.length) return arr;
+      }
+    } catch {
+      // ignore
+    }
+    return BUILTIN_PERSONAS;
+  });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [liveSteps, setLiveSteps] = useState<ChatMsg[]>([]);
-  const [sideOpen, setSideOpen] = useState(false);
-  const endRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      node?.scrollIntoView({ behavior: 'smooth' });
-    },
-    [liveSteps, sessions],
-  );
+  const [sideOpen, setSideOpen] = useState(true);
+  const [systemEditOpen, setSystemEditOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQ, setSearchQ] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [showSlash, setShowSlash] = useState(false);
+  const [showFilter, setShowFilter] = useState<'all' | 'pinned' | 'archived'>('all');
+  const [resumeBanner, setResumeBanner] = useState(false);
+  const [collapsedReasoning, setCollapsedReasoning] = useState<Record<string, boolean>>({});
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [pendingModel, setPendingModel] = useState<string>(''); // one-shot override
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
 
   const active = sessions.find((s) => s.id === activeId);
-  const displayMessages = [...(active?.messages || []), ...liveSteps];
+  const displayMessages = useMemo(
+    () => [...(active?.messages || []), ...liveSteps],
+    [active, liveSteps],
+  );
 
+  // Persist helpers
   const persist = useCallback((updated: ChatSession[]) => {
     setSessions(updated);
-    localStorage.setItem('chat-sessions', JSON.stringify(updated));
+    try {
+      localStorage.setItem('chat-sessions', JSON.stringify(updated));
+    } catch {
+      // ignore (quota)
+    }
+  }, []);
+  const persistPersonas = useCallback((arr: Persona[]) => {
+    setPersonas(arr);
+    try {
+      localStorage.setItem('chat-personas', JSON.stringify(arr));
+    } catch {
+      // ignore
+    }
   }, []);
 
-  const newSession = useCallback(() => {
-    const s: ChatSession = {
-      id: Date.now().toString(),
-      title: 'New Chat',
-      messages: [],
-      updatedAt: Date.now(),
-    };
-    const updated = [s, ...sessions];
-    persist(updated);
-    setActiveId(s.id);
-    localStorage.setItem('chat-active', s.id);
-    setSideOpen(false);
-  }, [sessions, persist]);
+  const updateActive = useCallback(
+    (mut: (s: ChatSession) => ChatSession) => {
+      if (!activeId) return;
+      const updated = sessions.map((s) => (s.id === activeId ? mut(s) : s));
+      persist(updated);
+    },
+    [activeId, sessions, persist],
+  );
+
+  const newSession = useCallback(
+    (opts?: Partial<ChatSession>) => {
+      const s: ChatSession = {
+        id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+        title: 'New Chat',
+        messages: [],
+        updatedAt: Date.now(),
+        createdAt: Date.now(),
+        ...opts,
+      };
+      const updated = [s, ...sessions];
+      persist(updated);
+      setActiveId(s.id);
+      try { localStorage.setItem('chat-active', s.id); } catch { /* ignore */ }
+      setSideOpen(false);
+      setTimeout(() => inputRef.current?.focus(), 50);
+      return s.id;
+    },
+    [sessions, persist],
+  );
 
   const deleteSession = useCallback(
     (id: string) => {
@@ -3939,207 +4288,632 @@ function ChatPanel() {
       if (activeId === id) {
         const next = remaining[0]?.id || null;
         setActiveId(next);
-        if (next) localStorage.setItem('chat-active', next);
+        if (next) {
+          try { localStorage.setItem('chat-active', next); } catch { /* ignore */ }
+        }
       }
     },
     [sessions, activeId, persist],
   );
 
-  // Auto-create first session
+  // Auto-create first session on mount
   useEffect(() => {
     if (sessions.length === 0) newSession();
+    // detect "in flight" state from previous load
+    if (localStorage.getItem('chat-loading') === '1') {
+      setResumeBanner(true);
+      try { localStorage.removeItem('chat-loading'); } catch { /* ignore */ }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Scroll to bottom on new content
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [displayMessages.length, liveSteps.length]);
+
+  // ── Auto-title via /api/chat (light model, non-blocking) ──
+  const autoTitle = useCallback(async (sessionId: string, firstUser: string, firstAssistant: string) => {
+    try {
+      const r = await fetch(`${API_BASE}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: 'You write extremely short chat titles. Reply with 2-5 words, no quotes, no punctuation.' },
+            { role: 'user', content: `User: ${firstUser}\n\nAssistant: ${firstAssistant.slice(0, 600)}\n\nTitle:` },
+          ],
+        }),
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      let t = (data?.message?.content || data?.content || '').trim();
+      t = t.replace(/^"|"$/g, '').replace(/[.!?]+$/, '');
+      if (t && t.length <= 60) {
+        setSessions((prev) => {
+          const next = prev.map((s) => (s.id === sessionId && s.title.startsWith(firstUser.slice(0, 10)) ? { ...s, title: t } : s));
+          try { localStorage.setItem('chat-sessions', JSON.stringify(next)); } catch { /* ignore */ }
+          return next;
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // ── Slash commands ──
+  const runSlash = useCallback(
+    (raw: string): boolean => {
+      const line = raw.trim();
+      if (!line.startsWith('/')) return false;
+      const [cmd, ...rest] = line.split(/\s+/);
+      const arg = rest.join(' ');
+      switch (cmd) {
+        case '/clear':
+          updateActive((s) => ({ ...s, messages: [], updatedAt: Date.now() }));
+          setInput('');
+          return true;
+        case '/new':
+          newSession();
+          setInput('');
+          return true;
+        case '/system':
+          updateActive((s) => ({ ...s, system: arg, updatedAt: Date.now() }));
+          setStatusMsg('System prompt updated');
+          setInput('');
+          return true;
+        case '/model':
+          if (!arg) {
+            setStatusMsg('Usage: /model auto|light|heavy|<node-name>');
+          } else {
+            updateActive((s) => ({ ...s, modelOverride: arg, updatedAt: Date.now() }));
+            setStatusMsg(`Routing override → ${arg}`);
+          }
+          setInput('');
+          return true;
+        case '/temp': {
+          const t = parseFloat(arg);
+          if (!isFinite(t) || t < 0 || t > 2) {
+            setStatusMsg('Usage: /temp 0.0–2.0');
+          } else {
+            updateActive((s) => ({ ...s, temperature: t, updatedAt: Date.now() }));
+            setStatusMsg(`Temperature → ${t}`);
+          }
+          setInput('');
+          return true;
+        }
+        case '/persona': {
+          const p = personas.find((x) => x.id === arg);
+          if (!p) {
+            setStatusMsg(`Unknown persona "${arg}". Try: ${personas.map((x) => x.id).join(', ')}`);
+          } else {
+            updateActive((s) => ({ ...s, system: p.system, updatedAt: Date.now() }));
+            setStatusMsg(`Persona → ${p.name}`);
+          }
+          setInput('');
+          return true;
+        }
+        case '/title':
+          if (arg) updateActive((s) => ({ ...s, title: arg, updatedAt: Date.now() }));
+          setInput('');
+          return true;
+        case '/build': {
+          const lastA = [...(active?.messages || [])].reverse().find((m) => m.role === 'assistant');
+          if (!lastA) {
+            setStatusMsg('No assistant reply to send.');
+          } else {
+            gotoPage('apps', { prompt: lastA.content });
+            setStatusMsg('Sent to Apps wizard.');
+          }
+          setInput('');
+          return true;
+        }
+        case '/export':
+          exportSession();
+          setInput('');
+          return true;
+        case '/help':
+          setStatusMsg(SLASH_COMMANDS.map((c) => `${c.cmd} — ${c.hint}`).join('\n'));
+          setInput('');
+          return true;
+        default:
+          setStatusMsg(`Unknown command "${cmd}". Type / to see options.`);
+          setInput('');
+          return true;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [active, personas, updateActive, newSession],
+  );
+
+  // ── Stop ──
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+    setLiveSteps([]);
+    try { localStorage.removeItem('chat-loading'); } catch { /* ignore */ }
+  }, []);
+
+  // ── Export current session as Markdown ──
+  function exportSession() {
+    if (!active) return;
+    const lines: string[] = [`# ${active.title}`, ''];
+    if (active.system) lines.push(`> **System:** ${active.system}`, '');
+    for (const m of active.messages) {
+      if (m.role === 'system') continue;
+      lines.push(m.role === 'user' ? '### You' : `### Assistant${m.node ? ` (${m.node})` : ''}`);
+      lines.push('');
+      lines.push(m.content);
+      lines.push('');
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${active.title.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase() || 'chat'}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ── Send (used by initial send, regenerate, and resend-from-edit) ──
+  const sendWithMessages = useCallback(
+    async (newMessages: ChatMsg[], opts?: { titleSeed?: string; modelOverride?: string }) => {
+      if (!active) return;
+      const sid = active.id;
+      // Optimistic update
+      const optimistic = sessions.map((s) =>
+        s.id === sid ? { ...s, messages: newMessages, updatedAt: Date.now(), title: s.messages.length === 0 && opts?.titleSeed ? opts.titleSeed.slice(0, 40) : s.title } : s,
+      );
+      persist(optimistic);
+      setLoading(true);
+      setLiveSteps([]);
+      try { localStorage.setItem('chat-loading', '1'); } catch { /* ignore */ }
+
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+
+      const reasoning: Array<{ kind: string; text: string }> = [];
+
+      try {
+        const sysMsg = active.system?.trim()
+          ? [{ role: 'system' as const, content: active.system.trim() }]
+          : [];
+        const apiMsgs = [
+          ...sysMsg,
+          ...newMessages
+            .filter((m) => m.role !== 'system')
+            .map(({ role, content }) => ({ role, content })),
+        ];
+        const body: Record<string, unknown> = { messages: apiMsgs };
+        const override = opts?.modelOverride || active.modelOverride;
+        if (override && override !== 'auto') body.route = override;
+        if (active.temperature != null) body.temperature = active.temperature;
+
+        const res = await fetch(`${API_BASE}/api/chat/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: ctrl.signal,
+        });
+        if (!res.ok || !res.body) throw new Error('Stream failed');
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalMsg: ChatMsg | null = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const ev = JSON.parse(line);
+              const ts = Date.now();
+              if (ev.step === 'classifying') {
+                reasoning.push({ kind: 'classifying', text: 'Classifying with the router model…' });
+                setLiveSteps((p) => [
+                  ...p.filter((b) => b.stepType !== 'classifying'),
+                  { id: `s-${ts}`, role: 'system', content: 'Classifying…', stepType: 'classifying' },
+                ]);
+              } else if (ev.step === 'classified') {
+                reasoning.push({ kind: 'classified', text: `Routed → ${ev.node || ''} · ${ev.tier || ''}${ev.classifier_latency ? ` · ${ev.classifier_latency}` : ''}` });
+                setLiveSteps((p) => [
+                  ...p.filter((b) => b.stepType !== 'classifying'),
+                  { id: `s-${ts}`, role: 'system', content: `Routed → ${ev.node} · ${ev.tier}${ev.classifier_latency ? ` · ${ev.classifier_latency}` : ''}`, stepType: 'classified', node: ev.node, tier: ev.tier },
+                ]);
+              } else if (ev.step === 'generating') {
+                reasoning.push({ kind: 'generating', text: `Generating on ${ev.node}…` });
+                setLiveSteps((p) => [
+                  ...p,
+                  { id: `s-${ts}`, role: 'system', content: `Generating on ${ev.node}…`, stepType: 'generating', node: ev.node },
+                ]);
+              } else if (ev.step === 'searching') {
+                reasoning.push({ kind: 'searching', text: 'Searching the web…' });
+                setLiveSteps((p) => [
+                  ...p,
+                  { id: `s-${ts}`, role: 'system', content: 'Searching the web…', stepType: 'searching' },
+                ]);
+              } else if (ev.step === 'search_done') {
+                reasoning.push({ kind: 'search_done', text: ev.message || 'Search complete' });
+                setLiveSteps((p) => [
+                  ...p.filter((b) => b.stepType !== 'searching'),
+                  { id: `s-${ts}`, role: 'system', content: `🔍 ${ev.message || 'Search complete'}`, stepType: 'search_done' },
+                ]);
+              } else if (ev.step === 'done') {
+                finalMsg = {
+                  id: (ts + 1).toString(),
+                  role: 'assistant',
+                  content: ev.content || '',
+                  node: ev.node,
+                  tier: ev.tier,
+                  model: ev.model,
+                  route: ev.route,
+                  latency: ev.latency,
+                  classifierLatency: ev.classifier_latency,
+                  promptTokens: ev.prompt_tokens,
+                  completionTokens: ev.completion_tokens,
+                  totalTokens: ev.total_tokens,
+                  reasoningSteps: reasoning.slice(),
+                };
+              } else if (ev.step === 'error') {
+                finalMsg = {
+                  id: (ts + 1).toString(),
+                  role: 'assistant',
+                  content: ev.message || 'Request failed',
+                  stepType: 'error',
+                  reasoningSteps: reasoning.slice(),
+                };
+              }
+            } catch {
+              // ignore parse errors
+            }
+          }
+        }
+
+        setLiveSteps([]);
+        const all = finalMsg ? [...newMessages, finalMsg] : newMessages;
+        // Recompute totals
+        const totals = all.reduce(
+          (acc, m) => ({
+            p: acc.p + (m.promptTokens || 0),
+            c: acc.c + (m.completionTokens || 0),
+          }),
+          { p: 0, c: 0 },
+        );
+        const latest = sessions.map((s) =>
+          s.id === sid
+            ? {
+                ...s,
+                messages: all,
+                updatedAt: Date.now(),
+                totalPromptTokens: totals.p,
+                totalCompletionTokens: totals.c,
+              }
+            : s,
+        );
+        persist(latest);
+
+        // Auto-title once we have a real exchange and the title is still placeholder
+        if (
+          finalMsg &&
+          all.filter((m) => m.role === 'user').length === 1 &&
+          (active.title === 'New Chat' || !active.title)
+        ) {
+          const firstUser = all.find((m) => m.role === 'user')?.content || '';
+          autoTitle(sid, firstUser, finalMsg.content);
+        }
+      } catch (e) {
+        if ((e as any)?.name === 'AbortError') {
+          // user-initiated stop; persist any user messages already added
+          const latest = sessions.map((s) => (s.id === sid ? { ...s, messages: newMessages, updatedAt: Date.now() } : s));
+          persist(latest);
+        } else {
+          setLiveSteps([]);
+          const errMsg: ChatMsg = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: `Error: ${e instanceof Error ? e.message : 'Failed'}`,
+            stepType: 'error',
+          };
+          persist(sessions.map((s) => (s.id === sid ? { ...s, messages: [...newMessages, errMsg] } : s)));
+        }
+      } finally {
+        abortRef.current = null;
+        setLoading(false);
+        try { localStorage.removeItem('chat-loading'); } catch { /* ignore */ }
+      }
+    },
+    [active, sessions, persist, autoTitle],
+  );
+
+  // ── Composer send ──
   const send = useCallback(async () => {
     const text = input.trim();
     if (!text || loading || !active) return;
-
+    if (text.startsWith('/')) {
+      if (runSlash(text)) return;
+    }
     const userMsg: ChatMsg = {
       id: Date.now().toString(),
       role: 'user',
       content: text,
+      attachments: attachments.length ? attachments : undefined,
     };
-    const newMessages = [...active.messages, userMsg];
-    const title = newMessages.length <= 2 ? text.slice(0, 40) : active.title;
-    const updated = sessions.map((s) =>
-      s.id === active.id
-        ? { ...s, messages: newMessages, title, updatedAt: Date.now() }
-        : s,
-    );
-    persist(updated);
-    setInput('');
-    setLoading(true);
-    setLiveSteps([]);
-
-    try {
-      const apiMsgs = newMessages
-        .filter((m) => m.role !== 'system')
-        .map(({ role, content }) => ({ role, content }));
-      const res = await fetch(`${API_BASE}/api/chat/stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiMsgs }),
-      });
-      if (!res.ok || !res.body) throw new Error('Stream failed');
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let finalMsg: ChatMsg | null = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const ev = JSON.parse(line);
-            const ts = Date.now();
-            if (ev.step === 'classifying') {
-              setLiveSteps((p) => [
-                ...p.filter((b) => b.stepType !== 'classifying'),
-                {
-                  id: `s-${ts}`,
-                  role: 'system',
-                  content: 'Classifying…',
-                  stepType: 'classifying',
-                },
-              ]);
-            } else if (ev.step === 'classified') {
-              setLiveSteps((p) => [
-                ...p.filter((b) => b.stepType !== 'classifying'),
-                {
-                  id: `s-${ts}`,
-                  role: 'system',
-                  content: `Routed → ${ev.node} · ${ev.tier} · ${ev.classifier_latency || ''}`,
-                  stepType: 'classified',
-                  node: ev.node,
-                  tier: ev.tier,
-                },
-              ]);
-            } else if (ev.step === 'generating') {
-              setLiveSteps((p) => [
-                ...p,
-                {
-                  id: `s-${ts}`,
-                  role: 'system',
-                  content: `Generating on ${ev.node}…`,
-                  stepType: 'generating',
-                  node: ev.node,
-                },
-              ]);
-            } else if (ev.step === 'searching') {
-              setLiveSteps((p) => [
-                ...p,
-                {
-                  id: `s-${ts}`,
-                  role: 'system',
-                  content: 'Searching the web…',
-                  stepType: 'searching',
-                },
-              ]);
-            } else if (ev.step === 'search_done') {
-              setLiveSteps((p) => [
-                ...p.filter((b) => b.stepType !== 'searching'),
-                {
-                  id: `s-${ts}`,
-                  role: 'system',
-                  content: `🔍 ${ev.message || 'Search complete'}`,
-                  stepType: 'search_done',
-                },
-              ]);
-            } else if (ev.step === 'done') {
-              finalMsg = {
-                id: (ts + 1).toString(),
-                role: 'assistant',
-                content: ev.content || '',
-                node: ev.node,
-                tier: ev.tier,
-                model: ev.model,
-                route: ev.route,
-                latency: ev.latency,
-                classifierLatency: ev.classifier_latency,
-                promptTokens: ev.prompt_tokens,
-                completionTokens: ev.completion_tokens,
-                totalTokens: ev.total_tokens,
-              };
-            } else if (ev.step === 'error') {
-              finalMsg = {
-                id: (ts + 1).toString(),
-                role: 'assistant',
-                content: ev.message || 'Request failed',
-                stepType: 'error',
-              };
-            }
-          } catch {}
-        }
-      }
-
-      setLiveSteps([]);
-      const all = finalMsg ? [...newMessages, finalMsg] : newMessages;
-      const latest = sessions.map((s) =>
-        s.id === active.id
-          ? {
-              ...s,
-              messages: all,
-              updatedAt: Date.now(),
-              title: all.length <= 3 ? text.slice(0, 40) : s.title,
-            }
-          : s,
-      );
-      persist(latest);
-    } catch (e) {
-      setLiveSteps([]);
-      const errMsg: ChatMsg = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `Error: ${e instanceof Error ? e.message : 'Failed'}`,
-      };
-      persist(
-        sessions.map((s) =>
-          s.id === active.id ? { ...s, messages: [...newMessages, errMsg] } : s,
-        ),
-      );
-    } finally {
-      setLoading(false);
+    let composed = text;
+    if (attachments.length) {
+      const parts = attachments
+        .filter((a) => a.text)
+        .map((a) => `\n\n--- Attached: ${a.name} (${a.type}) ---\n${a.text}\n--- end ---`)
+        .join('');
+      if (parts) composed = `${text}${parts}`;
     }
-  }, [input, loading, active, sessions, persist]);
+    const newMessages = [...active.messages, { ...userMsg, content: composed }];
+    const titleSeed = active.messages.length === 0 ? text : undefined;
+    setInput('');
+    setAttachments([]);
+    const oneShot = pendingModel;
+    setPendingModel('');
+    await sendWithMessages(newMessages, { titleSeed, modelOverride: oneShot || undefined });
+  }, [input, loading, active, attachments, pendingModel, runSlash, sendWithMessages]);
+
+  // ── Edit user message + resend ──
+  const startEdit = (m: ChatMsg) => {
+    if (loading) return;
+    setEditingId(m.id);
+    setEditingText(m.content);
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingText('');
+  };
+  const saveEditAndResend = async () => {
+    if (!active || !editingId) return;
+    const idx = active.messages.findIndex((m) => m.id === editingId);
+    if (idx < 0) return;
+    const truncated = active.messages.slice(0, idx);
+    const replaced: ChatMsg = { ...active.messages[idx], content: editingText, edited: true };
+    setEditingId(null);
+    setEditingText('');
+    await sendWithMessages([...truncated, replaced]);
+  };
+
+  // ── Regenerate ──
+  const regenerate = async (assistantId: string) => {
+    if (!active || loading) return;
+    const idx = active.messages.findIndex((m) => m.id === assistantId);
+    if (idx < 0) return;
+    const truncated = active.messages.slice(0, idx);
+    await sendWithMessages(truncated);
+  };
+
+  // ── Branch ──
+  const branchFrom = (atId: string) => {
+    if (!active) return;
+    const idx = active.messages.findIndex((m) => m.id === atId);
+    if (idx < 0) return;
+    const sliced = active.messages.slice(0, idx + 1).map((m) => ({ ...m }));
+    newSession({
+      title: `${active.title} ↳`,
+      messages: sliced,
+      system: active.system,
+      modelOverride: active.modelOverride,
+      temperature: active.temperature,
+      parentSessionId: active.id,
+      branchFromMsgId: atId,
+    });
+  };
+
+  // ── Pin / Star / Archive ──
+  const togglePin = (id: string) => persist(sessions.map((s) => (s.id === id ? { ...s, pinned: !s.pinned } : s)));
+  const toggleStar = (id: string) => persist(sessions.map((s) => (s.id === id ? { ...s, starred: !s.starred } : s)));
+  const toggleArchive = (id: string) => persist(sessions.map((s) => (s.id === id ? { ...s, archived: !s.archived } : s)));
+
+  // ── Voice input ──
+  const { supported: micSupported, listening, start: micStart, stop: micStop } = useSpeechRecognition((t) => {
+    setInput((prev) => (prev ? prev + ' ' + t : t));
+  });
+  const [ttsOn, setTtsOn] = useState<boolean>(() => {
+    try { return localStorage.getItem('chat-tts') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('chat-tts', ttsOn ? '1' : '0'); } catch { /* ignore */ }
+  }, [ttsOn]);
+  // Speak final assistant content when it appears
+  const lastSpokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ttsOn || !active) return;
+    const last = active.messages[active.messages.length - 1];
+    if (last && last.role === 'assistant' && last.id !== lastSpokenRef.current) {
+      lastSpokenRef.current = last.id;
+      speak(last.content);
+    }
+  }, [active, ttsOn]);
+
+  // ── Attachments ──
+  const onPickFiles = () => fileInputRef.current?.click();
+  const onFiles = async (files: FileList | null) => {
+    if (!files || !files.length) return;
+    const items: ChatAttachment[] = [];
+    for (const f of Array.from(files)) {
+      const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+      if (f.type.startsWith('image/')) {
+        const dataUrl = await new Promise<string>((res) => {
+          const r = new FileReader();
+          r.onload = () => res(String(r.result || ''));
+          r.readAsDataURL(f);
+        });
+        items.push({ id, name: f.name, type: f.type, size: f.size, dataUrl });
+      } else if (f.size <= 200_000) {
+        const text = await f.text();
+        items.push({ id, name: f.name, type: f.type || 'text/plain', size: f.size, text });
+      } else {
+        setStatusMsg(`Skipped ${f.name} (>200KB and not an image)`);
+      }
+    }
+    setAttachments((prev) => [...prev, ...items]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+  const onPasteCompose = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData?.items || []);
+    const files = items.map((i) => i.getAsFile()).filter(Boolean) as File[];
+    if (files.length) {
+      e.preventDefault();
+      const dt = new DataTransfer();
+      for (const f of files) dt.items.add(f);
+      onFiles(dt.files);
+      return;
+    }
+    // Auto-detect URL paste → ask to fetch
+    const txt = e.clipboardData?.getData('text') || '';
+    const m = /^https?:\/\/\S+$/.exec(txt.trim());
+    if (m && !input) {
+      // do nothing automatic; just let it land in input
+    }
+  };
+
+  // ── Mention helpers (@app, @node) ──
+  const [appsList, setAppsList] = useState<AppInfo[]>([]);
+  const [nodesList, setNodesList] = useState<Array<{ name: string; tier?: string }>>([]);
+  useEffect(() => {
+    fetch(`${API_BASE}/api/apps`).then((r) => r.json()).then((d) => Array.isArray(d) && setAppsList(d)).catch(() => {});
+    fetch(`${API_BASE}/api/nodes`).then((r) => r.json()).then((d) => Array.isArray(d) && setNodesList(d.map((n: NodeConfig) => ({ name: n.name, tier: n.tier })))).catch(() => {});
+  }, []);
+  const mentionState = useMemo(() => {
+    const m = /(^|\s)@([a-zA-Z0-9_-]*)$/.exec(input);
+    if (!m) return null;
+    const q = m[2].toLowerCase();
+    const apps = appsList.filter((a) => a.name.toLowerCase().includes(q)).slice(0, 5).map((a) => ({ kind: 'app' as const, name: a.name }));
+    const nodes = nodesList.filter((n) => n.name.toLowerCase().includes(q)).slice(0, 5).map((n) => ({ kind: 'node' as const, name: n.name }));
+    return { items: [...apps, ...nodes], replaceLen: m[0].length - (m[1].length || 0) };
+  }, [input, appsList, nodesList]);
+  const insertMention = (name: string) => {
+    setInput((prev) => prev.replace(/(^|\s)@[a-zA-Z0-9_-]*$/, (_full, lead) => `${lead}@${name} `));
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  // ── Keyboard shortcuts ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
+      if (meta && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      } else if (meta && e.key === 'j') {
+        e.preventDefault();
+        newSession();
+      } else if (meta && e.key === '/') {
+        e.preventDefault();
+        setShowSlash((v) => !v);
+        setInput((prev) => (prev.startsWith('/') ? prev : '/' + prev));
+        setTimeout(() => inputRef.current?.focus(), 0);
+      } else if (e.key === 'Escape') {
+        if (searchOpen) setSearchOpen(false);
+        else if (showSlash) setShowSlash(false);
+        else if (editingId) cancelEdit();
+        else if (loading) stop();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editingId, loading, newSession, searchOpen, showSlash, stop]);
+
+  // Slash menu visibility from input
+  useEffect(() => {
+    setShowSlash(input.startsWith('/') && input.split(/\s+/).length === 1);
+  }, [input]);
+
+  const filteredSessions = useMemo(() => {
+    let arr = sessions.slice();
+    if (showFilter === 'pinned') arr = arr.filter((s) => s.pinned);
+    else if (showFilter === 'archived') arr = arr.filter((s) => s.archived);
+    else arr = arr.filter((s) => !s.archived);
+    arr.sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt - a.updatedAt);
+    return arr;
+  }, [sessions, showFilter]);
+
+  const sessionTokens = active
+    ? (active.totalPromptTokens || 0) + (active.totalCompletionTokens || 0)
+    : 0;
+
+  const lastUserMsg = active ? [...active.messages].reverse().find((m) => m.role === 'user') : null;
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] -m-6 -mt-0">
+    <div className="flex h-[calc(100vh-7rem)] -m-6 -mt-0 relative">
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => onFiles(e.target.files)}
+      />
+
       {/* Sessions sidebar */}
       <div
-        className={`${sideOpen ? 'w-56' : 'w-0'} transition-all overflow-hidden border-r border-border/20 bg-muted/10 shrink-0`}>
-        <div className="p-2 space-y-1">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={newSession}
-            className="w-full text-xs mb-2">
-            + New Chat
+        className={`${sideOpen ? 'w-64' : 'w-0'} transition-all overflow-hidden border-r border-border/20 bg-muted/10 shrink-0 flex flex-col`}>
+        <div className="p-2 space-y-1 flex flex-col h-full">
+          <Button size="sm" variant="outline" onClick={() => newSession()} className="w-full text-xs mb-1">
+            <Plus size={12} /> New Chat
           </Button>
-          {sessions.map((s) => (
-            <div
-              key={s.id}
-              className={`group flex items-center gap-1 px-2 py-1.5 rounded text-xs cursor-pointer transition-colors ${s.id === activeId ? 'bg-muted/50 text-foreground' : 'text-muted-foreground hover:bg-muted/30'}`}
-              onClick={() => {
-                setActiveId(s.id);
-                localStorage.setItem('chat-active', s.id);
-              }}>
-              <span className="truncate flex-1">{s.title}</span>
+          <div className="flex gap-1 text-[10px]">
+            {(['all', 'pinned', 'archived'] as const).map((f) => (
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteSession(s.id);
-                }}
-                className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 shrink-0">
-                ×
+                key={f}
+                onClick={() => setShowFilter(f)}
+                className={`flex-1 py-1 rounded transition-colors ${showFilter === f ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground/60 hover:bg-white/5'}`}>
+                {f}
               </button>
-            </div>
-          ))}
+            ))}
+          </div>
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="w-full flex items-center gap-2 px-2 py-1.5 text-[11px] text-muted-foreground/60 border border-border/20 rounded hover:bg-white/5 transition-colors">
+            <Search size={11} />
+            Search… <span className="ml-auto text-[9px] opacity-50">⌘K</span>
+          </button>
+          <div className="flex-1 overflow-auto -mx-2 px-2 mt-1 space-y-0.5">
+            {filteredSessions.map((s) => (
+              <div
+                key={s.id}
+                className={`group flex items-center gap-1 px-2 py-1.5 rounded text-xs cursor-pointer transition-colors ${s.id === activeId ? 'bg-muted/50 text-foreground' : 'text-muted-foreground hover:bg-muted/30'}`}
+                onClick={() => {
+                  setActiveId(s.id);
+                  try { localStorage.setItem('chat-active', s.id); } catch { /* ignore */ }
+                }}>
+                {s.pinned && <Pin size={9} className="text-violet-400 shrink-0" />}
+                {s.starred && <Star size={9} className="text-amber-400 shrink-0" />}
+                <span className="truncate flex-1">{s.title || 'Untitled'}</span>
+                <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5">
+                  <button
+                    title={s.pinned ? 'Unpin' : 'Pin'}
+                    onClick={(e) => { e.stopPropagation(); togglePin(s.id); }}
+                    className="p-0.5 text-muted-foreground/60 hover:text-violet-300">
+                    <Pin size={10} />
+                  </button>
+                  <button
+                    title={s.archived ? 'Unarchive' : 'Archive'}
+                    onClick={(e) => { e.stopPropagation(); toggleArchive(s.id); }}
+                    className="p-0.5 text-muted-foreground/60 hover:text-foreground">
+                    <Archive size={10} />
+                  </button>
+                  <button
+                    title="Delete"
+                    onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${s.title}"?`)) deleteSession(s.id); }}
+                    className="p-0.5 text-red-400 hover:text-red-300">
+                    <Trash2 size={10} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {filteredSessions.length === 0 && (
+              <div className="text-[10px] text-muted-foreground/40 italic px-2 py-2">No sessions.</div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -4152,120 +4926,544 @@ function ChatPanel() {
             className="text-muted-foreground hover:text-foreground text-sm">
             ☰
           </button>
-          <span className="text-xs text-muted-foreground truncate">
+          <span className="text-xs text-muted-foreground truncate flex-1">
             {active?.title || 'Chat'}
           </span>
+          {active && (
+            <>
+              <button
+                onClick={() => setSystemEditOpen((v) => !v)}
+                title="System prompt / persona"
+                className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${active.system ? 'border-violet-400/40 text-violet-300' : 'border-border/30 text-muted-foreground/60 hover:text-foreground'}`}>
+                {active.system ? 'system ✓' : '+ system'}
+              </button>
+              <button
+                onClick={() => toggleStar(active.id)}
+                title="Star"
+                className={`p-1 rounded hover:bg-white/5 ${active.starred ? 'text-amber-400' : 'text-muted-foreground/40'}`}>
+                <Star size={12} />
+              </button>
+              <button onClick={exportSession} title="Export as Markdown" className="p-1 rounded hover:bg-white/5 text-muted-foreground/60 hover:text-foreground">
+                <Download size={12} />
+              </button>
+              <button
+                onClick={() => setTtsOn((v) => { if (v) stopSpeaking(); return !v; })}
+                title={ttsOn ? 'Disable speech' : 'Speak replies'}
+                className={`p-1 rounded hover:bg-white/5 ${ttsOn ? 'text-violet-300' : 'text-muted-foreground/40'}`}>
+                <Volume2 size={12} />
+              </button>
+              {sessionTokens > 0 && (
+                <span className="text-[10px] text-muted-foreground/50 font-mono ml-1">{sessionTokens} tok</span>
+              )}
+            </>
+          )}
         </div>
 
+        {/* Resume banner */}
+        {resumeBanner && (
+          <div className="px-4 py-2 text-[11px] bg-amber-500/10 border-b border-amber-500/20 text-amber-200/90 flex items-center justify-between">
+            <span>The previous request was interrupted. The reply may be missing.</span>
+            <button onClick={() => setResumeBanner(false)} className="text-amber-200/70 hover:text-amber-100">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {/* System prompt editor */}
+        {systemEditOpen && active && (
+          <div className="px-4 py-3 border-b border-border/20 bg-white/[0.02] space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50">System prompt / persona</span>
+              <div className="flex items-center gap-1">
+                {personas.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => updateActive((s) => ({ ...s, system: p.system }))}
+                    title={p.name}
+                    className="text-[10px] px-2 py-0.5 rounded border border-border/30 text-muted-foreground/70 hover:text-foreground hover:bg-white/5">
+                    {p.emoji} {p.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <textarea
+              value={active.system || ''}
+              onChange={(e) => updateActive((s) => ({ ...s, system: e.target.value }))}
+              rows={3}
+              placeholder="e.g. You are a Rust expert. Reply in code-first style."
+              className="w-full bg-black/30 border border-white/10 rounded p-2 text-[12px] text-foreground/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-400/40 resize-none"
+            />
+            <div className="flex items-center gap-2 text-[10px]">
+              <label className="text-muted-foreground/60">Temp</label>
+              <input
+                type="number"
+                min={0}
+                max={2}
+                step={0.1}
+                value={active.temperature ?? 0.7}
+                onChange={(e) => updateActive((s) => ({ ...s, temperature: parseFloat(e.target.value) }))}
+                className="w-16 bg-black/30 border border-white/10 rounded px-1 py-0.5 text-foreground/80 font-mono"
+              />
+              <label className="text-muted-foreground/60 ml-2">Default route</label>
+              <select
+                value={active.modelOverride || 'auto'}
+                onChange={(e) => updateActive((s) => ({ ...s, modelOverride: e.target.value }))}
+                className="bg-black/30 border border-white/10 rounded px-1 py-0.5 text-foreground/80">
+                <option value="auto">auto</option>
+                <option value="light">light</option>
+                <option value="heavy">heavy</option>
+                {nodesList.map((n) => (
+                  <option key={n.name} value={n.name}>{n.name}</option>
+                ))}
+              </select>
+              <span className="ml-auto text-muted-foreground/40">Saved per chat</span>
+            </div>
+          </div>
+        )}
+
         {/* Messages — centered column */}
-        <div className="flex-1 overflow-auto">
-          <div className="max-w-3xl mx-auto px-4 py-4 space-y-3">
+        <div ref={messagesScrollRef} className="flex-1 overflow-auto">
+          <div className="max-w-3xl mx-auto px-4 py-4 space-y-4">
             {displayMessages.length === 0 && (
-              <div className="flex items-center justify-center h-[60vh]">
+              <div className="flex flex-col items-center justify-center h-[60vh] gap-3">
                 <p className="text-sm text-muted-foreground/50">
                   Send a message to start chatting
                 </p>
+                <div className="flex flex-wrap gap-1.5 justify-center max-w-md">
+                  {SLASH_COMMANDS.slice(0, 6).map((c) => (
+                    <button
+                      key={c.cmd}
+                      onClick={() => { setInput(c.cmd + ' '); setTimeout(() => inputRef.current?.focus(), 0); }}
+                      className="text-[10px] px-2 py-1 rounded border border-border/30 text-muted-foreground/60 hover:text-foreground hover:bg-white/5 font-mono">
+                      {c.cmd}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
-            {displayMessages.map((msg) => (
-              <div key={msg.id}>
-                {msg.role === 'system' || msg.stepType ? (
-                  <div className="flex items-center gap-2 py-1">
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        msg.stepType === 'classified'
-                          ? 'bg-violet-400'
-                          : msg.stepType === 'generating'
-                            ? 'bg-blue-400 animate-pulse'
-                            : msg.stepType === 'classifying'
-                              ? 'bg-zinc-400 animate-pulse'
-                              : msg.stepType === 'searching'
-                                ? 'bg-blue-400 animate-pulse'
-                                : msg.stepType === 'error'
-                                  ? 'bg-red-400'
-                                  : 'bg-zinc-400'
-                      }`}
-                    />
-                    <span className="text-[11px] text-muted-foreground">
-                      {msg.content}
-                    </span>
-                  </div>
-                ) : msg.role === 'user' ? (
-                  <div className="flex justify-end">
-                    <div className="bg-foreground/10 rounded-2xl rounded-br-sm px-4 py-2.5 max-w-[85%]">
-                      <p className="text-sm whitespace-pre-wrap">
-                        {msg.content}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex justify-start">
-                    <div className="rounded-2xl rounded-bl-sm px-4 py-2.5 max-w-[85%] space-y-1">
-                      <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                        {msg.content}
-                      </p>
-                      {(msg.node || msg.latency) && (
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          {msg.node && (
-                            <span className="text-[10px] text-violet-400">
-                              {msg.node}
-                            </span>
+
+            {/* Group consecutive system steps into a single collapsible reasoning block */}
+            {(() => {
+              const out: React.ReactNode[] = [];
+              let i = 0;
+              while (i < displayMessages.length) {
+                const m = displayMessages[i];
+                if (m.role === 'system' || m.stepType) {
+                  let j = i;
+                  const group: ChatMsg[] = [];
+                  while (j < displayMessages.length && (displayMessages[j].role === 'system' || displayMessages[j].stepType)) {
+                    group.push(displayMessages[j]);
+                    j++;
+                  }
+                  const groupKey = `g-${group[0].id}`;
+                  const collapsed = collapsedReasoning[groupKey] ?? group.length > 2;
+                  out.push(
+                    <div key={groupKey} className="text-[11px]">
+                      <button
+                        onClick={() => setCollapsedReasoning((p) => ({ ...p, [groupKey]: !collapsed }))}
+                        className="flex items-center gap-1 text-muted-foreground/50 hover:text-muted-foreground/80">
+                        {collapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
+                        Reasoning ({group.length})
+                      </button>
+                      {!collapsed && (
+                        <div className="ml-3 mt-1 space-y-1">
+                          {group.map((g) => (
+                            <div key={g.id} className="flex items-center gap-2">
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  g.stepType === 'classified'
+                                    ? 'bg-violet-400'
+                                    : g.stepType === 'generating'
+                                      ? 'bg-blue-400 animate-pulse'
+                                      : g.stepType === 'classifying'
+                                        ? 'bg-zinc-400 animate-pulse'
+                                        : g.stepType === 'searching'
+                                          ? 'bg-blue-400 animate-pulse'
+                                          : g.stepType === 'error'
+                                            ? 'bg-red-400'
+                                            : 'bg-zinc-400'
+                                }`}
+                              />
+                              <span className="text-muted-foreground">{g.content}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>,
+                  );
+                  i = j;
+                  continue;
+                }
+                if (m.role === 'user') {
+                  out.push(
+                    <div key={m.id} className="flex justify-end group">
+                      {editingId === m.id ? (
+                        <div className="w-full max-w-[85%] space-y-1">
+                          <textarea
+                            value={editingText}
+                            onChange={(e) => setEditingText(e.target.value)}
+                            rows={Math.min(6, Math.max(2, editingText.split('\n').length))}
+                            className="w-full bg-black/30 border border-violet-400/40 rounded p-2 text-sm text-foreground focus:outline-none resize-none"
+                          />
+                          <div className="flex justify-end gap-1">
+                            <button onClick={cancelEdit} className="text-[10px] px-2 py-1 text-muted-foreground hover:text-foreground">
+                              Cancel
+                            </button>
+                            <button onClick={saveEditAndResend} className="text-[10px] px-2 py-1 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-400/30 rounded text-violet-100">
+                              Save & resend
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-foreground/10 rounded-2xl rounded-br-sm px-4 py-2.5 max-w-[85%] relative">
+                          <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+                          {m.attachments && m.attachments.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {m.attachments.map((a) => (
+                                <span key={a.id} className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-foreground/70">
+                                  📎 {a.name}
+                                </span>
+                              ))}
+                            </div>
                           )}
-                          {msg.model && (
-                            <span className="text-[10px] text-muted-foreground font-mono">
-                              {msg.model}
-                            </span>
-                          )}
-                          {msg.latency && (
-                            <span className="text-[10px] text-muted-foreground">
-                              {msg.latency}
-                            </span>
-                          )}
-                          {msg.totalTokens != null && msg.totalTokens > 0 && (
-                            <span className="text-[10px] text-muted-foreground/60 font-mono">
-                              {msg.promptTokens}→{msg.completionTokens} (
-                              {msg.totalTokens} tok)
-                            </span>
+                          {m.edited && <span className="text-[9px] text-muted-foreground/40 ml-1">(edited)</span>}
+                          <button
+                            onClick={() => startEdit(m)}
+                            title="Edit & resend"
+                            className="absolute -left-7 top-2 opacity-0 group-hover:opacity-100 p-1 text-muted-foreground/50 hover:text-foreground rounded transition-opacity">
+                            <Pencil size={11} />
+                          </button>
+                        </div>
+                      )}
+                    </div>,
+                  );
+                  i++;
+                  continue;
+                }
+                // assistant
+                const reasoning = m.reasoningSteps && m.reasoningSteps.length > 1;
+                const reasoningKey = `r-${m.id}`;
+                const reasoningCollapsed = collapsedReasoning[reasoningKey] ?? true;
+                out.push(
+                  <div key={m.id} className="flex justify-start group">
+                    <div className="rounded-2xl rounded-bl-sm px-4 py-2.5 max-w-[85%] space-y-2 w-full">
+                      {reasoning && (
+                        <div className="text-[10px]">
+                          <button
+                            onClick={() => setCollapsedReasoning((p) => ({ ...p, [reasoningKey]: !reasoningCollapsed }))}
+                            className="flex items-center gap-1 text-muted-foreground/50 hover:text-muted-foreground/80">
+                            {reasoningCollapsed ? <ChevronRight size={9} /> : <ChevronDown size={9} />}
+                            Reasoning ({m.reasoningSteps?.length})
+                          </button>
+                          {!reasoningCollapsed && (
+                            <div className="ml-3 mt-1 space-y-0.5 text-muted-foreground/70">
+                              {m.reasoningSteps?.map((r, ri) => (
+                                <div key={ri}>· {r.text}</div>
+                              ))}
+                            </div>
                           )}
                         </div>
                       )}
+                      <MarkdownView text={m.content} />
+                      {/* Trace strip */}
+                      {(m.node || m.latency) && (
+                        <div className="flex flex-wrap gap-2 pt-1 items-center text-[10px] text-muted-foreground/60">
+                          {m.node && <span className="text-violet-400/80">{m.node}</span>}
+                          {m.tier && <span className="opacity-60">· {m.tier}</span>}
+                          {m.model && <span className="font-mono opacity-60">· {m.model}</span>}
+                          {m.latency && <span>· {m.latency}</span>}
+                          {m.classifierLatency && <span>· cls {m.classifierLatency}</span>}
+                          {m.totalTokens != null && m.totalTokens > 0 && (
+                            <span className="font-mono">· {m.promptTokens}→{m.completionTokens} ({m.totalTokens} tok)</span>
+                          )}
+                          <span className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => copyToClipboard(m.content)}
+                              title="Copy reply"
+                              className="p-0.5 hover:text-foreground">
+                              <Copy size={10} />
+                            </button>
+                            <button
+                              onClick={() => regenerate(m.id)}
+                              title="Regenerate"
+                              className="p-0.5 hover:text-foreground">
+                              <RefreshCw size={10} />
+                            </button>
+                            <button
+                              onClick={() => branchFrom(m.id)}
+                              title="Branch from here"
+                              className="p-0.5 hover:text-foreground">
+                              <GitBranch size={10} />
+                            </button>
+                            <button
+                              onClick={() => speak(m.content)}
+                              title="Speak"
+                              className="p-0.5 hover:text-foreground">
+                              <Volume2 size={10} />
+                            </button>
+                            <button
+                              onClick={() => gotoPage('apps', { prompt: m.content })}
+                              title="Send to Apps wizard"
+                              className="p-0.5 hover:text-foreground">
+                              <Blocks size={10} />
+                            </button>
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
-              </div>
-            ))}
-            <div ref={endRef} />
+                  </div>,
+                );
+                i++;
+              }
+              return out;
+            })()}
           </div>
         </div>
 
-        {/* Input — centered */}
-        <div className="border-t border-border/20 p-3">
-          <div className="flex gap-2 max-w-3xl mx-auto">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
-              placeholder="Message..."
-              disabled={loading}
-              className="flex-1 bg-muted/30 border border-border/40 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            <Button
-              onClick={send}
-              disabled={loading || !input.trim()}
-              size="sm"
-              className="px-4">
-              {loading ? (
-                <span className="inline-block w-4 h-4 border-2 border-foreground/30 border-t-foreground rounded-full animate-spin" />
-              ) : (
-                '→'
-              )}
-            </Button>
+        {/* Status / slash menu / mention menu */}
+        {statusMsg && (
+          <div className="px-4 py-1 text-[11px] text-muted-foreground/70 border-t border-border/10 bg-white/[0.02] flex items-start gap-2 max-w-3xl mx-auto w-full">
+            <span className="whitespace-pre-wrap flex-1">{statusMsg}</span>
+            <button onClick={() => setStatusMsg(null)} className="text-muted-foreground/40 hover:text-foreground">
+              <X size={11} />
+            </button>
           </div>
+        )}
+
+        {/* Composer */}
+        <div className="border-t border-border/20 p-3 relative">
+          <div className="max-w-3xl mx-auto space-y-2">
+            {/* Attachments preview */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {attachments.map((a) => (
+                  <span key={a.id} className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-white/10 text-foreground/80">
+                    📎 {a.name}
+                    <button
+                      onClick={() => setAttachments((p) => p.filter((x) => x.id !== a.id))}
+                      className="text-muted-foreground hover:text-red-300">
+                      <X size={9} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Per-turn model override pill */}
+            {pendingModel && (
+              <div className="flex items-center gap-1 text-[10px]">
+                <span className="text-muted-foreground/60">Next turn →</span>
+                <span className="px-2 py-0.5 rounded bg-violet-500/15 border border-violet-400/30 text-violet-200">{pendingModel}</span>
+                <button onClick={() => setPendingModel('')} className="text-muted-foreground/60 hover:text-foreground">
+                  <X size={10} />
+                </button>
+              </div>
+            )}
+
+            <div className="flex gap-2 items-end">
+              <button
+                onClick={onPickFiles}
+                title="Attach file"
+                disabled={loading}
+                className="p-2 text-muted-foreground/60 hover:text-foreground rounded hover:bg-white/5 disabled:opacity-30">
+                <Plus size={14} />
+              </button>
+              {micSupported && (
+                <button
+                  onClick={() => (listening ? micStop() : micStart())}
+                  title={listening ? 'Stop listening' : 'Voice input'}
+                  className={`p-2 rounded hover:bg-white/5 ${listening ? 'text-red-400 animate-pulse' : 'text-muted-foreground/60 hover:text-foreground'}`}>
+                  <Mic size={14} />
+                </button>
+              )}
+              <select
+                value={pendingModel}
+                onChange={(e) => setPendingModel(e.target.value)}
+                title="Override route for next turn"
+                className="text-[10px] bg-black/30 border border-border/30 rounded px-1 py-1 text-muted-foreground/70 focus:outline-none focus:text-foreground">
+                <option value="">auto</option>
+                <option value="light">light</option>
+                <option value="heavy">heavy</option>
+                {nodesList.map((n) => (
+                  <option key={n.name} value={n.name}>{n.name}</option>
+                ))}
+              </select>
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onPaste={onPasteCompose}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && (e.metaKey || e.ctrlKey || !e.altKey)) {
+                    if (!e.shiftKey) {
+                      e.preventDefault();
+                      send();
+                    }
+                  } else if (e.key === 'ArrowUp' && !input && lastUserMsg) {
+                    e.preventDefault();
+                    startEdit(lastUserMsg);
+                  } else if (e.key === 'Tab' && mentionState && mentionState.items.length > 0) {
+                    e.preventDefault();
+                    insertMention(mentionState.items[0].name);
+                  }
+                }}
+                placeholder={loading ? 'Generating… press Esc to stop' : 'Message…   /  for commands,  @  to mention,  ⌘↵ to send'}
+                rows={Math.min(6, Math.max(1, input.split('\n').length))}
+                className="flex-1 bg-muted/30 border border-border/40 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+              />
+              {loading ? (
+                <Button onClick={stop} size="sm" variant="destructive" className="px-3" title="Stop (Esc)">
+                  <Square size={14} />
+                </Button>
+              ) : (
+                <Button onClick={send} disabled={!input.trim() && attachments.length === 0} size="sm" className="px-3" title="Send (⌘↵)">
+                  <Send size={14} />
+                </Button>
+              )}
+            </div>
+
+            {/* Slash menu */}
+            {showSlash && (
+              <div className="absolute bottom-full left-3 right-3 mb-2 max-w-3xl mx-auto bg-[#0a0a0a] border border-white/10 rounded-lg shadow-xl overflow-hidden z-10">
+                {SLASH_COMMANDS.filter((c) => c.cmd.startsWith(input.split(' ')[0]) || input === '/').map((c) => (
+                  <button
+                    key={c.cmd}
+                    onClick={() => { setInput(c.cmd + ' '); setTimeout(() => inputRef.current?.focus(), 0); setShowSlash(false); }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-white/5 text-[11px] flex items-baseline gap-2">
+                    <span className="font-mono text-violet-300">{c.cmd}</span>
+                    <span className="text-muted-foreground/60">{c.hint}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Mention menu */}
+            {mentionState && mentionState.items.length > 0 && (
+              <div className="absolute bottom-full left-3 right-3 mb-2 max-w-3xl mx-auto bg-[#0a0a0a] border border-white/10 rounded-lg shadow-xl overflow-hidden z-10">
+                {mentionState.items.map((it) => (
+                  <button
+                    key={`${it.kind}:${it.name}`}
+                    onClick={() => insertMention(it.name)}
+                    className="w-full text-left px-3 py-1.5 hover:bg-white/5 text-[11px] flex items-center gap-2">
+                    <span className={`text-[9px] uppercase tracking-wider ${it.kind === 'app' ? 'text-blue-300/70' : 'text-amber-300/70'}`}>{it.kind}</span>
+                    <span className="font-mono text-foreground">@{it.name}</span>
+                    <span className="ml-auto text-[9px] text-muted-foreground/40">↹ Tab</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Search palette */}
+      {searchOpen && (
+        <SearchPalette
+          sessions={sessions}
+          query={searchQ}
+          setQuery={setSearchQ}
+          onPick={(id) => {
+            setActiveId(id);
+            try { localStorage.setItem('chat-active', id); } catch { /* ignore */ }
+            setSearchOpen(false);
+          }}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
+
+      {/* Persona library trigger (subtle) */}
+      <PersonaQuickAdd personas={personas} onSave={persistPersonas} />
+    </div>
+  );
+}
+
+function SearchPalette(props: {
+  sessions: ChatSession[];
+  query: string;
+  setQuery: (v: string) => void;
+  onPick: (id: string) => void;
+  onClose: () => void;
+}) {
+  const { sessions, query, setQuery, onPick, onClose } = props;
+  const ref = useRef<HTMLInputElement | null>(null);
+  useEffect(() => { ref.current?.focus(); }, []);
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return sessions.slice(0, 30).sort((a, b) => b.updatedAt - a.updatedAt);
+    const out: Array<{ session: ChatSession; snippet: string; score: number }> = [];
+    for (const s of sessions) {
+      const titleHit = s.title.toLowerCase().includes(q);
+      let snippet = '';
+      let score = titleHit ? 100 : 0;
+      for (const m of s.messages) {
+        if (m.role === 'system') continue;
+        const idx = m.content.toLowerCase().indexOf(q);
+        if (idx !== -1) {
+          score += 10;
+          if (!snippet) {
+            const start = Math.max(0, idx - 30);
+            snippet = (start > 0 ? '…' : '') + m.content.slice(start, idx + q.length + 60).replace(/\n/g, ' ');
+          }
+        }
+      }
+      if (score > 0) out.push({ session: s, snippet: snippet || s.title, score });
+    }
+    return out.sort((a, b) => b.score - a.score).slice(0, 30).map((r) => ({ ...r.session, _snippet: r.snippet } as ChatSession & { _snippet?: string }));
+  }, [sessions, query]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm pt-24" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="w-[640px] max-w-[92vw] bg-[#0a0a0a] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-white/5">
+          <Search size={12} className="text-muted-foreground/60" />
+          <input
+            ref={ref}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') onClose();
+              if (e.key === 'Enter' && results[0]) onPick(results[0].id);
+            }}
+            placeholder="Search chats and messages…"
+            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+          />
+          <span className="text-[10px] text-muted-foreground/40">Esc</span>
+        </div>
+        <div className="max-h-[60vh] overflow-auto">
+          {results.length === 0 && (
+            <div className="px-3 py-6 text-center text-[12px] text-muted-foreground/40">No matches</div>
+          )}
+          {results.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => onPick(s.id)}
+              className="w-full text-left px-3 py-2 hover:bg-white/5 border-b border-white/5">
+              <div className="text-[12px] text-foreground/90 truncate">{s.title}</div>
+              {(s as ChatSession & { _snippet?: string })._snippet && (
+                <div className="text-[10px] text-muted-foreground/60 truncate">{(s as ChatSession & { _snippet?: string })._snippet}</div>
+              )}
+              <div className="text-[9px] text-muted-foreground/40 font-mono">{new Date(s.updatedAt).toLocaleString()}</div>
+            </button>
+          ))}
         </div>
       </div>
     </div>
   );
+}
+
+function PersonaQuickAdd({ personas, onSave }: { personas: Persona[]; onSave: (arr: Persona[]) => void }) {
+  // hidden helper that listens for a custom event to add a persona; keeps the panel small.
+  useEffect(() => {
+    const onAdd = (e: Event) => {
+      const detail = (e as CustomEvent).detail as Persona | undefined;
+      if (!detail || !detail.id || !detail.name) return;
+      if (personas.some((p) => p.id === detail.id)) return;
+      onSave([...personas, detail]);
+    };
+    window.addEventListener('chat:persona-add', onAdd as EventListener);
+    return () => window.removeEventListener('chat:persona-add', onAdd as EventListener);
+  }, [personas, onSave]);
+  return null;
 }
 
 /* ── Settings Panel (Config + Node CRUD) ── */
@@ -5360,6 +6558,23 @@ function App() {
   const [appCount, setAppCount] = useState(0);
   const [logsOpen, setLogsOpen] = useState(false);
   const [logsPinned, setLogsPinned] = useState(false);
+
+  // Cross-panel navigation via custom event (used by Chat → Apps handoff)
+  useEffect(() => {
+    const onNav = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { page?: string; payload?: unknown } | undefined;
+      if (!detail?.page) return;
+      setPage(detail.page);
+      if (detail.page === 'apps' && detail.payload) {
+        // Re-dispatch so AppsPanel (already mounted) can pick it up
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('apps:prefill-prompt', { detail: detail.payload }));
+        }, 50);
+      }
+    };
+    window.addEventListener('nav:goto', onNav as EventListener);
+    return () => window.removeEventListener('nav:goto', onNav as EventListener);
+  }, []);
 
   // Lightweight status polling
   useEffect(() => {

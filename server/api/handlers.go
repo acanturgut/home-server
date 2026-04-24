@@ -56,7 +56,9 @@ func parseAppFilePath(urlPath string) (name, filePath string) {
 }
 
 type chatReq struct {
-	Messages []ai.Message `json:"messages"`
+	Messages    []ai.Message `json:"messages"`
+	Route       string       `json:"route,omitempty"`       // ""|"auto"|"light"|"heavy"|<node-name>
+	Temperature *float64     `json:"temperature,omitempty"`
 }
 
 type errorResp struct {
@@ -264,7 +266,8 @@ func (h *Handler) ChatStream(w http.ResponseWriter, r *http.Request) {
 
 	requestID := uuid.New().String()
 
-	h.router.ChatStream(r.Context(), requestID, req.Messages, func(event ai.StreamEvent) {
+	opts := ai.ChatStreamOpts{Route: req.Route, Temperature: req.Temperature}
+	h.router.ChatStream(r.Context(), requestID, req.Messages, opts, func(event ai.StreamEvent) {
 		json.NewEncoder(w).Encode(event)
 		flusher.Flush()
 	})
