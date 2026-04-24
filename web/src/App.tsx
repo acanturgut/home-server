@@ -1145,6 +1145,217 @@ function PipelineProgress({ events }: { events: BuildEvent[] }) {
   );
 }
 
+// ── Diff parsing & viewer (side-by-side or unified) ──────────────
+type DiffRow = {
+  kind: 'ctx' | 'mod' | 'add' | 'del' | 'gap';
+  oldNo?: number;
+  newNo?: number;
+  oldText?: string;
+  newText?: string;
+};
+type DiffFile = {
+  path: string;
+  oldPath: string;
+  newPath: string;
+  isNew: boolean;
+  isDeleted: boolean;
+  rows: DiffRow[];
+  added: number;
+  removed: number;
+};
+
+function parseUnifiedDiff(diff: string): DiffFile[] {
+  if (!diff) return [];
+  const files: DiffFile[] = [];
+  const lines = diff.split('\n');
+  let cur: DiffFile | null = null;
+  let oldNo = 0;
+  let newNo = 0;
+  let pendingDel: { no: number; text: string }[] = [];
+  let pendingAdd: { no: number; text: string }[] = [];
+
+  const flushPending = () => {
+    if (!cur) return;
+    const n = Math.max(pendingDel.length, pendingAdd.length);
+    for (let i = 0; i < n; i++) {
+      const d = pendingDel[i];
+      const a = pendingAdd[i];
+      if (d && a) {
+        cur.rows.push({ kind: 'mod', oldNo: d.no, newNo: a.no, oldText: d.text, newText: a.text });
+      } else if (d) {
+        cur.rows.push({ kind: 'del', oldNo: d.no, oldText: d.text });
+      } else if (a) {
+        cur.rows.push({ kind: 'add', newNo: a.no, newText: a.text });
+      }
+    }
+    pendingDel = [];
+    pendingAdd = [];
+  };
+
+  for (const line of lines) {
+    if (line.startsWith('diff --git ')) {
+      flushPending();
+      const m = line.match(/diff --git a\/(.*?) b\/(.*)$/);
+      const path = m ? m[2] : line.slice(11);
+      cur = {
+        path,
+        oldPath: m ? m[1] : path,
+        newPath: m ? m[2] : path,
+        isNew: false,
+        isDeleted: false,
+        rows: [],
+        added: 0,
+        removed: 0,
+      };
+      files.push(cur);
+      oldNo = 0;
+      newNo = 0;
+      continue;
+    }
+    if (!cur) continue;
+    if (line.startsWith('new file')) {
+      cur.isNew = true;
+      continue;
+    }
+    if (line.startsWith('deleted file')) {
+      cur.isDeleted = true;
+      continue;
+    }
+    if (line.startsWith('@@')) {
+      flushPending();
+      const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (m) {
+        oldNo = parseInt(m[1], 10);
+        newNo = parseInt(m[2], 10);
+      }
+      if (cur.rows.length > 0) cur.rows.push({ kind: 'gap' });
+      continue;
+    }
+    if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('index ')) continue;
+    if (line.startsWith('-')) {
+      pendingDel.push({ no: oldNo++, text: line.slice(1) });
+      cur.removed++;
+      continue;
+    }
+    if (line.startsWith('+')) {
+      pendingAdd.push({ no: newNo++, text: line.slice(1) });
+      cur.added++;
+      continue;
+    }
+    // context line (starts with space, or empty inside hunk)
+    flushPending();
+    const text = line.startsWith(' ') ? line.slice(1) : line;
+    cur.rows.push({ kind: 'ctx', oldNo: oldNo++, newNo: newNo++, oldText: text, newText: text });
+  }
+  flushPending();
+  return files;
+}
+
+function DiffView({ diff, mode }: { diff: string; mode: 'split' | 'unified' }) {
+  const files = useMemo(() => parseUnifiedDiff(diff), [diff]);
+  if (!files.length) {
+    return <div className="p-4 text-[11px] text-muted-foreground/60">No changes.</div>;
+  }
+  return (
+    <div className="space-y-4">
+      {files.map((f, fi) => (
+        <div key={fi} className="rounded border border-white/10 overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] border-b border-white/10 text-[11px]">
+            <FileCode2 size={11} className="text-violet-400/70 shrink-0" />
+            <span className="font-mono text-foreground/80 truncate flex-1">{f.path}</span>
+            {f.isNew && <span className="text-[9px] uppercase text-emerald-400/80">new</span>}
+            {f.isDeleted && <span className="text-[9px] uppercase text-red-400/80">deleted</span>}
+            <span className="text-[10px] tabular-nums text-emerald-400/80">+{f.added}</span>
+            <span className="text-[10px] tabular-nums text-red-400/80">−{f.removed}</span>
+          </div>
+          {mode === 'split' ? (
+            <div className="grid grid-cols-2 text-[10px] font-mono">
+              {f.rows.map((row, ri) => {
+                if (row.kind === 'gap') {
+                  return (
+                    <div key={ri} className="col-span-2 px-3 py-1 bg-sky-500/5 text-sky-400/60 border-y border-white/5 text-[9px]">
+                      ⋯
+                    </div>
+                  );
+                }
+                const leftFill = row.kind === 'add' || row.kind === 'gap';
+                const rightFill = row.kind === 'del' || row.kind === 'gap';
+                const leftBg =
+                  row.kind === 'del' ? 'bg-red-500/10' :
+                  row.kind === 'mod' ? 'bg-red-500/8' :
+                  leftFill ? 'bg-white/[0.015]' : '';
+                const rightBg =
+                  row.kind === 'add' ? 'bg-emerald-500/10' :
+                  row.kind === 'mod' ? 'bg-emerald-500/8' :
+                  rightFill ? 'bg-white/[0.015]' : '';
+                return (
+                  <div key={ri} className="contents">
+                    <div className={`flex border-r border-white/5 ${leftBg}`}>
+                      <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 tabular-nums select-none">
+                        {row.oldNo ?? ''}
+                      </span>
+                      <span className="flex-1 whitespace-pre-wrap break-all px-1 text-foreground/80">
+                        {leftFill ? '' : row.oldText ?? ''}
+                      </span>
+                    </div>
+                    <div className={`flex ${rightBg}`}>
+                      <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 tabular-nums select-none">
+                        {row.newNo ?? ''}
+                      </span>
+                      <span className="flex-1 whitespace-pre-wrap break-all px-1 text-foreground/80">
+                        {rightFill ? '' : row.newText ?? ''}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-[10px] font-mono">
+              {f.rows.map((row, ri) => {
+                if (row.kind === 'gap') {
+                  return (
+                    <div key={ri} className="px-3 py-1 bg-sky-500/5 text-sky-400/60 text-[9px]">⋯</div>
+                  );
+                }
+                if (row.kind === 'mod') {
+                  return (
+                    <div key={ri}>
+                      <div className="flex bg-red-500/10">
+                        <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 select-none">{row.oldNo}</span>
+                        <span className="px-1 text-red-300/90">−</span>
+                        <span className="flex-1 whitespace-pre-wrap break-all">{row.oldText}</span>
+                      </div>
+                      <div className="flex bg-emerald-500/10">
+                        <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 select-none">{row.newNo}</span>
+                        <span className="px-1 text-emerald-300/90">+</span>
+                        <span className="flex-1 whitespace-pre-wrap break-all">{row.newText}</span>
+                      </div>
+                    </div>
+                  );
+                }
+                const bg =
+                  row.kind === 'add' ? 'bg-emerald-500/10' :
+                  row.kind === 'del' ? 'bg-red-500/10' : '';
+                const sign = row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' ';
+                const text = row.kind === 'add' ? row.newText : row.kind === 'del' ? row.oldText : row.oldText;
+                const no = row.kind === 'add' ? row.newNo : row.oldNo;
+                return (
+                  <div key={ri} className={`flex ${bg}`}>
+                    <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 select-none">{no ?? ''}</span>
+                    <span className="px-1 text-muted-foreground/40">{sign}</span>
+                    <span className="flex-1 whitespace-pre-wrap break-all text-foreground/80">{text ?? ''}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function EventLog({
   events,
   expanded,
@@ -2228,6 +2439,7 @@ function AppsPanel() {
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const [diffSha, setDiffSha] = useState<string | null>(null);
   const [diffText, setDiffText] = useState('');
+  const [diffMode, setDiffMode] = useState<'split' | 'unified'>('split');
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -3304,7 +3516,7 @@ function AppsPanel() {
                                 ? 'text-amber-400/60 hover:text-amber-400 bg-amber-500/5'
                                 : 'text-red-400/60 hover:text-red-400 bg-red-500/5'
                           }`}>
-                          {actionType === 'feature' ? 'Rebuild' : 'Fix'}
+                          {actionType === 'feature' ? 'Add' : 'Fix'}
                         </button>
                       </div>
                       {actionType !== 'feature' && (
@@ -3425,43 +3637,42 @@ function AppsPanel() {
                     {/* Git diff modal */}
                     {diffSha && (
                       <div
-                        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6"
+                        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
                         onClick={() => setDiffSha(null)}>
                         <div
                           onClick={(e) => e.stopPropagation()}
-                          className="w-full max-w-4xl max-h-[85vh] bg-[#0a0a0a] border border-white/10 rounded-lg shadow-2xl flex flex-col">
+                          className="w-full max-w-6xl max-h-[90vh] bg-[#0a0a0a] border border-white/10 rounded-lg shadow-2xl flex flex-col">
                           <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10">
                             <GitBranch size={12} className="text-violet-400/70" />
                             <span className="text-[11px] font-mono text-foreground/80">{diffSha.slice(0, 12)}</span>
                             <span className="text-[11px] text-muted-foreground/60 truncate flex-1">
                               {commits.find((c) => c.sha === diffSha)?.subject || ''}
                             </span>
+                            <div className="flex items-center bg-white/5 rounded text-[10px] overflow-hidden">
+                              <button
+                                onClick={() => setDiffMode('split')}
+                                className={`px-2 py-1 ${diffMode === 'split' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/50 hover:text-foreground'}`}>
+                                <Columns2 size={11} className="inline mr-0.5" /> Split
+                              </button>
+                              <button
+                                onClick={() => setDiffMode('unified')}
+                                className={`px-2 py-1 ${diffMode === 'unified' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/50 hover:text-foreground'}`}>
+                                <ListTree size={11} className="inline mr-0.5" /> Unified
+                              </button>
+                            </div>
                             <button
                               onClick={() => setDiffSha(null)}
                               className="p-1 text-muted-foreground/50 hover:text-foreground rounded hover:bg-white/5">
                               <X size={12} />
                             </button>
                           </div>
-                          <pre className="flex-1 overflow-auto text-[10px] font-mono p-3 leading-relaxed whitespace-pre">
-                            {diffText.split('\n').map((line, i) => {
-                              const cls = line.startsWith('+++') || line.startsWith('---')
-                                ? 'text-muted-foreground/60'
-                                : line.startsWith('+')
-                                ? 'text-emerald-400/90'
-                                : line.startsWith('-')
-                                ? 'text-red-400/90'
-                                : line.startsWith('@@')
-                                ? 'text-sky-400/80'
-                                : line.startsWith('diff --git')
-                                ? 'text-violet-400/80 font-semibold'
-                                : 'text-foreground/70';
-                              return (
-                                <div key={i} className={cls}>
-                                  {line || ' '}
-                                </div>
-                              );
-                            })}
-                          </pre>
+                          <div className="flex-1 overflow-auto p-3">
+                            {diffText === 'Loading…' ? (
+                              <div className="text-[11px] text-muted-foreground/60">Loading…</div>
+                            ) : (
+                              <DiffView diff={diffText} mode={diffMode} />
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -3579,7 +3790,7 @@ function AppsPanel() {
                                 ? 'text-violet-400/50 hover:text-violet-400'
                                 : 'text-amber-400/50 hover:text-amber-400'
                             }`}>
-                            {actionType === 'feature' ? 'Edit' : 'Fix'}
+                            {actionType === 'feature' ? 'Add' : 'Fix'}
                           </button>
                         </div>
                       </div>

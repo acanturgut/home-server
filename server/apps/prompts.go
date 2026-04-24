@@ -147,9 +147,15 @@ RULES:
     (e.g. fetch('api/todos'), NOT fetch('/api/todos') or fetch('http://localhost:4001/api/todos')).
     The app is served behind a reverse proxy at a sub-path and absolute URLs will break.`,
 
-		Rebuild: `Apply this change to the existing app: {{change}}
+		Rebuild: `Add this new feature/change to the existing app: {{change}}
 
-Preserve all existing functionality. The app must keep listening on port {{port}} (from process.env.PORT). Do not break the /health endpoint.`,
+CRITICAL: This is an INCREMENTAL change. You must:
+- Keep ALL existing features, code, files, and behavior intact.
+- ONLY add or modify what is required for the requested change.
+- Do NOT rewrite the app from scratch. Do NOT remove unrelated functionality.
+- Do NOT replace existing files unless strictly necessary for this change.
+- The app must keep listening on port {{port}} (from process.env.PORT).
+- Do not break the /health endpoint.`,
 
 		Fix: `Fix this issue in the application.
 
