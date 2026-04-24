@@ -254,7 +254,7 @@ func (h *Handler) WebSearchFetch(w http.ResponseWriter, r *http.Request) {
 	if req.PerPageChars > 20000 {
 		req.PerPageChars = 20000
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
 	defer cancel()
 	hits, err := apps.SearchDDG(ctx, req.Q, req.K)
 	if err != nil {

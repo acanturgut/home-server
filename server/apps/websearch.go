@@ -118,7 +118,7 @@ func FetchPageText(ctx context.Context, rawURL string, limit int) (title, text s
 	if _, err := url.Parse(rawURL); err != nil {
 		return "", ""
 	}
-	ctx2, cancel := context.WithTimeout(ctx, 12*time.Second)
+	ctx2, cancel := context.WithTimeout(ctx, 6*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx2, http.MethodGet, rawURL, nil)
 	if err != nil {

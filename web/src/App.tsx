@@ -5089,43 +5089,52 @@ function ChatPanel() {
       await sendCompare(text, compareRoutes);
       return;
     }
+    // Clear the input immediately so the user gets visible feedback that
+    // the send actually fired, even if the web-search step takes a moment.
+    setInput('');
     // Web search: run it first and fold the results into attachments so the
     // model sees them in context. One-shot: toggles off after sending.
     let effectiveAttachments = attachments;
     if (webEnabled) {
+      setStatusMsg('🌐 Searching the web…');
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15000); // hard cap 15s
       try {
-        setStatusMsg('Searching the web…');
         const r = await fetch(`${API_BASE}/api/web/search-fetch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ q: text, k: 4, perPageChars: 5000 }),
+          body: JSON.stringify({ q: text, k: 3, perPageChars: 3500 }),
+          signal: ctrl.signal,
         });
         if (r.ok) {
           const data = await r.json();
-          const results = Array.isArray(data.results) ? data.results : [];
+          const results: Array<{ title?: string; url?: string; snippet?: string; text?: string }> =
+            Array.isArray(data.results) ? data.results : [];
           if (results.length) {
             const combined = results
-              .map((rr: { title?: string; url?: string; snippet?: string; text?: string }, i: number) =>
+              .map((rr, i) =>
                 `### Source ${i + 1}: ${rr.title || '(untitled)'}\nURL: ${rr.url || ''}\n${rr.snippet || ''}\n\n${rr.text || '(no page text extracted)'}`,
               )
               .join('\n\n---\n\n');
             const webAtt: ChatAttachment = {
               id: 'web-' + Date.now(),
-              name: `Web search: "${text}" (${results.length} sources)`,
+              name: `Web search: "${text.slice(0, 60)}" (${results.length} sources)`,
               type: 'text/web',
               size: combined.length,
               text: `Web search results for: ${text}\n\n${combined}`,
             };
             effectiveAttachments = [...effectiveAttachments, webAtt];
-            setStatusMsg(`Found ${results.length} web source${results.length === 1 ? '' : 's'}`);
+            setStatusMsg(`🌐 Found ${results.length} source${results.length === 1 ? '' : 's'}`);
           } else {
-            setStatusMsg('No web results found');
+            setStatusMsg('🌐 No results found');
           }
         } else {
-          setStatusMsg('Web search failed');
+          setStatusMsg('🌐 Web search failed');
         }
       } catch {
-        setStatusMsg('Web search error');
+        setStatusMsg('🌐 Web search timed out — sending without sources');
+      } finally {
+        clearTimeout(timer);
       }
       setWebEnabled(false);
       setTimeout(() => setStatusMsg(null), 2500);
@@ -5146,12 +5155,11 @@ function ChatPanel() {
     }
     const newMessages = [...active.messages, { ...userMsg, content: composed }];
     const titleSeed = active.messages.length === 0 ? text : undefined;
-    setInput('');
     setAttachments([]);
     const oneShot = pendingModel;
     setPendingModel('');
     await sendWithMessages(newMessages, { titleSeed, modelOverride: oneShot || undefined });
-  }, [input, loading, active, attachments, pendingModel, runSlash, sendWithMessages, compareRoutes, webEnabled]);
+  }, [input, loading, active, attachments, pendingModel, runSlash, sendWithMessages, sendCompare, compareRoutes, webEnabled]);
 
   // ── Edit user message + resend ──
   const startEdit = (m: ChatMsg) => {
@@ -5729,7 +5737,7 @@ function ChatPanel() {
                         </div>
                       ) : (
                         <div className="bg-foreground/10 rounded-2xl rounded-br-sm px-4 py-2.5 max-w-[85%] relative">
-                          <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+                          <p className="text-sm whitespace-pre-wrap">{m.content.split(/\n\n--- Attached: /)[0]}</p>
                           {m.attachments && m.attachments.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-1">
                               {m.attachments.map((a) => (
