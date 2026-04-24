@@ -25,16 +25,16 @@ import (
 )
 
 type Handler struct {
-	router   *ai.Router
-	cfg      *config.Config
-	nodes    *config.NodeStore
-	ns       *nodestate.Store
-	apps     *apps.Store
-	pipeline *apps.Pipeline
-	aiClient *ai.Client
-	sysHist  *sysHistory
-	prompts  *apps.PromptStore
-	settings *apps.SettingsStore
+	router    *ai.Router
+	cfg       *config.Config
+	nodes     *config.NodeStore
+	ns        *nodestate.Store
+	apps      *apps.Store
+	pipeline  *apps.Pipeline
+	aiClient  *ai.Client
+	sysHist   *sysHistory
+	prompts   *apps.PromptStore
+	settings  *apps.SettingsStore
 	chats     *apps.ChatStore
 	snippets  *apps.SnippetStore
 	rag       *apps.RAGIndex
@@ -79,7 +79,7 @@ func parseAppFilePath(urlPath string) (name, filePath string) {
 
 type chatReq struct {
 	Messages    []ai.Message `json:"messages"`
-	Route       string       `json:"route,omitempty"`       // ""|"auto"|"light"|"heavy"|<node-name>
+	Route       string       `json:"route,omitempty"` // ""|"auto"|"light"|"heavy"|<node-name>
 	Temperature *float64     `json:"temperature,omitempty"`
 }
 
@@ -361,18 +361,18 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 		homekitPin = homekitPin[:3] + "···" + homekitPin[len(homekitPin)-2:]
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"router_model":     h.cfg.RouterModel,
-		"ollama_host":      h.cfg.OllamaHost,
-		"version":          h.version,
-		"started_at":       h.started.Format(time.RFC3339),
-		"uptime_seconds":   int(time.Since(h.started).Seconds()),
-		"data_dir":         h.cfg.DataDir,
-		"log_dir":          h.cfg.LogDir,
-		"port":             h.cfg.Port,
-		"anthropic_set":    h.cfg.AnthropicKey != "",
-		"homekit_pin":      homekitPin,
-		"apps_count":       len(h.apps.All()),
-		"nodes_count":      len(h.nodes.All()),
+		"router_model":   h.cfg.RouterModel,
+		"ollama_host":    h.cfg.OllamaHost,
+		"version":        h.version,
+		"started_at":     h.started.Format(time.RFC3339),
+		"uptime_seconds": int(time.Since(h.started).Seconds()),
+		"data_dir":       h.cfg.DataDir,
+		"log_dir":        h.cfg.LogDir,
+		"port":           h.cfg.Port,
+		"anthropic_set":  h.cfg.AnthropicKey != "",
+		"homekit_pin":    homekitPin,
+		"apps_count":     len(h.apps.All()),
+		"nodes_count":    len(h.nodes.All()),
 	})
 }
 

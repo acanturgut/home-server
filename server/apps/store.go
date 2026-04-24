@@ -19,9 +19,9 @@ const (
 
 // BuildRecord records a single build attempt.
 type BuildRecord struct {
-	Action    string    `json:"action"`    // "build", "rebuild", "fix"
+	Action    string    `json:"action"` // "build", "rebuild", "fix"
 	Prompt    string    `json:"prompt"`
-	Status    string    `json:"status"`    // "success", "failed"
+	Status    string    `json:"status"` // "success", "failed"
 	Duration  string    `json:"duration"`
 	Node      string    `json:"node"`
 	Timestamp time.Time `json:"timestamp"`

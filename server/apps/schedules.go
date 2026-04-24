@@ -209,9 +209,9 @@ func (s *ScheduleStore) AttachSession(id, sessionID string) {
 
 // nextRun returns the next time `expr` should fire after `from`.  Supported:
 //
-//   @every <duration>      e.g. "@every 30m", "@every 2h"
-//   M H * * *              daily at H:M
-//   M * * * *              hourly at minute M
+//	@every <duration>      e.g. "@every 30m", "@every 2h"
+//	M H * * *              daily at H:M
+//	M * * * *              hourly at minute M
 //
 // Anything else → default to 1 hour from now (so misconfigured schedules
 // don't hammer the server).

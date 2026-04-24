@@ -18,9 +18,9 @@ type SystemPrompts struct {
 
 // PromptStore persists system prompts to disk.
 type PromptStore struct {
-	mu       sync.RWMutex
-	prompts  SystemPrompts
-	path     string
+	mu      sync.RWMutex
+	prompts SystemPrompts
+	path    string
 }
 
 func NewPromptStore(dataDir string) *PromptStore {

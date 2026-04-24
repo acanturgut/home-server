@@ -422,7 +422,8 @@ function EndpointCard({ ep }: { ep: Endpoint }) {
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-3 py-2 px-1 text-left hover:bg-white/[0.02] transition-colors">
-        <span className={`font-mono text-[10px] font-semibold w-12 shrink-0 ${METHOD_COLORS[ep.method]}`}>
+        <span
+          className={`font-mono text-[10px] font-semibold w-12 shrink-0 ${METHOD_COLORS[ep.method]}`}>
           {ep.method}
         </span>
         <code className="text-[11px] font-mono text-foreground/70 flex-1 min-w-0 truncate">
@@ -431,29 +432,40 @@ function EndpointCard({ ep }: { ep: Endpoint }) {
         <span className="text-[10px] text-muted-foreground/40 hidden sm:block truncate max-w-[200px]">
           {ep.summary}
         </span>
-        <ChevronDown size={12} className={`text-muted-foreground/30 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          size={12}
+          className={`text-muted-foreground/30 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
       </button>
       {open && (
         <div className="pb-3 px-1 space-y-2.5">
           <p className="text-[10px] text-muted-foreground/60">{ep.summary}</p>
           {ep.pathParams?.map((k) => (
             <div key={k} className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground/40 w-16 shrink-0">:{k}</span>
+              <span className="text-[10px] text-muted-foreground/40 w-16 shrink-0">
+                :{k}
+              </span>
               <input
                 placeholder={k}
                 value={params[k] || ''}
-                onChange={(e) => setParams((p) => ({ ...p, [k]: e.target.value }))}
+                onChange={(e) =>
+                  setParams((p) => ({ ...p, [k]: e.target.value }))
+                }
                 className="flex-1 h-6 text-[11px] font-mono bg-transparent border-b border-border/20 focus:border-foreground/30 focus:outline-none px-1 transition-colors"
               />
             </div>
           ))}
           {ep.queryParams?.map((q) => (
             <div key={q.name} className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground/40 w-16 shrink-0">?{q.name}</span>
+              <span className="text-[10px] text-muted-foreground/40 w-16 shrink-0">
+                ?{q.name}
+              </span>
               <input
                 placeholder={q.default || q.name}
                 value={params[q.name] || ''}
-                onChange={(e) => setParams((p) => ({ ...p, [q.name]: e.target.value }))}
+                onChange={(e) =>
+                  setParams((p) => ({ ...p, [q.name]: e.target.value }))
+                }
                 className="flex-1 h-6 text-[11px] font-mono bg-transparent border-b border-border/20 focus:border-foreground/30 focus:outline-none px-1 transition-colors"
               />
             </div>
@@ -480,7 +492,8 @@ function EndpointCard({ ep }: { ep: Endpoint }) {
           {response !== null && (
             <div className="space-y-1">
               {status !== null && (
-                <span className={`text-[10px] font-mono ${status >= 200 && status < 300 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span
+                  className={`text-[10px] font-mono ${status >= 200 && status < 300 ? 'text-emerald-400' : 'text-red-400'}`}>
                   {status}
                 </span>
               )}
@@ -1037,43 +1050,64 @@ function BuildNodeStats({ building }: { building: boolean }) {
 
   if (!building) return null;
   const entries = Object.values(stats).filter(
-    (s: any) => s.gpu_name && new Date().getTime() - new Date(s.last_seen).getTime() < 30000,
+    (s: any) =>
+      s.gpu_name &&
+      new Date().getTime() - new Date(s.last_seen).getTime() < 30000,
   ) as any[];
   if (entries.length === 0) return null;
 
   return (
     <div className="px-3 py-1.5 border-b border-border/10 space-y-1.5">
       {entries.map((s: any) => {
-        const gpuMemPct = s.gpu_mem_total_mb ? Math.round((s.gpu_mem_used_mb / s.gpu_mem_total_mb) * 100) : 0;
+        const gpuMemPct = s.gpu_mem_total_mb
+          ? Math.round((s.gpu_mem_used_mb / s.gpu_mem_total_mb) * 100)
+          : 0;
         return (
           <div key={s.node_id} className="space-y-1">
             <div className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
               <Activity size={10} className="shrink-0" />
-              <span className="font-medium text-foreground/50">{s.hostname || s.node_id}</span>
+              <span className="font-medium text-foreground/50">
+                {s.hostname || s.node_id}
+              </span>
               <span className="text-muted-foreground/40">·</span>
-              <span className="text-muted-foreground/40 truncate">{s.gpu_name}</span>
+              <span className="text-muted-foreground/40 truncate">
+                {s.gpu_name}
+              </span>
             </div>
             <div className="grid grid-cols-3 gap-2 text-[9px]">
               <div className="flex items-center gap-1.5">
                 <Cpu size={9} className="text-blue-400/60 shrink-0" />
                 <span className="text-muted-foreground/50">GPU</span>
                 <div className="flex-1 h-1 rounded-full bg-muted/30 overflow-hidden">
-                  <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${s.gpu_usage || 0}%` }} />
+                  <div
+                    className="h-full rounded-full bg-blue-500 transition-all"
+                    style={{ width: `${s.gpu_usage || 0}%` }}
+                  />
                 </div>
-                <span className="tabular-nums text-foreground/50 w-6 text-right">{s.gpu_usage || 0}%</span>
+                <span className="tabular-nums text-foreground/50 w-6 text-right">
+                  {s.gpu_usage || 0}%
+                </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <HardDrive size={9} className="text-purple-400/60 shrink-0" />
                 <span className="text-muted-foreground/50">VRAM</span>
                 <div className="flex-1 h-1 rounded-full bg-muted/30 overflow-hidden">
-                  <div className="h-full rounded-full bg-purple-500 transition-all" style={{ width: `${gpuMemPct}%` }} />
+                  <div
+                    className="h-full rounded-full bg-purple-500 transition-all"
+                    style={{ width: `${gpuMemPct}%` }}
+                  />
                 </div>
-                <span className="tabular-nums text-foreground/50 w-12 text-right">{((s.gpu_mem_used_mb || 0) / 1024).toFixed(1)}G</span>
+                <span className="tabular-nums text-foreground/50 w-12 text-right">
+                  {((s.gpu_mem_used_mb || 0) / 1024).toFixed(1)}G
+                </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Thermometer size={9} className="text-orange-400/60 shrink-0" />
                 <span className="text-muted-foreground/50">Temp</span>
-                <span className={`tabular-nums ml-auto ${(s.gpu_temp || 0) > 80 ? 'text-red-400' : (s.gpu_temp || 0) > 65 ? 'text-amber-400' : 'text-foreground/50'}`}>{s.gpu_temp || '—'}°C</span>
+                <span
+                  className={`tabular-nums ml-auto ${(s.gpu_temp || 0) > 80 ? 'text-red-400' : (s.gpu_temp || 0) > 65 ? 'text-amber-400' : 'text-foreground/50'}`}>
+                  {s.gpu_temp || '—'}°C
+                </span>
               </div>
             </div>
           </div>
@@ -1185,7 +1219,13 @@ function parseUnifiedDiff(diff: string): DiffFile[] {
       const d = pendingDel[i];
       const a = pendingAdd[i];
       if (d && a) {
-        cur.rows.push({ kind: 'mod', oldNo: d.no, newNo: a.no, oldText: d.text, newText: a.text });
+        cur.rows.push({
+          kind: 'mod',
+          oldNo: d.no,
+          newNo: a.no,
+          oldText: d.text,
+          newText: a.text,
+        });
       } else if (d) {
         cur.rows.push({ kind: 'del', oldNo: d.no, oldText: d.text });
       } else if (a) {
@@ -1235,7 +1275,12 @@ function parseUnifiedDiff(diff: string): DiffFile[] {
       if (cur.rows.length > 0) cur.rows.push({ kind: 'gap' });
       continue;
     }
-    if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('index ')) continue;
+    if (
+      line.startsWith('---') ||
+      line.startsWith('+++') ||
+      line.startsWith('index ')
+    )
+      continue;
     if (line.startsWith('-')) {
       pendingDel.push({ no: oldNo++, text: line.slice(1) });
       cur.removed++;
@@ -1249,7 +1294,13 @@ function parseUnifiedDiff(diff: string): DiffFile[] {
     // context line (starts with space, or empty inside hunk)
     flushPending();
     const text = line.startsWith(' ') ? line.slice(1) : line;
-    cur.rows.push({ kind: 'ctx', oldNo: oldNo++, newNo: newNo++, oldText: text, newText: text });
+    cur.rows.push({
+      kind: 'ctx',
+      oldNo: oldNo++,
+      newNo: newNo++,
+      oldText: text,
+      newText: text,
+    });
   }
   flushPending();
   return files;
@@ -1260,94 +1311,139 @@ function FileBlock({ f, mode }: { f: DiffFile; mode: 'split' | 'unified' }) {
     <div className="rounded border border-white/10">
       <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-[#0a0a0a] border-b border-white/10 text-[11px] rounded-t">
         <FileCode2 size={11} className="text-violet-400/70 shrink-0" />
-        <span className="font-mono text-foreground/80 truncate flex-1">{f.path}</span>
-        {f.isNew && <span className="text-[9px] uppercase text-emerald-400/80">new</span>}
-        {f.isDeleted && <span className="text-[9px] uppercase text-red-400/80">deleted</span>}
-        <span className="text-[10px] tabular-nums text-emerald-400/80">+{f.added}</span>
-        <span className="text-[10px] tabular-nums text-red-400/80">−{f.removed}</span>
+        <span className="font-mono text-foreground/80 truncate flex-1">
+          {f.path}
+        </span>
+        {f.isNew && (
+          <span className="text-[9px] uppercase text-emerald-400/80">new</span>
+        )}
+        {f.isDeleted && (
+          <span className="text-[9px] uppercase text-red-400/80">deleted</span>
+        )}
+        <span className="text-[10px] tabular-nums text-emerald-400/80">
+          +{f.added}
+        </span>
+        <span className="text-[10px] tabular-nums text-red-400/80">
+          −{f.removed}
+        </span>
       </div>
       {mode === 'split' ? (
-            <div className="grid grid-cols-2 text-[10px] font-mono">
-              {f.rows.map((row, ri) => {
-                if (row.kind === 'gap') {
-                  return (
-                    <div key={ri} className="col-span-2 px-3 py-1 bg-sky-500/5 text-sky-400/60 border-y border-white/5 text-[9px]">
-                      ⋯
-                    </div>
-                  );
-                }
-                const leftFill = row.kind === 'add';
-                const rightFill = row.kind === 'del';
-                const leftBg =
-                  row.kind === 'del' ? 'bg-red-500/10' :
-                  row.kind === 'mod' ? 'bg-red-500/8' :
-                  leftFill ? 'bg-white/[0.015]' : '';
-                const rightBg =
-                  row.kind === 'add' ? 'bg-emerald-500/10' :
-                  row.kind === 'mod' ? 'bg-emerald-500/8' :
-                  rightFill ? 'bg-white/[0.015]' : '';
-                return (
-                  <div key={ri} className="contents">
-                    <div className={`flex border-r border-white/5 ${leftBg}`}>
-                      <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 tabular-nums select-none">
-                        {row.oldNo ?? ''}
-                      </span>
-                      <span className="flex-1 whitespace-pre-wrap break-all px-1 text-foreground/80">
-                        {leftFill ? '' : row.oldText ?? ''}
-                      </span>
-                    </div>
-                    <div className={`flex ${rightBg}`}>
-                      <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 tabular-nums select-none">
-                        {row.newNo ?? ''}
-                      </span>
-                      <span className="flex-1 whitespace-pre-wrap break-all px-1 text-foreground/80">
-                        {rightFill ? '' : row.newText ?? ''}
-                      </span>
-                    </div>
+        <div className="grid grid-cols-2 text-[10px] font-mono">
+          {f.rows.map((row, ri) => {
+            if (row.kind === 'gap') {
+              return (
+                <div
+                  key={ri}
+                  className="col-span-2 px-3 py-1 bg-sky-500/5 text-sky-400/60 border-y border-white/5 text-[9px]">
+                  ⋯
+                </div>
+              );
+            }
+            const leftFill = row.kind === 'add';
+            const rightFill = row.kind === 'del';
+            const leftBg =
+              row.kind === 'del'
+                ? 'bg-red-500/10'
+                : row.kind === 'mod'
+                  ? 'bg-red-500/8'
+                  : leftFill
+                    ? 'bg-white/[0.015]'
+                    : '';
+            const rightBg =
+              row.kind === 'add'
+                ? 'bg-emerald-500/10'
+                : row.kind === 'mod'
+                  ? 'bg-emerald-500/8'
+                  : rightFill
+                    ? 'bg-white/[0.015]'
+                    : '';
+            return (
+              <div key={ri} className="contents">
+                <div className={`flex border-r border-white/5 ${leftBg}`}>
+                  <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 tabular-nums select-none">
+                    {row.oldNo ?? ''}
+                  </span>
+                  <span className="flex-1 whitespace-pre-wrap break-all px-1 text-foreground/80">
+                    {leftFill ? '' : (row.oldText ?? '')}
+                  </span>
+                </div>
+                <div className={`flex ${rightBg}`}>
+                  <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 tabular-nums select-none">
+                    {row.newNo ?? ''}
+                  </span>
+                  <span className="flex-1 whitespace-pre-wrap break-all px-1 text-foreground/80">
+                    {rightFill ? '' : (row.newText ?? '')}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-[10px] font-mono">
+          {f.rows.map((row, ri) => {
+            if (row.kind === 'gap') {
+              return (
+                <div
+                  key={ri}
+                  className="px-3 py-1 bg-sky-500/5 text-sky-400/60 text-[9px]">
+                  ⋯
+                </div>
+              );
+            }
+            if (row.kind === 'mod') {
+              return (
+                <div key={ri}>
+                  <div className="flex bg-red-500/10">
+                    <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 select-none">
+                      {row.oldNo}
+                    </span>
+                    <span className="px-1 text-red-300/90">−</span>
+                    <span className="flex-1 whitespace-pre-wrap break-all">
+                      {row.oldText}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-[10px] font-mono">
-              {f.rows.map((row, ri) => {
-                if (row.kind === 'gap') {
-                  return (
-                    <div key={ri} className="px-3 py-1 bg-sky-500/5 text-sky-400/60 text-[9px]">⋯</div>
-                  );
-                }
-                if (row.kind === 'mod') {
-                  return (
-                    <div key={ri}>
-                      <div className="flex bg-red-500/10">
-                        <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 select-none">{row.oldNo}</span>
-                        <span className="px-1 text-red-300/90">−</span>
-                        <span className="flex-1 whitespace-pre-wrap break-all">{row.oldText}</span>
-                      </div>
-                      <div className="flex bg-emerald-500/10">
-                        <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 select-none">{row.newNo}</span>
-                        <span className="px-1 text-emerald-300/90">+</span>
-                        <span className="flex-1 whitespace-pre-wrap break-all">{row.newText}</span>
-                      </div>
-                    </div>
-                  );
-                }
-                const bg =
-                  row.kind === 'add' ? 'bg-emerald-500/10' :
-                  row.kind === 'del' ? 'bg-red-500/10' : '';
-                const sign = row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' ';
-                const text = row.kind === 'add' ? row.newText : row.kind === 'del' ? row.oldText : row.oldText;
-                const no = row.kind === 'add' ? row.newNo : row.oldNo;
-                return (
-                  <div key={ri} className={`flex ${bg}`}>
-                    <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 select-none">{no ?? ''}</span>
-                    <span className="px-1 text-muted-foreground/40">{sign}</span>
-                    <span className="flex-1 whitespace-pre-wrap break-all text-foreground/80">{text ?? ''}</span>
+                  <div className="flex bg-emerald-500/10">
+                    <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 select-none">
+                      {row.newNo}
+                    </span>
+                    <span className="px-1 text-emerald-300/90">+</span>
+                    <span className="flex-1 whitespace-pre-wrap break-all">
+                      {row.newText}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                </div>
+              );
+            }
+            const bg =
+              row.kind === 'add'
+                ? 'bg-emerald-500/10'
+                : row.kind === 'del'
+                  ? 'bg-red-500/10'
+                  : '';
+            const sign =
+              row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' ';
+            const text =
+              row.kind === 'add'
+                ? row.newText
+                : row.kind === 'del'
+                  ? row.oldText
+                  : row.oldText;
+            const no = row.kind === 'add' ? row.newNo : row.oldNo;
+            return (
+              <div key={ri} className={`flex ${bg}`}>
+                <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 select-none">
+                  {no ?? ''}
+                </span>
+                <span className="px-1 text-muted-foreground/40">{sign}</span>
+                <span className="flex-1 whitespace-pre-wrap break-all text-foreground/80">
+                  {text ?? ''}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1364,14 +1460,23 @@ function DiffView({
   const files = useMemo(() => parseUnifiedDiff(diff), [diff]);
   const [selected, setSelected] = useState(0);
   const fileRefs = useRef<Array<HTMLDivElement | null>>([]);
-  useEffect(() => { setSelected(0); }, [diff]);
+  useEffect(() => {
+    setSelected(0);
+  }, [diff]);
   if (!files.length) {
-    return <div className="p-4 text-[11px] text-muted-foreground/60">No changes.</div>;
+    return (
+      <div className="p-4 text-[11px] text-muted-foreground/60">
+        No changes.
+      </div>
+    );
   }
   const onPick = (fi: number) => {
     setSelected(fi);
     if (layout === 'all') {
-      fileRefs.current[fi]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      fileRefs.current[fi]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
     }
   };
   return (
@@ -1386,12 +1491,20 @@ function DiffView({
             onClick={() => onPick(fi)}
             title={f.path}
             className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-left text-[11px] mb-0.5 ${
-              fi === selected ? 'bg-violet-500/15 text-foreground' : 'text-muted-foreground/70 hover:bg-white/5'
+              fi === selected
+                ? 'bg-violet-500/15 text-foreground'
+                : 'text-muted-foreground/70 hover:bg-white/5'
             }`}>
             <FileCode2 size={10} className="shrink-0 opacity-60" />
-            <span className="truncate flex-1 font-mono">{f.path.split('/').pop()}</span>
-            <span className="text-[9px] tabular-nums text-emerald-400/70">+{f.added}</span>
-            <span className="text-[9px] tabular-nums text-red-400/70">−{f.removed}</span>
+            <span className="truncate flex-1 font-mono">
+              {f.path.split('/').pop()}
+            </span>
+            <span className="text-[9px] tabular-nums text-emerald-400/70">
+              +{f.added}
+            </span>
+            <span className="text-[9px] tabular-nums text-red-400/70">
+              −{f.removed}
+            </span>
           </button>
         ))}
       </div>
@@ -1399,13 +1512,20 @@ function DiffView({
         {layout === 'all' ? (
           <div className="space-y-4">
             {files.map((f, fi) => (
-              <div key={fi} ref={(el) => { fileRefs.current[fi] = el; }}>
+              <div
+                key={fi}
+                ref={(el) => {
+                  fileRefs.current[fi] = el;
+                }}>
                 <FileBlock f={f} mode={mode} />
               </div>
             ))}
           </div>
         ) : (
-          <FileBlock f={files[Math.min(selected, files.length - 1)]} mode={mode} />
+          <FileBlock
+            f={files[Math.min(selected, files.length - 1)]}
+            mode={mode}
+          />
         )}
       </div>
     </div>
@@ -1641,23 +1761,27 @@ function FileTreeNode({
   const isOpen = expanded.has(node.path);
   const isActive = selectedFile === node.path;
   const ext = node.name.split('.').pop() || '';
-  const fileIcon = node.isDir
-    ? isOpen
-      ? <ChevronDown size={10} />
-      : <ChevronRight size={10} />
-    : ext === 'jsx' || ext === 'tsx'
-      ? <FileCode2 size={10} />
-      : ext === 'js' || ext === 'ts'
-        ? <FileCode2 size={10} />
-        : ext === 'json'
-          ? <FileJson size={10} />
-          : ext === 'css'
-            ? <Hash size={10} />
-            : ext === 'html'
-              ? <Code2 size={10} />
-              : ext === 'md'
-                ? <FileType size={10} />
-                : <File size={10} />;
+  const fileIcon = node.isDir ? (
+    isOpen ? (
+      <ChevronDown size={10} />
+    ) : (
+      <ChevronRight size={10} />
+    )
+  ) : ext === 'jsx' || ext === 'tsx' ? (
+    <FileCode2 size={10} />
+  ) : ext === 'js' || ext === 'ts' ? (
+    <FileCode2 size={10} />
+  ) : ext === 'json' ? (
+    <FileJson size={10} />
+  ) : ext === 'css' ? (
+    <Hash size={10} />
+  ) : ext === 'html' ? (
+    <Code2 size={10} />
+  ) : ext === 'md' ? (
+    <FileType size={10} />
+  ) : (
+    <File size={10} />
+  );
   const iconColor = node.isDir
     ? 'text-blue-400/60'
     : ext === 'jsx' || ext === 'tsx'
@@ -1854,7 +1978,8 @@ function BottomPanelTabBar({
   return (
     <div className="flex items-center gap-0">
       {tabs.map((t) => {
-        const disabled = (t.id === 'logs' || t.id === 'terminal') && !selectedApp;
+        const disabled =
+          (t.id === 'logs' || t.id === 'terminal') && !selectedApp;
         return (
           <button
             key={t.id}
@@ -1871,7 +1996,9 @@ function BottomPanelTabBar({
             {t.icon}
             <span>{t.label}</span>
             {t.id === 'events' && events.length > 0 && (
-              <span className="text-[9px] tabular-nums text-muted-foreground/30">{events.length}</span>
+              <span className="text-[9px] tabular-nums text-muted-foreground/30">
+                {events.length}
+              </span>
             )}
             {t.id === 'events' && events.some((e) => e.step === 'error') && (
               <AlertCircle size={9} className="text-red-400" />
@@ -1907,7 +2034,9 @@ function TerminalView({
   if (!selectedApp) {
     return (
       <div className="flex-1 flex items-center justify-center bg-black">
-        <p className="text-[11px] text-muted-foreground/30 font-mono">No app selected</p>
+        <p className="text-[11px] text-muted-foreground/30 font-mono">
+          No app selected
+        </p>
       </div>
     );
   }
@@ -1915,8 +2044,12 @@ function TerminalView({
     return (
       <div className="flex-1 flex items-center justify-center bg-black">
         <div className="text-center space-y-1">
-          <p className="text-[11px] text-muted-foreground/40 font-mono">Container is not running</p>
-          <p className="text-[10px] text-muted-foreground/25 font-mono">Start the app to use the terminal</p>
+          <p className="text-[11px] text-muted-foreground/40 font-mono">
+            Container is not running
+          </p>
+          <p className="text-[10px] text-muted-foreground/25 font-mono">
+            Start the app to use the terminal
+          </p>
         </div>
       </div>
     );
@@ -1927,9 +2060,16 @@ function TerminalView({
       <div ref={termRef} className="flex-1 overflow-auto px-3 pt-2">
         {termHistory.length === 0 && (
           <div className="text-[11px] text-emerald-500/40 leading-relaxed">
-            <p>Connected to container <span className="text-emerald-400/70">{selectedApp}</span></p>
-            <p className="text-muted-foreground/40 text-[10px] mt-1">Try: ls, cat server.js, node -v, npm ls, ps aux</p>
-            <p className="text-muted-foreground/40 text-[10px]">Type a command and press Enter.</p>
+            <p>
+              Connected to container{' '}
+              <span className="text-emerald-400/70">{selectedApp}</span>
+            </p>
+            <p className="text-muted-foreground/40 text-[10px] mt-1">
+              Try: ls, cat server.js, node -v, npm ls, ps aux
+            </p>
+            <p className="text-muted-foreground/40 text-[10px]">
+              Type a command and press Enter.
+            </p>
           </div>
         )}
         {termHistory.map((entry, i) => (
@@ -1939,9 +2079,14 @@ function TerminalView({
               <span className="text-foreground/85">{entry.cmd}</span>
             </div>
             {entry.output && (
-              <pre className={`whitespace-pre-wrap break-words ${
-                entry.status === 'error' ? 'text-red-400/80' : 'text-foreground/65'
-              }`}>{entry.output}</pre>
+              <pre
+                className={`whitespace-pre-wrap break-words ${
+                  entry.status === 'error'
+                    ? 'text-red-400/80'
+                    : 'text-foreground/65'
+                }`}>
+                {entry.output}
+              </pre>
             )}
           </div>
         ))}
@@ -1952,7 +2097,9 @@ function TerminalView({
         )}
       </div>
       <div className="flex items-center px-3 py-1.5 bg-black border-t border-emerald-500/10 shrink-0">
-        <span className="text-[11px] text-emerald-400/80 font-mono whitespace-pre">{prompt}</span>
+        <span className="text-[11px] text-emerald-400/80 font-mono whitespace-pre">
+          {prompt}
+        </span>
         <input
           autoFocus
           value={termCmd}
@@ -1997,7 +2144,9 @@ function ContainerLogsView({
   if (!selectedApp) {
     return (
       <div className="flex-1 flex items-center justify-center bg-black">
-        <p className="text-[11px] text-muted-foreground/30 font-mono">No app selected</p>
+        <p className="text-[11px] text-muted-foreground/30 font-mono">
+          No app selected
+        </p>
       </div>
     );
   }
@@ -2031,7 +2180,9 @@ function EventsView({
   logRef: React.RefObject<HTMLDivElement | null>;
 }) {
   return (
-    <div ref={logRef} className="flex-1 overflow-auto px-2 py-1 min-h-0 bg-background">
+    <div
+      ref={logRef}
+      className="flex-1 overflow-auto px-2 py-1 min-h-0 bg-background">
       {events.length > 0 ? (
         <EventLog events={events} expanded />
       ) : (
@@ -2075,7 +2226,8 @@ function BottomPanel(props: {
   }[props.state];
 
   const renderView = (which: BottomTab) => {
-    if (which === 'events') return <EventsView events={props.events} logRef={props.logRef} />;
+    if (which === 'events')
+      return <EventsView events={props.events} logRef={props.logRef} />;
     if (which === 'logs')
       return (
         <ContainerLogsView
@@ -2102,7 +2254,8 @@ function BottomPanel(props: {
   };
 
   return (
-    <div className={`border-t border-border/10 flex flex-col transition-all overflow-hidden ${heightClass}`}>
+    <div
+      className={`border-t border-border/10 flex flex-col transition-all overflow-hidden ${heightClass}`}>
       {/* Header bar with tabs + window controls */}
       <div className="flex items-center justify-between h-7 border-b border-border/5 shrink-0 bg-muted/10 select-none">
         <div className="flex items-center">
@@ -2130,23 +2283,33 @@ function BottomPanel(props: {
             </button>
           )}
           <button
-            onClick={() => props.setState(props.state === 'minimized' ? 'normal' : 'minimized')}
+            onClick={() =>
+              props.setState(
+                props.state === 'minimized' ? 'normal' : 'minimized',
+              )
+            }
             title={props.state === 'minimized' ? 'Restore' : 'Minimize'}
             className="p-1 rounded text-muted-foreground/40 hover:text-foreground/70 hover:bg-white/[0.03] transition-colors">
             <Minus size={11} />
           </button>
           <button
-            onClick={() => props.setState(props.state === 'expanded' ? 'normal' : 'expanded')}
+            onClick={() =>
+              props.setState(props.state === 'expanded' ? 'normal' : 'expanded')
+            }
             title={props.state === 'expanded' ? 'Restore' : 'Maximize'}
             className="p-1 rounded text-muted-foreground/40 hover:text-foreground/70 hover:bg-white/[0.03] transition-colors">
-            {props.state === 'expanded' ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+            {props.state === 'expanded' ? (
+              <Minimize2 size={11} />
+            ) : (
+              <Maximize2 size={11} />
+            )}
           </button>
         </div>
       </div>
 
       {/* Body */}
-      {props.state !== 'minimized' && (
-        props.split ? (
+      {props.state !== 'minimized' &&
+        (props.split ? (
           <div className="flex-1 flex overflow-hidden min-h-0">
             <div className="flex-1 flex flex-col overflow-hidden border-r border-border/10">
               {renderView(props.tab)}
@@ -2165,8 +2328,7 @@ function BottomPanel(props: {
           </div>
         ) : (
           renderView(props.tab)
-        )
-      )}
+        ))}
     </div>
   );
 }
@@ -2176,7 +2338,14 @@ function ClarifyWizard(props: {
   loading: boolean;
   error: string | null;
   summary: string;
-  questions: Array<{ id: string; question: string; hint?: string; suggestions?: string[]; required?: boolean; default?: string }>;
+  questions: Array<{
+    id: string;
+    question: string;
+    hint?: string;
+    suggestions?: string[];
+    required?: boolean;
+    default?: string;
+  }>;
   answers: Record<string, string>;
   setAnswers: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   name: string;
@@ -2188,11 +2357,37 @@ function ClarifyWizard(props: {
   onSkip: () => void;
   onBuild: () => void;
 }) {
-  const { prompt, loading, error, summary, questions, answers, setAnswers, name, setName, notes, setNotes, onClose, onRegenerate, onSkip, onBuild } = props;
-  const setAns = (id: string, v: string) => setAnswers((prev) => ({ ...prev, [id]: v }));
-  const answeredCount = questions.filter((q) => (answers[q.id] || '').trim()).length;
-  const requiredMissing = questions.some((q) => q.required && !(answers[q.id] || '').trim());
-  const sanitizeName = (v: string) => v.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').slice(0, 24);
+  const {
+    prompt,
+    loading,
+    error,
+    summary,
+    questions,
+    answers,
+    setAnswers,
+    name,
+    setName,
+    notes,
+    setNotes,
+    onClose,
+    onRegenerate,
+    onSkip,
+    onBuild,
+  } = props;
+  const setAns = (id: string, v: string) =>
+    setAnswers((prev) => ({ ...prev, [id]: v }));
+  const answeredCount = questions.filter((q) =>
+    (answers[q.id] || '').trim(),
+  ).length;
+  const requiredMissing = questions.some(
+    (q) => q.required && !(answers[q.id] || '').trim(),
+  );
+  const sanitizeName = (v: string) =>
+    v
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 24);
 
   return (
     <div
@@ -2205,7 +2400,9 @@ function ClarifyWizard(props: {
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
           <div className="flex items-center gap-2">
             <Sparkles size={14} className="text-violet-400" />
-            <h3 className="text-[12px] font-medium text-foreground/90">Refine your app idea</h3>
+            <h3 className="text-[12px] font-medium text-foreground/90">
+              Refine your app idea
+            </h3>
           </div>
           <button
             onClick={onClose}
@@ -2216,19 +2413,29 @@ function ClarifyWizard(props: {
 
         {/* Original prompt */}
         <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
-          <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 mb-1">Your idea</div>
-          <p className="text-[12px] text-foreground/80 leading-relaxed italic">"{prompt}"</p>
+          <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 mb-1">
+            Your idea
+          </div>
+          <p className="text-[12px] text-foreground/80 leading-relaxed italic">
+            "{prompt}"
+          </p>
           {summary && (
             <div className="mt-2 pt-2 border-t border-white/5">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 mb-1">AI understands</div>
-              <p className="text-[11px] text-violet-300/80 leading-relaxed">{summary}</p>
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 mb-1">
+                AI understands
+              </div>
+              <p className="text-[11px] text-violet-300/80 leading-relaxed">
+                {summary}
+              </p>
             </div>
           )}
           {!loading && (
             <div className="mt-2 pt-2 border-t border-white/5">
               <div className="flex items-center gap-1.5 mb-1">
                 <Sparkles size={9} className="text-violet-400/60" />
-                <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40">Suggested name</div>
+                <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40">
+                  Suggested name
+                </div>
               </div>
               <input
                 type="text"
@@ -2238,7 +2445,9 @@ function ClarifyWizard(props: {
                 spellCheck={false}
                 className="w-full bg-black/30 border border-white/5 rounded px-2 py-1.5 text-[11px] font-mono text-violet-200/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-400/40 transition-colors"
               />
-              <p className="text-[10px] text-muted-foreground/40 mt-1">Lowercase, dashes only. Used as the app folder & container name.</p>
+              <p className="text-[10px] text-muted-foreground/40 mt-1">
+                Lowercase, dashes only. Used as the app folder & container name.
+              </p>
             </div>
           )}
         </div>
@@ -2247,15 +2456,22 @@ function ClarifyWizard(props: {
         <div className="flex-1 overflow-auto px-4 py-3">
           {loading && (
             <div className="flex flex-col items-center justify-center py-10 gap-3">
-              <Sparkles size={24} className="text-violet-400/60 animate-pulse" />
-              <p className="text-[11px] text-muted-foreground/60">Thinking up the right questions...</p>
+              <Sparkles
+                size={24}
+                className="text-violet-400/60 animate-pulse"
+              />
+              <p className="text-[11px] text-muted-foreground/60">
+                Thinking up the right questions...
+              </p>
             </div>
           )}
 
           {!loading && error && (
             <div className="flex flex-col items-center gap-3 py-6">
               <AlertCircle size={20} className="text-amber-400/70" />
-              <p className="text-[11px] text-amber-300/80 text-center max-w-sm">{error}</p>
+              <p className="text-[11px] text-amber-300/80 text-center max-w-sm">
+                {error}
+              </p>
               <button
                 onClick={onRegenerate}
                 className="text-[10px] px-3 py-1 bg-white/[0.04] hover:bg-white/[0.08] rounded text-muted-foreground/70 hover:text-foreground transition-colors">
@@ -2269,11 +2485,19 @@ function ClarifyWizard(props: {
               {questions.map((q, i) => (
                 <div key={q.id} className="space-y-1.5">
                   <label className="block text-[11px] text-foreground/80">
-                    <span className="text-muted-foreground/40 mr-1.5">{i + 1}.</span>
+                    <span className="text-muted-foreground/40 mr-1.5">
+                      {i + 1}.
+                    </span>
                     {q.question}
-                    {q.required && <span className="text-red-400/70 ml-1">*</span>}
+                    {q.required && (
+                      <span className="text-red-400/70 ml-1">*</span>
+                    )}
                   </label>
-                  {q.hint && <p className="text-[10px] text-muted-foreground/40 ml-4">{q.hint}</p>}
+                  {q.hint && (
+                    <p className="text-[10px] text-muted-foreground/40 ml-4">
+                      {q.hint}
+                    </p>
+                  )}
                   <input
                     type="text"
                     value={answers[q.id] || ''}
@@ -2308,9 +2532,12 @@ function ClarifyWizard(props: {
           {!loading && !error && (
             <div className="mt-5 pt-4 border-t border-white/5 space-y-1.5">
               <label className="block text-[11px] text-foreground/80">
-                Anything else? <span className="text-muted-foreground/40">(optional)</span>
+                Anything else?{' '}
+                <span className="text-muted-foreground/40">(optional)</span>
               </label>
-              <p className="text-[10px] text-muted-foreground/40">Extra context, design hints, libraries to use, things to avoid…</p>
+              <p className="text-[10px] text-muted-foreground/40">
+                Extra context, design hints, libraries to use, things to avoid…
+              </p>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -2368,23 +2595,38 @@ function AppsPanel() {
   // Listen for cross-panel handoff (e.g. from Chat → "Send to Apps")
   useEffect(() => {
     const onPrefill = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { prompt?: string } | undefined;
+      const detail = (e as CustomEvent).detail as
+        | { prompt?: string }
+        | undefined;
       if (detail?.prompt) {
         setPrompt(detail.prompt);
         setSelectedApp(null);
       }
     };
     window.addEventListener('apps:prefill-prompt', onPrefill as EventListener);
-    return () => window.removeEventListener('apps:prefill-prompt', onPrefill as EventListener);
+    return () =>
+      window.removeEventListener(
+        'apps:prefill-prompt',
+        onPrefill as EventListener,
+      );
   }, []);
   // ── AI Clarify (pre-build wizard) ──
-  type ClarifyQ = { id: string; question: string; hint?: string; suggestions?: string[]; required?: boolean; default?: string };
+  type ClarifyQ = {
+    id: string;
+    question: string;
+    hint?: string;
+    suggestions?: string[];
+    required?: boolean;
+    default?: string;
+  };
   const [clarifyOpen, setClarifyOpen] = useState(false);
   const [clarifyLoading, setClarifyLoading] = useState(false);
   const [clarifyError, setClarifyError] = useState<string | null>(null);
   const [claritySummary, setClaritySummary] = useState('');
   const [clarifyQuestions, setClarifyQuestions] = useState<ClarifyQ[]>([]);
-  const [clarifyAnswers, setClarifyAnswers] = useState<Record<string, string>>({});
+  const [clarifyAnswers, setClarifyAnswers] = useState<Record<string, string>>(
+    {},
+  );
   const [clarifyName, setClarifyName] = useState('');
   const [clarifyNotes, setClarifyNotes] = useState('');
   const [building, setBuilding] = useState(() =>
@@ -2452,10 +2694,16 @@ function AppsPanel() {
   // Right panel tab
   const [rightTab, setRightTab] = useState<'info' | 'build' | 'chat'>('info');
   // Bottom panel state
-  const [bottomState, setBottomState] = useState<'minimized' | 'normal' | 'expanded'>('normal');
-  const [bottomTab, setBottomTab] = useState<'events' | 'logs' | 'terminal'>('events');
+  const [bottomState, setBottomState] = useState<
+    'minimized' | 'normal' | 'expanded'
+  >('normal');
+  const [bottomTab, setBottomTab] = useState<'events' | 'logs' | 'terminal'>(
+    'events',
+  );
   const [bottomSplit, setBottomSplit] = useState(false);
-  const [bottomSplitTab, setBottomSplitTab] = useState<'events' | 'logs' | 'terminal'>('logs');
+  const [bottomSplitTab, setBottomSplitTab] = useState<
+    'events' | 'logs' | 'terminal'
+  >('logs');
 
   // App logs state
   const [appLogs, setAppLogs] = useState('');
@@ -2463,16 +2711,23 @@ function AppsPanel() {
   const appLogsRef = useRef<HTMLPreElement>(null);
 
   // Container stats
-  const [containerStats, setContainerStats] = useState<Record<string, string> | null>(null);
+  const [containerStats, setContainerStats] = useState<Record<
+    string,
+    string
+  > | null>(null);
 
   // File search
   const [fileSearch, setFileSearch] = useState('');
-  const [searchResults, setSearchResults] = useState<{file: string; line: number; text: string}[]>([]);
+  const [searchResults, setSearchResults] = useState<
+    { file: string; line: number; text: string }[]
+  >([]);
   const [searching, setSearching] = useState(false);
 
   // Terminal state
   const [termCmd, setTermCmd] = useState('');
-  const [termHistory, setTermHistory] = useState<{cmd: string; output: string; status: string}[]>([]);
+  const [termHistory, setTermHistory] = useState<
+    { cmd: string; output: string; status: string }[]
+  >([]);
   const [termRunning, setTermRunning] = useState(false);
   const termRef = useRef<HTMLDivElement>(null);
 
@@ -2627,7 +2882,9 @@ function AppsPanel() {
 
   // Load app logs when logs tab is active in bottom panel
   useEffect(() => {
-    const logsActive = bottomState !== 'minimized' && (bottomTab === 'logs' || (bottomSplit && bottomSplitTab === 'logs'));
+    const logsActive =
+      bottomState !== 'minimized' &&
+      (bottomTab === 'logs' || (bottomSplit && bottomSplitTab === 'logs'));
     if (!logsActive || !selectedApp) return;
     const load = () => {
       setAppLogsLoading(true);
@@ -2644,7 +2901,8 @@ function AppsPanel() {
 
   // Scroll app logs to bottom
   useEffect(() => {
-    if (appLogsRef.current) appLogsRef.current.scrollTop = appLogsRef.current.scrollHeight;
+    if (appLogsRef.current)
+      appLogsRef.current.scrollTop = appLogsRef.current.scrollHeight;
   }, [appLogs]);
 
   // Load container stats when info tab active
@@ -2674,7 +2932,9 @@ function AppsPanel() {
   const doSearch = useCallback(() => {
     if (!fileSearch.trim() || !selectedApp) return;
     setSearching(true);
-    fetch(`${API_BASE}/api/apps/${selectedApp}/search?q=${encodeURIComponent(fileSearch)}`)
+    fetch(
+      `${API_BASE}/api/apps/${selectedApp}/search?q=${encodeURIComponent(fileSearch)}`,
+    )
       .then((r) => r.json())
       .then((d) => setSearchResults(Array.isArray(d) ? d : []))
       .catch(() => setSearchResults([]))
@@ -2694,16 +2954,27 @@ function AppsPanel() {
         body: JSON.stringify({ command: cmd }),
       });
       const data = await res.json();
-      setTermHistory((prev) => [...prev, { cmd, output: data.output || data.error || '', status: data.status || 'ok' }]);
+      setTermHistory((prev) => [
+        ...prev,
+        {
+          cmd,
+          output: data.output || data.error || '',
+          status: data.status || 'ok',
+        },
+      ]);
     } catch {
-      setTermHistory((prev) => [...prev, { cmd, output: 'Failed to execute', status: 'error' }]);
+      setTermHistory((prev) => [
+        ...prev,
+        { cmd, output: 'Failed to execute', status: 'error' },
+      ]);
     }
     setTermRunning(false);
   };
 
   // Scroll terminal to bottom
   useEffect(() => {
-    if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight;
+    if (termRef.current)
+      termRef.current.scrollTop = termRef.current.scrollHeight;
   }, [termHistory]);
 
   // Save app settings
@@ -2712,7 +2983,10 @@ function AppsPanel() {
     await fetch(`${API_BASE}/api/apps/${selectedApp}/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ icon: editIcon || undefined, route: editRoute || undefined }),
+      body: JSON.stringify({
+        icon: editIcon || undefined,
+        route: editRoute || undefined,
+      }),
     });
     refresh();
     setSettingsOpen(false);
@@ -2841,7 +3115,14 @@ function AppsPanel() {
       if (!r.ok) throw new Error(data?.error || 'Failed');
       setClaritySummary(typeof data.summary === 'string' ? data.summary : '');
       if (typeof data.suggestedName === 'string' && data.suggestedName) {
-        setClarifyName(String(data.suggestedName).toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 24));
+        setClarifyName(
+          String(data.suggestedName)
+            .toLowerCase()
+            .replace(/[^a-z0-9-]/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '')
+            .slice(0, 24),
+        );
       }
       const qs = Array.isArray(data.questions) ? data.questions : [];
       const parsed: ClarifyQ[] = qs
@@ -2849,7 +3130,9 @@ function AppsPanel() {
           id: String(q.id || `q${i}`),
           question: String(q.question || ''),
           hint: q.hint ? String(q.hint) : undefined,
-          suggestions: Array.isArray(q.suggestions) ? q.suggestions.map(String) : undefined,
+          suggestions: Array.isArray(q.suggestions)
+            ? q.suggestions.map(String)
+            : undefined,
           required: !!q.required,
           default: typeof q.default === 'string' ? q.default : undefined,
         }))
@@ -2868,7 +3151,8 @@ function AppsPanel() {
       const defaults: Record<string, string> = {};
       for (const q of parsed) if (q.default) defaults[q.id] = q.default;
       setClarifyAnswers(defaults);
-      if (!qs.length) setClarifyError('AI returned no questions. You can build directly.');
+      if (!qs.length)
+        setClarifyError('AI returned no questions. You can build directly.');
     } catch (e) {
       setClarifyError(e instanceof Error ? e.message : 'Clarify failed');
     } finally {
@@ -2892,7 +3176,10 @@ function AppsPanel() {
     }
     setClarifyOpen(false);
     const name = clarifyName.trim();
-    streamNDJSON(`${API_BASE}/api/apps/build`, name ? { prompt: enriched, name } : { prompt: enriched });
+    streamNDJSON(
+      `${API_BASE}/api/apps/build`,
+      name ? { prompt: enriched, name } : { prompt: enriched },
+    );
   };
 
   const skipClarifyAndBuild = () => {
@@ -2922,7 +3209,9 @@ function AppsPanel() {
   };
   const restartApp = async (name: string) => {
     try {
-      const r = await fetch(`${API_BASE}/api/apps/${name}/restart`, { method: 'POST' });
+      const r = await fetch(`${API_BASE}/api/apps/${name}/restart`, {
+        method: 'POST',
+      });
       if (!r.ok) {
         // Fall back to a full deploy if quick restart fails (e.g. image missing).
         await fetch(`${API_BASE}/api/apps/${name}/deploy`, { method: 'POST' });
@@ -3088,7 +3377,8 @@ function AppsPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className={`flex min-h-0 overflow-hidden ${bottomState === 'expanded' ? 'flex-none h-0' : 'flex-1'}`}>
+      <div
+        className={`flex min-h-0 overflow-hidden ${bottomState === 'expanded' ? 'flex-none h-0' : 'flex-1'}`}>
         {/* ── Left: App sidebar ── */}
         <div className="w-52 shrink-0 border-r border-border/10 flex flex-col">
           {/* Build input — flat modern */}
@@ -3114,7 +3404,10 @@ function AppsPanel() {
                 disabled={building || !prompt.trim() || clarifyLoading}
                 title="Refine with AI (Enter)"
                 className="absolute right-6 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center text-muted-foreground/50 hover:text-violet-400 disabled:opacity-20 transition-colors">
-                <Sparkles size={11} className={clarifyLoading ? 'animate-pulse' : ''} />
+                <Sparkles
+                  size={11}
+                  className={clarifyLoading ? 'animate-pulse' : ''}
+                />
               </button>
               {/* Direct build (arrow) — Shift+Enter */}
               <button
@@ -3134,8 +3427,14 @@ function AppsPanel() {
               )}
             </div>
             <p className="mt-1 text-[9px] text-muted-foreground/30">
-              <kbd className="px-1 py-px bg-white/[0.04] rounded text-[8px]">Enter</kbd> refine ·
-              <kbd className="ml-1 px-1 py-px bg-white/[0.04] rounded text-[8px]">⇧Enter</kbd> build
+              <kbd className="px-1 py-px bg-white/[0.04] rounded text-[8px]">
+                Enter
+              </kbd>{' '}
+              refine ·
+              <kbd className="ml-1 px-1 py-px bg-white/[0.04] rounded text-[8px]">
+                ⇧Enter
+              </kbd>{' '}
+              build
             </p>
           </div>
 
@@ -3196,14 +3495,18 @@ function AppsPanel() {
                   </span>
                   {selectedFile && (
                     <>
-                      <span className="text-muted-foreground/20 shrink-0">/</span>
+                      <span className="text-muted-foreground/20 shrink-0">
+                        /
+                      </span>
                       <span className="text-muted-foreground/60 truncate min-w-0">
                         {selectedFile}
                       </span>
                     </>
                   )}
                   {fileDirty && (
-                    <span className="text-amber-400/80 shrink-0"><Circle size={6} fill="currentColor" /></span>
+                    <span className="text-amber-400/80 shrink-0">
+                      <Circle size={6} fill="currentColor" />
+                    </span>
                   )}
                   {fileLoading && (
                     <span className="text-blue-400/60 text-[9px] animate-pulse shrink-0">
@@ -3249,7 +3552,10 @@ function AppsPanel() {
                   {/* Search */}
                   <div className="px-1.5 py-1 border-b border-border/5">
                     <div className="relative">
-                      <Search size={10} className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground/30" />
+                      <Search
+                        size={10}
+                        className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground/30"
+                      />
                       <input
                         value={fileSearch}
                         onChange={(e) => setFileSearch(e.target.value)}
@@ -3263,22 +3569,33 @@ function AppsPanel() {
                   <div className="flex-1 overflow-auto py-1">
                     {searchResults.length > 0 ? (
                       <div className="space-y-0.5">
-                        <button onClick={() => { setSearchResults([]); setFileSearch(''); }}
+                        <button
+                          onClick={() => {
+                            setSearchResults([]);
+                            setFileSearch('');
+                          }}
                           className="w-full text-[8px] text-muted-foreground/30 hover:text-muted-foreground/60 px-2 py-0.5 text-left">
-                          <X size={8} className="inline mr-0.5" /> Clear results ({searchResults.length})
+                          <X size={8} className="inline mr-0.5" /> Clear results
+                          ({searchResults.length})
                         </button>
                         {searchResults.map((r, i) => (
                           <button
                             key={i}
                             onClick={() => setSelectedFile(r.file)}
                             className={`w-full text-left px-2 py-0.5 hover:bg-white/[0.03] transition-colors ${selectedFile === r.file ? 'bg-white/[0.04]' : ''}`}>
-                            <div className="text-[9px] text-foreground/60 font-mono truncate">{r.file}</div>
-                            <div className="text-[8px] text-muted-foreground/30 truncate">L{r.line}: {r.text}</div>
+                            <div className="text-[9px] text-foreground/60 font-mono truncate">
+                              {r.file}
+                            </div>
+                            <div className="text-[8px] text-muted-foreground/30 truncate">
+                              L{r.line}: {r.text}
+                            </div>
                           </button>
                         ))}
                       </div>
                     ) : searching ? (
-                      <p className="text-[9px] text-muted-foreground/30 text-center py-2 animate-pulse">Searching...</p>
+                      <p className="text-[9px] text-muted-foreground/30 text-center py-2 animate-pulse">
+                        Searching...
+                      </p>
                     ) : (
                       <>
                         {tree.map((node) => (
@@ -3288,7 +3605,10 @@ function AppsPanel() {
                             depth={0}
                             selectedFile={selectedFile}
                             onSelect={(path) => {
-                              if (!fileDirty || confirm('Discard unsaved changes?'))
+                              if (
+                                !fileDirty ||
+                                confirm('Discard unsaved changes?')
+                              )
                                 setSelectedFile(path);
                             }}
                             expanded={expandedDirs}
@@ -3335,16 +3655,42 @@ function AppsPanel() {
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { label: 'Todo App', prompt: 'Build a modern todo app with categories, due dates, and drag-to-reorder' },
-                    { label: 'Weather', prompt: 'Build a weather dashboard that shows current weather and 5-day forecast for any city' },
-                    { label: 'Notes', prompt: 'Build a markdown notes app with sidebar, live preview, and local storage' },
-                    { label: 'Pomodoro', prompt: 'Build a pomodoro timer with session tracking, break reminders, and statistics' },
-                    { label: 'Habit Tracker', prompt: 'Build a daily habit tracker with streaks, calendar view, and progress charts' },
-                    { label: 'Bookmarks', prompt: 'Build a bookmark manager with tags, search, and card previews' },
+                    {
+                      label: 'Todo App',
+                      prompt:
+                        'Build a modern todo app with categories, due dates, and drag-to-reorder',
+                    },
+                    {
+                      label: 'Weather',
+                      prompt:
+                        'Build a weather dashboard that shows current weather and 5-day forecast for any city',
+                    },
+                    {
+                      label: 'Notes',
+                      prompt:
+                        'Build a markdown notes app with sidebar, live preview, and local storage',
+                    },
+                    {
+                      label: 'Pomodoro',
+                      prompt:
+                        'Build a pomodoro timer with session tracking, break reminders, and statistics',
+                    },
+                    {
+                      label: 'Habit Tracker',
+                      prompt:
+                        'Build a daily habit tracker with streaks, calendar view, and progress charts',
+                    },
+                    {
+                      label: 'Bookmarks',
+                      prompt:
+                        'Build a bookmark manager with tags, search, and card previews',
+                    },
                   ].map((t) => (
                     <button
                       key={t.label}
-                      onClick={() => { setPrompt(t.prompt); }}
+                      onClick={() => {
+                        setPrompt(t.prompt);
+                      }}
                       className="px-3 py-2 text-[11px] text-muted-foreground/50 hover:text-foreground/70 bg-white/[0.02] hover:bg-white/[0.05] border border-border/10 rounded-lg transition-colors text-left">
                       {t.label}
                     </button>
@@ -3363,20 +3709,20 @@ function AppsPanel() {
               const icons = { info: Blocks, build: Play, chat: MessageSquare };
               const Icon = icons[tab];
               return (
-              <button
-                key={tab}
-                onClick={() => setRightTab(tab)}
-                title={tab}
-                className={`flex-1 flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider transition-colors ${
-                  rightTab === tab
-                    ? 'text-foreground/70 border-b border-foreground/30'
-                    : 'text-muted-foreground/30 hover:text-muted-foreground/60'
-                }`}>
-                <Icon size={11} />
-                {tab === 'build' && hasBuild && !buildDone && (
-                  <span className="w-1 h-1 rounded-full bg-amber-500 animate-pulse" />
-                )}
-              </button>
+                <button
+                  key={tab}
+                  onClick={() => setRightTab(tab)}
+                  title={tab}
+                  className={`flex-1 flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider transition-colors ${
+                    rightTab === tab
+                      ? 'text-foreground/70 border-b border-foreground/30'
+                      : 'text-muted-foreground/30 hover:text-muted-foreground/60'
+                  }`}>
+                  <Icon size={11} />
+                  {tab === 'build' && hasBuild && !buildDone && (
+                    <span className="w-1 h-1 rounded-full bg-amber-500 animate-pulse" />
+                  )}
+                </button>
               );
             })}
           </div>
@@ -3444,20 +3790,36 @@ function AppsPanel() {
                       {containerStats && (
                         <>
                           <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                            <span className="text-muted-foreground/40">CPU</span>
-                            <p className="text-foreground/60 mt-0.5 font-mono">{containerStats.cpu || '—'}</p>
+                            <span className="text-muted-foreground/40">
+                              CPU
+                            </span>
+                            <p className="text-foreground/60 mt-0.5 font-mono">
+                              {containerStats.cpu || '—'}
+                            </p>
                           </div>
                           <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                            <span className="text-muted-foreground/40">Memory</span>
-                            <p className="text-foreground/60 mt-0.5 font-mono text-[9px]">{containerStats.mem || '—'}</p>
+                            <span className="text-muted-foreground/40">
+                              Memory
+                            </span>
+                            <p className="text-foreground/60 mt-0.5 font-mono text-[9px]">
+                              {containerStats.mem || '—'}
+                            </p>
                           </div>
                           <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                            <span className="text-muted-foreground/40">Network</span>
-                            <p className="text-foreground/60 mt-0.5 font-mono text-[9px]">{containerStats.net || '—'}</p>
+                            <span className="text-muted-foreground/40">
+                              Network
+                            </span>
+                            <p className="text-foreground/60 mt-0.5 font-mono text-[9px]">
+                              {containerStats.net || '—'}
+                            </p>
                           </div>
                           <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                            <span className="text-muted-foreground/40">PIDs</span>
-                            <p className="text-foreground/60 mt-0.5 font-mono">{containerStats.pids || '—'}</p>
+                            <span className="text-muted-foreground/40">
+                              PIDs
+                            </span>
+                            <p className="text-foreground/60 mt-0.5 font-mono">
+                              {containerStats.pids || '—'}
+                            </p>
                           </div>
                         </>
                       )}
@@ -3483,12 +3845,15 @@ function AppsPanel() {
                           Stop
                         </button>
                       )}
-                      {(app.status === 'running' || app.status === 'failed' || app.status === 'stopped') && (
+                      {(app.status === 'running' ||
+                        app.status === 'failed' ||
+                        app.status === 'stopped') && (
                         <button
                           onClick={() => restartApp(app.name)}
                           title="Restart container (no rebuild)"
                           className="py-1.5 px-3 text-[10px] text-sky-400/70 hover:text-sky-300 bg-sky-500/5 hover:bg-sky-500/10 rounded transition-colors">
-                          <RefreshCw size={10} className="inline mr-0.5" /> Restart
+                          <RefreshCw size={10} className="inline mr-0.5" />{' '}
+                          Restart
                         </button>
                       )}
                       <button
@@ -3511,7 +3876,8 @@ function AppsPanel() {
                               ? 'text-violet-400 bg-violet-500/10 border border-violet-500/20'
                               : 'text-muted-foreground/40 hover:bg-white/[0.03] border border-transparent'
                           }`}>
-                          <Sparkles size={10} className="inline mr-0.5" /> Feature
+                          <Sparkles size={10} className="inline mr-0.5" />{' '}
+                          Feature
                         </button>
                         <button
                           onClick={() => setActionType('fix')}
@@ -3584,7 +3950,8 @@ function AppsPanel() {
                           onClick={() => startFix()}
                           disabled={building}
                           className="w-full py-1.5 text-[10px] text-amber-400/80 bg-amber-500/5 border border-amber-500/10 rounded hover:bg-amber-500/10 transition-colors disabled:opacity-30">
-                          <Wrench size={10} className="inline mr-0.5" /> Auto-fix from Logs (no description)
+                          <Wrench size={10} className="inline mr-0.5" />{' '}
+                          Auto-fix from Logs (no description)
                         </button>
                       )}
                     </div>
@@ -3595,15 +3962,26 @@ function AppsPanel() {
                         <button
                           onClick={() => setSettingsOpen((v) => !v)}
                           className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-muted-foreground/60 w-full">
-                          <History size={10} /> Build History ({app.builds.length})
+                          <History size={10} /> Build History (
+                          {app.builds.length})
                         </button>
                         <div className="space-y-1 max-h-40 overflow-auto">
                           {[...app.builds].reverse().map((b, i) => (
-                            <div key={i} className="flex items-center gap-2 text-[9px] py-0.5">
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${b.status === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                              <span className="text-muted-foreground/50 capitalize">{b.action}</span>
-                              <span className="text-muted-foreground/30 flex-1 truncate font-mono">{b.prompt}</span>
-                              <span className="text-muted-foreground/30 tabular-nums shrink-0">{b.duration}</span>
+                            <div
+                              key={i}
+                              className="flex items-center gap-2 text-[9px] py-0.5">
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${b.status === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}
+                              />
+                              <span className="text-muted-foreground/50 capitalize">
+                                {b.action}
+                              </span>
+                              <span className="text-muted-foreground/30 flex-1 truncate font-mono">
+                                {b.prompt}
+                              </span>
+                              <span className="text-muted-foreground/30 tabular-nums shrink-0">
+                                {b.duration}
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -3617,7 +3995,9 @@ function AppsPanel() {
                           onClick={() => setGitOpen((v) => !v)}
                           className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-muted-foreground/60 w-full">
                           <GitBranch size={10} /> Changes ({commits.length})
-                          <span className="ml-auto text-muted-foreground/30">{gitOpen ? '−' : '+'}</span>
+                          <span className="ml-auto text-muted-foreground/30">
+                            {gitOpen ? '−' : '+'}
+                          </span>
                         </button>
                         {gitOpen && (
                           <div className="space-y-1 max-h-60 overflow-auto">
@@ -3628,22 +4008,41 @@ function AppsPanel() {
                                 <button
                                   onClick={() => setDiffSha(c.sha)}
                                   className="flex-1 min-w-0 flex items-center gap-2 text-left">
-                                  <span className="font-mono text-muted-foreground/40 shrink-0">{c.short_sha}</span>
+                                  <span className="font-mono text-muted-foreground/40 shrink-0">
+                                    {c.short_sha}
+                                  </span>
                                   {c.action && (
-                                    <span className={`text-[9px] uppercase shrink-0 ${
-                                      c.action === 'fix' ? 'text-amber-400/70' :
-                                      c.action === 'rebuild' ? 'text-violet-400/70' :
-                                      c.action === 'build' ? 'text-emerald-400/70' :
-                                      c.action === 'revert' ? 'text-red-400/70' :
-                                      'text-muted-foreground/50'
-                                    }`}>{c.action}</span>
+                                    <span
+                                      className={`text-[9px] uppercase shrink-0 ${
+                                        c.action === 'fix'
+                                          ? 'text-amber-400/70'
+                                          : c.action === 'rebuild'
+                                            ? 'text-violet-400/70'
+                                            : c.action === 'build'
+                                              ? 'text-emerald-400/70'
+                                              : c.action === 'revert'
+                                                ? 'text-red-400/70'
+                                                : 'text-muted-foreground/50'
+                                      }`}>
+                                      {c.action}
+                                    </span>
                                   )}
                                   <span className="text-foreground/70 flex-1 truncate">
-                                    {c.subject.replace(/^(build|fix|rebuild|deploy|revert):\s*/, '')}
+                                    {c.subject.replace(
+                                      /^(build|fix|rebuild|deploy|revert):\s*/,
+                                      '',
+                                    )}
                                   </span>
-                                  {c.files ? <span className="text-muted-foreground/40 tabular-nums shrink-0">{c.files}f</span> : null}
+                                  {c.files ? (
+                                    <span className="text-muted-foreground/40 tabular-nums shrink-0">
+                                      {c.files}f
+                                    </span>
+                                  ) : null}
                                   <span className="text-muted-foreground/30 tabular-nums shrink-0">
-                                    {new Date(c.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                    {new Date(c.timestamp).toLocaleDateString(
+                                      undefined,
+                                      { month: 'short', day: 'numeric' },
+                                    )}
                                   </span>
                                 </button>
                                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
@@ -3651,17 +4050,33 @@ function AppsPanel() {
                                     title="Revert this change (creates a new commit)"
                                     onClick={async () => {
                                       if (!selectedApp) return;
-                                      if (!confirm(`Revert ${c.short_sha}?\n\n"${c.subject}"\n\nThis creates a new commit that undoes the change. You can deploy after to apply it.`)) return;
+                                      if (
+                                        !confirm(
+                                          `Revert ${c.short_sha}?\n\n"${c.subject}"\n\nThis creates a new commit that undoes the change. You can deploy after to apply it.`,
+                                        )
+                                      )
+                                        return;
                                       try {
-                                        const res = await fetch(`${API_BASE}/api/apps/${selectedApp}/git/revert/${c.sha}`, { method: 'POST' });
+                                        const res = await fetch(
+                                          `${API_BASE}/api/apps/${selectedApp}/git/revert/${c.sha}`,
+                                          { method: 'POST' },
+                                        );
                                         const data = await res.json();
                                         if (!res.ok) {
-                                          alert('Revert failed: ' + (data.error || 'unknown'));
+                                          alert(
+                                            'Revert failed: ' +
+                                              (data.error || 'unknown'),
+                                          );
                                           return;
                                         }
                                         loadCommits();
                                       } catch (e) {
-                                        alert('Revert failed: ' + (e instanceof Error ? e.message : 'unknown'));
+                                        alert(
+                                          'Revert failed: ' +
+                                            (e instanceof Error
+                                              ? e.message
+                                              : 'unknown'),
+                                        );
                                       }
                                     }}
                                     className="p-1 rounded hover:bg-red-500/15 text-red-400/70 hover:text-red-300">
@@ -3696,7 +4111,9 @@ function AppsPanel() {
                       {settingsOpen && (
                         <div className="space-y-2 p-2 bg-white/[0.02] rounded">
                           <div className="space-y-0.5">
-                            <span className="text-[9px] text-muted-foreground/30">Icon</span>
+                            <span className="text-[9px] text-muted-foreground/30">
+                              Icon
+                            </span>
                             <input
                               value={editIcon}
                               onChange={(e) => setEditIcon(e.target.value)}
@@ -3705,7 +4122,9 @@ function AppsPanel() {
                             />
                           </div>
                           <div className="space-y-0.5">
-                            <span className="text-[9px] text-muted-foreground/30">Route</span>
+                            <span className="text-[9px] text-muted-foreground/30">
+                              Route
+                            </span>
                             <input
                               value={editRoute}
                               onChange={(e) => setEditRoute(e.target.value)}
@@ -3736,35 +4155,48 @@ function AppsPanel() {
                           onClick={(e) => e.stopPropagation()}
                           className="w-full max-w-6xl h-[85vh] bg-[#0a0a0a] border border-white/10 rounded-lg shadow-2xl flex flex-col">
                           <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10">
-                            <GitBranch size={12} className="text-violet-400/70" />
-                            <span className="text-[11px] font-mono text-foreground/80">{diffSha.slice(0, 12)}</span>
+                            <GitBranch
+                              size={12}
+                              className="text-violet-400/70"
+                            />
+                            <span className="text-[11px] font-mono text-foreground/80">
+                              {diffSha.slice(0, 12)}
+                            </span>
                             <span className="text-[11px] text-muted-foreground/60 truncate flex-1">
-                              {commits.find((c) => c.sha === diffSha)?.subject || ''}
+                              {commits.find((c) => c.sha === diffSha)
+                                ?.subject || ''}
                             </span>
                             <div className="flex items-center bg-white/5 rounded text-[10px] overflow-hidden">
                               <button
                                 onClick={() => setDiffLayout('single')}
                                 title="One file at a time (sidebar)"
                                 className={`px-2 py-1 ${diffLayout === 'single' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/50 hover:text-foreground'}`}>
-                                <PanelLeft size={11} className="inline mr-0.5" /> Files
+                                <PanelLeft
+                                  size={11}
+                                  className="inline mr-0.5"
+                                />{' '}
+                                Files
                               </button>
                               <button
                                 onClick={() => setDiffLayout('all')}
                                 title="Scroll all files"
                                 className={`px-2 py-1 ${diffLayout === 'all' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/50 hover:text-foreground'}`}>
-                                <Rows3 size={11} className="inline mr-0.5" /> All
+                                <Rows3 size={11} className="inline mr-0.5" />{' '}
+                                All
                               </button>
                             </div>
                             <div className="flex items-center bg-white/5 rounded text-[10px] overflow-hidden">
                               <button
                                 onClick={() => setDiffMode('split')}
                                 className={`px-2 py-1 ${diffMode === 'split' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/50 hover:text-foreground'}`}>
-                                <Columns2 size={11} className="inline mr-0.5" /> Split
+                                <Columns2 size={11} className="inline mr-0.5" />{' '}
+                                Split
                               </button>
                               <button
                                 onClick={() => setDiffMode('unified')}
                                 className={`px-2 py-1 ${diffMode === 'unified' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/50 hover:text-foreground'}`}>
-                                <ListTree size={11} className="inline mr-0.5" /> Unified
+                                <ListTree size={11} className="inline mr-0.5" />{' '}
+                                Unified
                               </button>
                             </div>
                             <button
@@ -3775,9 +4207,15 @@ function AppsPanel() {
                           </div>
                           <div className="flex-1 p-3 min-h-0 overflow-hidden">
                             {diffText === 'Loading…' ? (
-                              <div className="text-[11px] text-muted-foreground/60">Loading…</div>
+                              <div className="text-[11px] text-muted-foreground/60">
+                                Loading…
+                              </div>
                             ) : (
-                              <DiffView diff={diffText} mode={diffMode} layout={diffLayout} />
+                              <DiffView
+                                diff={diffText}
+                                mode={diffMode}
+                                layout={diffLayout}
+                              />
                             )}
                           </div>
                         </div>
@@ -3837,7 +4275,8 @@ function AppsPanel() {
                                 ? 'text-violet-400 bg-violet-500/10'
                                 : 'text-muted-foreground/30 hover:bg-white/[0.03]'
                             }`}>
-                            <Sparkles size={9} className="inline mr-0.5" /> Feature
+                            <Sparkles size={9} className="inline mr-0.5" />{' '}
+                            Feature
                           </button>
                           <button
                             onClick={() => setActionType('fix')}
@@ -4232,7 +4671,13 @@ function HomeKitPanel() {
                   onClick={() => wake(acc.id, acc.name)}
                   disabled={waking === acc.id}
                   className="px-2.5 py-1 rounded-md text-[11px] text-violet-400 border border-violet-500/20 hover:bg-violet-500/10 disabled:opacity-50 transition-colors">
-                  {waking === acc.id ? 'Waking...' : <><Power size={12} className="inline" /> Wake</>}
+                  {waking === acc.id ? (
+                    'Waking...'
+                  ) : (
+                    <>
+                      <Power size={12} className="inline" /> Wake
+                    </>
+                  )}
                 </button>
                 {wakeResult[acc.id] && (
                   <span
@@ -4406,10 +4851,34 @@ interface Persona {
 
 const BUILTIN_PERSONAS: Persona[] = [
   { id: 'default', name: 'Default', emoji: '💬', system: '' },
-  { id: 'engineer', name: 'Senior Engineer', emoji: '🔧', system: 'You are a senior software engineer. Be concise, pragmatic, and code-first. Prefer trade-off analysis over verbose explanation.' },
-  { id: 'tutor', name: 'Patient Tutor', emoji: '🎓', system: 'You are a patient tutor. Explain step-by-step with small examples. Ask one clarifying question if the user\'s goal is ambiguous.' },
-  { id: 'editor', name: 'Sharp Editor', emoji: '✍️', system: 'You are a sharp editor. Tighten prose, kill filler, preserve voice. Show before/after when helpful.' },
-  { id: 'shell', name: 'Shell Wizard', emoji: '🖥️', system: 'You are a shell expert. Reply with a single fenced bash block plus one sentence of context unless asked otherwise.' },
+  {
+    id: 'engineer',
+    name: 'Senior Engineer',
+    emoji: '🔧',
+    system:
+      'You are a senior software engineer. Be concise, pragmatic, and code-first. Prefer trade-off analysis over verbose explanation.',
+  },
+  {
+    id: 'tutor',
+    name: 'Patient Tutor',
+    emoji: '🎓',
+    system:
+      "You are a patient tutor. Explain step-by-step with small examples. Ask one clarifying question if the user's goal is ambiguous.",
+  },
+  {
+    id: 'editor',
+    name: 'Sharp Editor',
+    emoji: '✍️',
+    system:
+      'You are a sharp editor. Tighten prose, kill filler, preserve voice. Show before/after when helpful.',
+  },
+  {
+    id: 'shell',
+    name: 'Shell Wizard',
+    emoji: '🖥️',
+    system:
+      'You are a shell expert. Reply with a single fenced bash block plus one sentence of context unless asked otherwise.',
+  },
 ];
 
 // Default system prompt applied to every chat unless the user replaces it.
@@ -4437,7 +4906,9 @@ const DEFAULT_SYSTEM_PROMPT = [
 
 // Cross-panel events for handoff & terminal integration
 function gotoPage(page: string, payload?: unknown) {
-  window.dispatchEvent(new CustomEvent('nav:goto', { detail: { page, payload } }));
+  window.dispatchEvent(
+    new CustomEvent('nav:goto', { detail: { page, payload } }),
+  );
 }
 function copyToClipboard(text: string) {
   try {
@@ -4466,19 +4937,71 @@ interface SlashCmd {
 const SLASH_COMMANDS: SlashCmd[] = [
   { cmd: '/clear', hint: 'Clear all messages in this chat', example: '/clear' },
   { cmd: '/new', hint: 'Start a new chat session', example: '/new' },
-  { cmd: '/system', hint: 'Set system prompt for this chat', example: '/system You are a Rust expert.' },
-  { cmd: '/model', hint: 'Override routing for the next turn (auto|light|heavy|<node>)', example: '/model heavy' },
-  { cmd: '/temp', hint: 'Set temperature for this chat (0–2)', example: '/temp 0.3' },
-  { cmd: '/persona', hint: 'Switch persona by id', example: '/persona engineer' },
-  { cmd: '/title', hint: 'Rename this chat', example: '/title Rust ownership notes' },
-  { cmd: '/build', hint: 'Send the last assistant reply to the Apps wizard as an idea', example: '/build' },
-  { cmd: '/save', hint: 'Save the last assistant reply as a snippet', example: '/save Useful regex' },
-  { cmd: '/web', hint: 'Fetch a URL and use it as context for the next message', example: '/web https://example.com' },
-  { cmd: '/rag', hint: 'Search indexed app source code and attach top results', example: '/rag docker healthcheck' },
-  { cmd: '/tools', hint: 'Enable tool-calling for the next reply (assistant may call listApps, appLogs, ragSearch, ...)', example: '/tools on' },
-  { cmd: '/compare', hint: 'Send the next message to two or more routes and show replies side-by-side', example: '/compare light,heavy' },
-  { cmd: '/schedule', hint: 'Create a recurring prompt (cron or @every)', example: '/schedule @every 1h What is new?' },
-  { cmd: '/export', hint: 'Download this chat as Markdown', example: '/export' },
+  {
+    cmd: '/system',
+    hint: 'Set system prompt for this chat',
+    example: '/system You are a Rust expert.',
+  },
+  {
+    cmd: '/model',
+    hint: 'Override routing for the next turn (auto|light|heavy|<node>)',
+    example: '/model heavy',
+  },
+  {
+    cmd: '/temp',
+    hint: 'Set temperature for this chat (0–2)',
+    example: '/temp 0.3',
+  },
+  {
+    cmd: '/persona',
+    hint: 'Switch persona by id',
+    example: '/persona engineer',
+  },
+  {
+    cmd: '/title',
+    hint: 'Rename this chat',
+    example: '/title Rust ownership notes',
+  },
+  {
+    cmd: '/build',
+    hint: 'Send the last assistant reply to the Apps wizard as an idea',
+    example: '/build',
+  },
+  {
+    cmd: '/save',
+    hint: 'Save the last assistant reply as a snippet',
+    example: '/save Useful regex',
+  },
+  {
+    cmd: '/web',
+    hint: 'Fetch a URL and use it as context for the next message',
+    example: '/web https://example.com',
+  },
+  {
+    cmd: '/rag',
+    hint: 'Search indexed app source code and attach top results',
+    example: '/rag docker healthcheck',
+  },
+  {
+    cmd: '/tools',
+    hint: 'Enable tool-calling for the next reply (assistant may call listApps, appLogs, ragSearch, ...)',
+    example: '/tools on',
+  },
+  {
+    cmd: '/compare',
+    hint: 'Send the next message to two or more routes and show replies side-by-side',
+    example: '/compare light,heavy',
+  },
+  {
+    cmd: '/schedule',
+    hint: 'Create a recurring prompt (cron or @every)',
+    example: '/schedule @every 1h What is new?',
+  },
+  {
+    cmd: '/export',
+    hint: 'Download this chat as Markdown',
+    example: '/export',
+  },
   { cmd: '/help', hint: 'Show all slash commands', example: '/help' },
 ];
 
@@ -4486,12 +5009,14 @@ const SLASH_COMMANDS: SlashCmd[] = [
 function MarkdownView({ text }: { text: string }) {
   // Split into segments: text + ```fenced``` blocks
   const segments = useMemo(() => {
-    const out: Array<{ kind: 'text' | 'code'; lang?: string; body: string }> = [];
+    const out: Array<{ kind: 'text' | 'code'; lang?: string; body: string }> =
+      [];
     const re = /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g;
     let last = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
-      if (m.index > last) out.push({ kind: 'text', body: text.slice(last, m.index) });
+      if (m.index > last)
+        out.push({ kind: 'text', body: text.slice(last, m.index) });
       out.push({ kind: 'code', lang: m[1] || '', body: m[2] });
       last = m.index + m[0].length;
     }
@@ -4506,7 +5031,11 @@ function MarkdownView({ text }: { text: string }) {
           (seg.lang || '').toLowerCase() === 'tool' ? (
             <ToolCallBlock key={i} payload={seg.body} />
           ) : (
-            <CodeBlock key={i} lang={seg.lang || ''} code={seg.body.replace(/\n$/, '')} />
+            <CodeBlock
+              key={i}
+              lang={seg.lang || ''}
+              code={seg.body.replace(/\n$/, '')}
+            />
           )
         ) : (
           <InlineMarkdown key={i} text={seg.body} />
@@ -4537,9 +5066,18 @@ function InlineMarkdown({ text }: { text: string }) {
         const heading = /^(#{1,6})\s+(.*)$/.exec(b);
         if (heading) {
           const level = heading[1].length;
-          const sizes = ['text-base', 'text-base', 'text-sm', 'text-sm', 'text-xs', 'text-xs'];
+          const sizes = [
+            'text-base',
+            'text-base',
+            'text-sm',
+            'text-sm',
+            'text-xs',
+            'text-xs',
+          ];
           return (
-            <p key={i} className={`font-semibold ${sizes[level - 1]} text-foreground`}>
+            <p
+              key={i}
+              className={`font-semibold ${sizes[level - 1]} text-foreground`}>
               <InlineSpans text={heading[2]} />
             </p>
           );
@@ -4556,12 +5094,18 @@ function InlineMarkdown({ text }: { text: string }) {
 
 function InlineSpans({ text }: { text: string }) {
   // Order matters: bold before italic, then inline code
-  const parts: Array<{ kind: 'text' | 'code' | 'bold' | 'italic' | 'link'; body: string; href?: string }> = [];
-  const re = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)]+)\))/g;
+  const parts: Array<{
+    kind: 'text' | 'code' | 'bold' | 'italic' | 'link';
+    body: string;
+    href?: string;
+  }> = [];
+  const re =
+    /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)]+)\))/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push({ kind: 'text', body: text.slice(last, m.index) });
+    if (m.index > last)
+      parts.push({ kind: 'text', body: text.slice(last, m.index) });
     if (m[2]) parts.push({ kind: 'bold', body: m[2] });
     else if (m[4]) parts.push({ kind: 'italic', body: m[4] });
     else if (m[6]) parts.push({ kind: 'code', body: m[6] });
@@ -4572,12 +5116,29 @@ function InlineSpans({ text }: { text: string }) {
   return (
     <>
       {parts.map((p, i) => {
-        if (p.kind === 'bold') return <strong key={i} className="font-semibold">{p.body}</strong>;
+        if (p.kind === 'bold')
+          return (
+            <strong key={i} className="font-semibold">
+              {p.body}
+            </strong>
+          );
         if (p.kind === 'italic') return <em key={i}>{p.body}</em>;
-        if (p.kind === 'code') return <code key={i} className="px-1 py-px text-[12px] rounded bg-white/10 font-mono">{p.body}</code>;
+        if (p.kind === 'code')
+          return (
+            <code
+              key={i}
+              className="px-1 py-px text-[12px] rounded bg-white/10 font-mono">
+              {p.body}
+            </code>
+          );
         if (p.kind === 'link')
           return (
-            <a key={i} href={p.href} target="_blank" rel="noreferrer" className="underline text-violet-300 hover:text-violet-200">
+            <a
+              key={i}
+              href={p.href}
+              target="_blank"
+              rel="noreferrer"
+              className="underline text-violet-300 hover:text-violet-200">
               {p.body}
             </a>
           );
@@ -4599,7 +5160,9 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   return (
     <div className="rounded-md border border-white/10 bg-black/40 overflow-hidden">
       <div className="flex items-center justify-between px-2 py-1 border-b border-white/5 bg-white/[0.02]">
-        <span className="text-[9px] uppercase tracking-wider text-muted-foreground/50 font-mono">{lang || 'text'}</span>
+        <span className="text-[9px] uppercase tracking-wider text-muted-foreground/50 font-mono">
+          {lang || 'text'}
+        </span>
         <div className="flex items-center gap-1">
           <button
             onClick={onCopy}
@@ -4618,23 +5181,27 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
           )}
         </div>
       </div>
-      <pre className={`text-[12px] font-mono p-3 overflow-auto leading-relaxed ${isDiff ? 'diff-block' : ''}`}>
-        {isDiff
-          ? code.split('\n').map((l, i) => {
-              const cls = l.startsWith('+') && !l.startsWith('+++')
+      <pre
+        className={`text-[12px] font-mono p-3 overflow-auto leading-relaxed ${isDiff ? 'diff-block' : ''}`}>
+        {isDiff ? (
+          code.split('\n').map((l, i) => {
+            const cls =
+              l.startsWith('+') && !l.startsWith('+++')
                 ? 'text-emerald-300 bg-emerald-500/5'
                 : l.startsWith('-') && !l.startsWith('---')
                   ? 'text-red-300 bg-red-500/5'
                   : l.startsWith('@@')
                     ? 'text-violet-300/70'
                     : 'text-foreground/70';
-              return (
-                <div key={i} className={`${cls} whitespace-pre`}>
-                  {l || ' '}
-                </div>
-              );
-            })
-          : <code className="text-foreground/85">{code}</code>}
+            return (
+              <div key={i} className={`${cls} whitespace-pre`}>
+                {l || ' '}
+              </div>
+            );
+          })
+        ) : (
+          <code className="text-foreground/85">{code}</code>
+        )}
       </pre>
     </div>
   );
@@ -4660,11 +5227,14 @@ function ToolCallBlock({ payload }: { payload: string }) {
     setRunning(true);
     setErr(null);
     try {
-      const r = await fetch(`${API_BASE}/api/tools/run/${encodeURIComponent(parsed.name)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsed.args || {}),
-      });
+      const r = await fetch(
+        `${API_BASE}/api/tools/run/${encodeURIComponent(parsed.name)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(parsed.args || {}),
+        },
+      );
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error || 'failed');
       setResult(JSON.stringify(data.result, null, 2));
@@ -4706,7 +5276,17 @@ function ToolCallBlock({ payload }: { payload: string }) {
 
 // CompareBlock renders the side-by-side results of /api/chat/compare.
 function CompareBlock({ payload }: { payload: string }) {
-  let data: { pending?: boolean; routes?: string[]; runs?: Array<{ route: string; node: string; text?: string; ms: number; error?: string }> } = {};
+  let data: {
+    pending?: boolean;
+    routes?: string[];
+    runs?: Array<{
+      route: string;
+      node: string;
+      text?: string;
+      ms: number;
+      error?: string;
+    }>;
+  } = {};
   try {
     data = JSON.parse(payload);
   } catch {
@@ -4720,14 +5300,23 @@ function CompareBlock({ payload }: { payload: string }) {
     );
   }
   const runs = data.runs || [];
-  if (runs.length === 0) return <div className="text-xs text-muted-foreground">No compare results.</div>;
+  if (runs.length === 0)
+    return (
+      <div className="text-xs text-muted-foreground">No compare results.</div>
+    );
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
       {runs.map((r, i) => (
-        <div key={i} className="rounded-md border border-violet-400/20 bg-violet-500/5 overflow-hidden flex flex-col">
+        <div
+          key={i}
+          className="rounded-md border border-violet-400/20 bg-violet-500/5 overflow-hidden flex flex-col">
           <div className="flex items-center justify-between px-2 py-1 border-b border-violet-400/20 bg-violet-500/10 text-[10px]">
-            <span className="font-mono text-violet-200">{r.route} · {r.node || '—'}</span>
-            <span className="text-muted-foreground/60 tabular-nums">{r.ms} ms</span>
+            <span className="font-mono text-violet-200">
+              {r.route} · {r.node || '—'}
+            </span>
+            <span className="text-muted-foreground/60 tabular-nums">
+              {r.ms} ms
+            </span>
           </div>
           <div className="p-2 text-[12px] overflow-auto max-h-96">
             {r.error ? (
@@ -4746,16 +5335,22 @@ function CompareBlock({ payload }: { payload: string }) {
 function useSpeechRecognition(onResult: (text: string) => void) {
   const recRef = useRef<any>(null);
   const [listening, setListening] = useState(false);
-  const supported = typeof window !== 'undefined' && (('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window));
+  const supported =
+    typeof window !== 'undefined' &&
+    ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   const start = useCallback(() => {
     if (!supported) return;
-    const Ctor: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const Ctor: any =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
     const rec = new Ctor();
     rec.continuous = false;
     rec.interimResults = false;
     rec.lang = navigator.language || 'en-US';
     rec.onresult = (e: any) => {
-      const t = Array.from(e.results).map((r: any) => r[0].transcript).join(' ');
+      const t = Array.from(e.results)
+        .map((r: any) => r[0].transcript)
+        .join(' ');
       onResult(t);
     };
     rec.onend = () => setListening(false);
@@ -4765,7 +5360,11 @@ function useSpeechRecognition(onResult: (text: string) => void) {
     rec.start();
   }, [onResult, supported]);
   const stop = useCallback(() => {
-    try { recRef.current?.stop(); } catch { /* ignore */ }
+    try {
+      recRef.current?.stop();
+    } catch {
+      /* ignore */
+    }
     setListening(false);
   }, []);
   return { supported, listening, start, stop };
@@ -4782,7 +5381,11 @@ function speak(text: string) {
   }
 }
 function stopSpeaking() {
-  try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+  try {
+    window.speechSynthesis.cancel();
+  } catch {
+    /* ignore */
+  }
 }
 
 function ChatPanel() {
@@ -4827,9 +5430,13 @@ function ChatPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [showSlash, setShowSlash] = useState(false);
-  const [showFilter, setShowFilter] = useState<'all' | 'pinned' | 'archived'>('all');
+  const [showFilter, setShowFilter] = useState<'all' | 'pinned' | 'archived'>(
+    'all',
+  );
   const [resumeBanner, setResumeBanner] = useState(false);
-  const [collapsedReasoning, setCollapsedReasoning] = useState<Record<string, boolean>>({});
+  const [collapsedReasoning, setCollapsedReasoning] = useState<
+    Record<string, boolean>
+  >({});
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [pendingModel, setPendingModel] = useState<string>(''); // one-shot override
   const [toolsEnabled, setToolsEnabled] = useState<boolean>(false); // one-shot tool-call hint
@@ -4872,7 +5479,11 @@ function ChatPanel() {
       .then((arr) => {
         if (Array.isArray(arr) && arr.length > 0) {
           setSessions(arr);
-          try { localStorage.setItem('chat-sessions', JSON.stringify(arr)); } catch { /* ignore */ }
+          try {
+            localStorage.setItem('chat-sessions', JSON.stringify(arr));
+          } catch {
+            /* ignore */
+          }
         }
       })
       .catch(() => {});
@@ -4909,7 +5520,11 @@ function ChatPanel() {
       const updated = [s, ...sessions];
       persist(updated);
       setActiveId(s.id);
-      try { localStorage.setItem('chat-active', s.id); } catch { /* ignore */ }
+      try {
+        localStorage.setItem('chat-active', s.id);
+      } catch {
+        /* ignore */
+      }
       setSideOpen(false);
       setTimeout(() => inputRef.current?.focus(), 50);
       return s.id;
@@ -4925,7 +5540,11 @@ function ChatPanel() {
         const next = remaining[0]?.id || null;
         setActiveId(next);
         if (next) {
-          try { localStorage.setItem('chat-active', next); } catch { /* ignore */ }
+          try {
+            localStorage.setItem('chat-active', next);
+          } catch {
+            /* ignore */
+          }
         }
       }
     },
@@ -4938,7 +5557,11 @@ function ChatPanel() {
     // detect "in flight" state from previous load
     if (localStorage.getItem('chat-loading') === '1') {
       setResumeBanner(true);
-      try { localStorage.removeItem('chat-loading'); } catch { /* ignore */ }
+      try {
+        localStorage.removeItem('chat-loading');
+      } catch {
+        /* ignore */
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -4950,33 +5573,51 @@ function ChatPanel() {
   }, [displayMessages.length, liveSteps.length]);
 
   // ── Auto-title via /api/chat (light model, non-blocking) ──
-  const autoTitle = useCallback(async (sessionId: string, firstUser: string, firstAssistant: string) => {
-    try {
-      const r = await fetch(`${API_BASE}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [
-            { role: 'system', content: 'You write extremely short chat titles. Reply with 2-5 words, no quotes, no punctuation.' },
-            { role: 'user', content: `User: ${firstUser}\n\nAssistant: ${firstAssistant.slice(0, 600)}\n\nTitle:` },
-          ],
-        }),
-      });
-      if (!r.ok) return;
-      const data = await r.json();
-      let t = (data?.message?.content || data?.content || '').trim();
-      t = t.replace(/^"|"$/g, '').replace(/[.!?]+$/, '');
-      if (t && t.length <= 60) {
-        setSessions((prev) => {
-          const next = prev.map((s) => (s.id === sessionId && s.title.startsWith(firstUser.slice(0, 10)) ? { ...s, title: t } : s));
-          try { localStorage.setItem('chat-sessions', JSON.stringify(next)); } catch { /* ignore */ }
-          return next;
+  const autoTitle = useCallback(
+    async (sessionId: string, firstUser: string, firstAssistant: string) => {
+      try {
+        const r = await fetch(`${API_BASE}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: 'system',
+                content:
+                  'You write extremely short chat titles. Reply with 2-5 words, no quotes, no punctuation.',
+              },
+              {
+                role: 'user',
+                content: `User: ${firstUser}\n\nAssistant: ${firstAssistant.slice(0, 600)}\n\nTitle:`,
+              },
+            ],
+          }),
         });
+        if (!r.ok) return;
+        const data = await r.json();
+        let t = (data?.message?.content || data?.content || '').trim();
+        t = t.replace(/^"|"$/g, '').replace(/[.!?]+$/, '');
+        if (t && t.length <= 60) {
+          setSessions((prev) => {
+            const next = prev.map((s) =>
+              s.id === sessionId && s.title.startsWith(firstUser.slice(0, 10))
+                ? { ...s, title: t }
+                : s,
+            );
+            try {
+              localStorage.setItem('chat-sessions', JSON.stringify(next));
+            } catch {
+              /* ignore */
+            }
+            return next;
+          });
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
-  }, []);
+    },
+    [],
+  );
 
   // ── Slash commands ──
   const runSlash = useCallback(
@@ -5003,7 +5644,11 @@ function ChatPanel() {
           if (!arg) {
             setStatusMsg('Usage: /model auto|light|heavy|<node-name>');
           } else {
-            updateActive((s) => ({ ...s, modelOverride: arg, updatedAt: Date.now() }));
+            updateActive((s) => ({
+              ...s,
+              modelOverride: arg,
+              updatedAt: Date.now(),
+            }));
             setStatusMsg(`Routing override → ${arg}`);
           }
           setInput('');
@@ -5013,7 +5658,11 @@ function ChatPanel() {
           if (!isFinite(t) || t < 0 || t > 2) {
             setStatusMsg('Usage: /temp 0.0–2.0');
           } else {
-            updateActive((s) => ({ ...s, temperature: t, updatedAt: Date.now() }));
+            updateActive((s) => ({
+              ...s,
+              temperature: t,
+              updatedAt: Date.now(),
+            }));
             setStatusMsg(`Temperature → ${t}`);
           }
           setInput('');
@@ -5022,20 +5671,29 @@ function ChatPanel() {
         case '/persona': {
           const p = personas.find((x) => x.id === arg);
           if (!p) {
-            setStatusMsg(`Unknown persona "${arg}". Try: ${personas.map((x) => x.id).join(', ')}`);
+            setStatusMsg(
+              `Unknown persona "${arg}". Try: ${personas.map((x) => x.id).join(', ')}`,
+            );
           } else {
-            updateActive((s) => ({ ...s, system: p.system, updatedAt: Date.now() }));
+            updateActive((s) => ({
+              ...s,
+              system: p.system,
+              updatedAt: Date.now(),
+            }));
             setStatusMsg(`Persona → ${p.name}`);
           }
           setInput('');
           return true;
         }
         case '/title':
-          if (arg) updateActive((s) => ({ ...s, title: arg, updatedAt: Date.now() }));
+          if (arg)
+            updateActive((s) => ({ ...s, title: arg, updatedAt: Date.now() }));
           setInput('');
           return true;
         case '/build': {
-          const lastA = [...(active?.messages || [])].reverse().find((m) => m.role === 'assistant');
+          const lastA = [...(active?.messages || [])]
+            .reverse()
+            .find((m) => m.role === 'assistant');
           if (!lastA) {
             setStatusMsg('No assistant reply to send.');
           } else {
@@ -5046,11 +5704,17 @@ function ChatPanel() {
           return true;
         }
         case '/save': {
-          const lastA = [...(active?.messages || [])].reverse().find((m) => m.role === 'assistant');
+          const lastA = [...(active?.messages || [])]
+            .reverse()
+            .find((m) => m.role === 'assistant');
           if (!lastA) {
             setStatusMsg('No assistant reply to save.');
           } else {
-            saveSnippet({ title: arg || (active?.title || 'Snippet'), body: lastA.content, kind: 'reply' });
+            saveSnippet({
+              title: arg || active?.title || 'Snippet',
+              body: lastA.content,
+              kind: 'reply',
+            });
           }
           setInput('');
           return true;
@@ -5076,25 +5740,35 @@ function ChatPanel() {
         case '/tools': {
           const on = arg !== 'off';
           setToolsEnabled(on);
-          setStatusMsg(on ? 'Tool calling enabled for next reply.' : 'Tool calling disabled.');
+          setStatusMsg(
+            on
+              ? 'Tool calling enabled for next reply.'
+              : 'Tool calling disabled.',
+          );
           setInput('');
           return true;
         }
         case '/compare': {
           const routes = (arg || 'light,heavy').split(/[,\s]+/).filter(Boolean);
           if (routes.length < 2) {
-            setStatusMsg('Usage: /compare light,heavy  (or: /compare light,heavy,<node-name>)');
+            setStatusMsg(
+              'Usage: /compare light,heavy  (or: /compare light,heavy,<node-name>)',
+            );
             setInput('');
             return true;
           }
           setCompareRoutes(routes);
-          setStatusMsg(`Compare mode: next message will fan out to [${routes.join(', ')}].`);
+          setStatusMsg(
+            `Compare mode: next message will fan out to [${routes.join(', ')}].`,
+          );
           setInput('');
           return true;
         }
         case '/schedule': {
           if (!arg) {
-            setStatusMsg('Usage: /schedule <cron> <prompt>  e.g. /schedule @every 1h What is new?');
+            setStatusMsg(
+              'Usage: /schedule <cron> <prompt>  e.g. /schedule @every 1h What is new?',
+            );
             setInput('');
             return true;
           }
@@ -5123,7 +5797,9 @@ function ChatPanel() {
           setInput('');
           return true;
         case '/help':
-          setStatusMsg(SLASH_COMMANDS.map((c) => `${c.cmd} — ${c.hint}`).join('\n'));
+          setStatusMsg(
+            SLASH_COMMANDS.map((c) => `${c.cmd} — ${c.hint}`).join('\n'),
+          );
           setInput('');
           return true;
         default:
@@ -5142,7 +5818,11 @@ function ChatPanel() {
     abortRef.current = null;
     setLoading(false);
     setLiveSteps([]);
-    try { localStorage.removeItem('chat-loading'); } catch { /* ignore */ }
+    try {
+      localStorage.removeItem('chat-loading');
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   // ── Export current session as Markdown ──
@@ -5152,7 +5832,11 @@ function ChatPanel() {
     if (active.system) lines.push(`> **System:** ${active.system}`, '');
     for (const m of active.messages) {
       if (m.role === 'system') continue;
-      lines.push(m.role === 'user' ? '### You' : `### Assistant${m.node ? ` (${m.node})` : ''}`);
+      lines.push(
+        m.role === 'user'
+          ? '### You'
+          : `### Assistant${m.node ? ` (${m.node})` : ''}`,
+      );
       lines.push('');
       lines.push(m.content);
       lines.push('');
@@ -5167,7 +5851,15 @@ function ChatPanel() {
   }
 
   // ── Save snippet (POST /api/snippets) ──
-  async function saveSnippet({ title, body, kind }: { title: string; body: string; kind?: string }) {
+  async function saveSnippet({
+    title,
+    body,
+    kind,
+  }: {
+    title: string;
+    body: string;
+    kind?: string;
+  }) {
     try {
       const r = await fetch(`${API_BASE}/api/snippets`, {
         method: 'POST',
@@ -5177,7 +5869,9 @@ function ChatPanel() {
       if (!r.ok) throw new Error('save failed');
       setStatusMsg('Snippet saved.');
     } catch (e) {
-      setStatusMsg(`Save failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      setStatusMsg(
+        `Save failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
     }
   }
 
@@ -5205,7 +5899,9 @@ function ChatPanel() {
       ]);
       setStatusMsg(`Attached ${data.text.length} chars from ${rawUrl}`);
     } catch (e) {
-      setStatusMsg(`Fetch failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      setStatusMsg(
+        `Fetch failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
     }
   }
 
@@ -5220,13 +5916,21 @@ function ChatPanel() {
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error || 'search failed');
-      const hits: Array<{ path: string; app: string; score: number; snippet: string }> = data.hits || [];
+      const hits: Array<{
+        path: string;
+        app: string;
+        score: number;
+        snippet: string;
+      }> = data.hits || [];
       if (hits.length === 0) {
         setStatusMsg(`No matches for "${q}".`);
         return;
       }
       const text = hits
-        .map((h) => `--- ${h.path} (score=${h.score.toFixed(2)}) ---\n${h.snippet}`)
+        .map(
+          (h) =>
+            `--- ${h.path} (score=${h.score.toFixed(2)}) ---\n${h.snippet}`,
+        )
         .join('\n\n');
       const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
       setAttachments((prev) => [
@@ -5239,7 +5943,9 @@ function ChatPanel() {
           text: `Codebase search query: ${q}\n\n${text}`,
         },
       ]);
-      setStatusMsg(`Attached ${hits.length} codebase snippet${hits.length === 1 ? '' : 's'}.`);
+      setStatusMsg(
+        `Attached ${hits.length} codebase snippet${hits.length === 1 ? '' : 's'}.`,
+      );
     } catch (e) {
       setStatusMsg(`RAG failed: ${e instanceof Error ? e.message : 'unknown'}`);
     }
@@ -5261,7 +5967,9 @@ function ChatPanel() {
       if (!r.ok) throw new Error(data?.error || 'failed');
       setStatusMsg(`Scheduled "${data.title}" — cron: ${data.cron}`);
     } catch (e) {
-      setStatusMsg(`Schedule failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      setStatusMsg(
+        `Schedule failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
     }
   }
 
@@ -5269,7 +5977,8 @@ function ChatPanel() {
   async function sendCompare(userText: string, routes: string[]) {
     if (!active) return;
     const uid = Date.now().toString() + Math.random().toString(36).slice(2, 6);
-    const pid = (Date.now() + 1).toString() + Math.random().toString(36).slice(2, 6);
+    const pid =
+      (Date.now() + 1).toString() + Math.random().toString(36).slice(2, 6);
     const userMsg: ChatMsg = { id: uid, role: 'user', content: userText };
     const placeholder: ChatMsg = {
       id: pid,
@@ -5279,7 +5988,11 @@ function ChatPanel() {
     };
     const nextMsgs = [...active.messages, userMsg, placeholder];
     const sid = active.id;
-    persist(sessions.map((s) => (s.id === sid ? { ...s, messages: nextMsgs, updatedAt: Date.now() } : s)));
+    persist(
+      sessions.map((s) =>
+        s.id === sid ? { ...s, messages: nextMsgs, updatedAt: Date.now() } : s,
+      ),
+    );
     setLoading(true);
     try {
       const sysMsg = active.system?.trim()
@@ -5309,7 +6022,9 @@ function ChatPanel() {
             ...s,
             updatedAt: Date.now(),
             messages: [
-              ...s.messages.filter((m) => m.id !== placeholder.id && m.id !== userMsg.id),
+              ...s.messages.filter(
+                (m) => m.id !== placeholder.id && m.id !== userMsg.id,
+              ),
               userMsg,
               {
                 id: placeholder.id,
@@ -5322,8 +6037,19 @@ function ChatPanel() {
         }),
       );
     } catch (e) {
-      setStatusMsg(`Compare failed: ${e instanceof Error ? e.message : 'unknown'}`);
-      persist(sessions.map((s) => s.id === sid ? { ...s, messages: s.messages.filter((m) => m.id !== placeholder.id) } : s));
+      setStatusMsg(
+        `Compare failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+      persist(
+        sessions.map((s) =>
+          s.id === sid
+            ? {
+                ...s,
+                messages: s.messages.filter((m) => m.id !== placeholder.id),
+              }
+            : s,
+        ),
+      );
     } finally {
       setLoading(false);
       setCompareRoutes(null);
@@ -5332,17 +6058,34 @@ function ChatPanel() {
 
   // ── Send (used by initial send, regenerate, and resend-from-edit) ──
   const sendWithMessages = useCallback(
-    async (newMessages: ChatMsg[], opts?: { titleSeed?: string; modelOverride?: string }) => {
+    async (
+      newMessages: ChatMsg[],
+      opts?: { titleSeed?: string; modelOverride?: string },
+    ) => {
       if (!active) return;
       const sid = active.id;
       // Optimistic update
       const optimistic = sessions.map((s) =>
-        s.id === sid ? { ...s, messages: newMessages, updatedAt: Date.now(), title: s.messages.length === 0 && opts?.titleSeed ? opts.titleSeed.slice(0, 40) : s.title } : s,
+        s.id === sid
+          ? {
+              ...s,
+              messages: newMessages,
+              updatedAt: Date.now(),
+              title:
+                s.messages.length === 0 && opts?.titleSeed
+                  ? opts.titleSeed.slice(0, 40)
+                  : s.title,
+            }
+          : s,
       );
       persist(optimistic);
       setLoading(true);
       setLiveSteps([]);
-      try { localStorage.setItem('chat-loading', '1'); } catch { /* ignore */ }
+      try {
+        localStorage.setItem('chat-loading', '1');
+      } catch {
+        /* ignore */
+      }
 
       const ctrl = new AbortController();
       abortRef.current = ctrl;
@@ -5354,15 +6097,17 @@ function ChatPanel() {
           ? [{ role: 'system' as const, content: active.system.trim() }]
           : [{ role: 'system' as const, content: DEFAULT_SYSTEM_PROMPT }];
         const toolSys = toolsEnabled
-          ? [{
-              role: 'system' as const,
-              content:
-                'You may call tools by emitting a fenced code block with language `tool` ' +
-                'containing a JSON object: {"name":"<tool>","args":{...}}. ' +
-                'Available tools: ragSearch(q,k), listApps(), appStatus(name), appLogs(name,tail), httpGet(url). ' +
-                'After the user runs the tool, its JSON result will appear in the next user message; use it to answer. ' +
-                'Emit at most one tool call per turn.',
-            }]
+          ? [
+              {
+                role: 'system' as const,
+                content:
+                  'You may call tools by emitting a fenced code block with language `tool` ' +
+                  'containing a JSON object: {"name":"<tool>","args":{...}}. ' +
+                  'Available tools: ragSearch(q,k), listApps(), appStatus(name), appLogs(name,tail), httpGet(url). ' +
+                  'After the user runs the tool, its JSON result will appear in the next user message; use it to answer. ' +
+                  'Emit at most one tool call per turn.',
+              },
+            ]
           : [];
         const apiMsgs = [
           ...sysMsg,
@@ -5401,34 +6146,77 @@ function ChatPanel() {
               const ev = JSON.parse(line);
               const ts = Date.now();
               if (ev.step === 'classifying') {
-                reasoning.push({ kind: 'classifying', text: 'Classifying with the router model…' });
+                reasoning.push({
+                  kind: 'classifying',
+                  text: 'Classifying with the router model…',
+                });
                 setLiveSteps((p) => [
                   ...p.filter((b) => b.stepType !== 'classifying'),
-                  { id: `s-${ts}`, role: 'system', content: 'Classifying…', stepType: 'classifying' },
+                  {
+                    id: `s-${ts}`,
+                    role: 'system',
+                    content: 'Classifying…',
+                    stepType: 'classifying',
+                  },
                 ]);
               } else if (ev.step === 'classified') {
-                reasoning.push({ kind: 'classified', text: `Routed → ${ev.node || ''} · ${ev.tier || ''}${ev.classifier_latency ? ` · ${ev.classifier_latency}` : ''}` });
+                reasoning.push({
+                  kind: 'classified',
+                  text: `Routed → ${ev.node || ''} · ${ev.tier || ''}${ev.classifier_latency ? ` · ${ev.classifier_latency}` : ''}`,
+                });
                 setLiveSteps((p) => [
                   ...p.filter((b) => b.stepType !== 'classifying'),
-                  { id: `s-${ts}`, role: 'system', content: `Routed → ${ev.node} · ${ev.tier}${ev.classifier_latency ? ` · ${ev.classifier_latency}` : ''}`, stepType: 'classified', node: ev.node, tier: ev.tier },
+                  {
+                    id: `s-${ts}`,
+                    role: 'system',
+                    content: `Routed → ${ev.node} · ${ev.tier}${ev.classifier_latency ? ` · ${ev.classifier_latency}` : ''}`,
+                    stepType: 'classified',
+                    node: ev.node,
+                    tier: ev.tier,
+                  },
                 ]);
               } else if (ev.step === 'generating') {
-                reasoning.push({ kind: 'generating', text: `Generating on ${ev.node}…` });
+                reasoning.push({
+                  kind: 'generating',
+                  text: `Generating on ${ev.node}…`,
+                });
                 setLiveSteps((p) => [
                   ...p,
-                  { id: `s-${ts}`, role: 'system', content: `Generating on ${ev.node}…`, stepType: 'generating', node: ev.node },
+                  {
+                    id: `s-${ts}`,
+                    role: 'system',
+                    content: `Generating on ${ev.node}…`,
+                    stepType: 'generating',
+                    node: ev.node,
+                  },
                 ]);
               } else if (ev.step === 'searching') {
-                reasoning.push({ kind: 'searching', text: 'Searching the web…' });
+                reasoning.push({
+                  kind: 'searching',
+                  text: 'Searching the web…',
+                });
                 setLiveSteps((p) => [
                   ...p,
-                  { id: `s-${ts}`, role: 'system', content: 'Searching the web…', stepType: 'searching' },
+                  {
+                    id: `s-${ts}`,
+                    role: 'system',
+                    content: 'Searching the web…',
+                    stepType: 'searching',
+                  },
                 ]);
               } else if (ev.step === 'search_done') {
-                reasoning.push({ kind: 'search_done', text: ev.message || 'Search complete' });
+                reasoning.push({
+                  kind: 'search_done',
+                  text: ev.message || 'Search complete',
+                });
                 setLiveSteps((p) => [
                   ...p.filter((b) => b.stepType !== 'searching'),
-                  { id: `s-${ts}`, role: 'system', content: `🔍 ${ev.message || 'Search complete'}`, stepType: 'search_done' },
+                  {
+                    id: `s-${ts}`,
+                    role: 'system',
+                    content: `🔍 ${ev.message || 'Search complete'}`,
+                    stepType: 'search_done',
+                  },
                 ]);
               } else if (ev.step === 'done') {
                 finalMsg = {
@@ -5496,7 +6284,11 @@ function ChatPanel() {
       } catch (e) {
         if ((e as any)?.name === 'AbortError') {
           // user-initiated stop; persist any user messages already added
-          const latest = sessions.map((s) => (s.id === sid ? { ...s, messages: newMessages, updatedAt: Date.now() } : s));
+          const latest = sessions.map((s) =>
+            s.id === sid
+              ? { ...s, messages: newMessages, updatedAt: Date.now() }
+              : s,
+          );
           persist(latest);
         } else {
           setLiveSteps([]);
@@ -5506,12 +6298,20 @@ function ChatPanel() {
             content: `Error: ${e instanceof Error ? e.message : 'Failed'}`,
             stepType: 'error',
           };
-          persist(sessions.map((s) => (s.id === sid ? { ...s, messages: [...newMessages, errMsg] } : s)));
+          persist(
+            sessions.map((s) =>
+              s.id === sid ? { ...s, messages: [...newMessages, errMsg] } : s,
+            ),
+          );
         }
       } finally {
         abortRef.current = null;
         setLoading(false);
-        try { localStorage.removeItem('chat-loading'); } catch { /* ignore */ }
+        try {
+          localStorage.removeItem('chat-loading');
+        } catch {
+          /* ignore */
+        }
       }
     },
     [active, sessions, persist, autoTitle, toolsEnabled],
@@ -5549,12 +6349,17 @@ function ChatPanel() {
         });
         if (r.ok) {
           const data = await r.json();
-          const results: Array<{ title?: string; url?: string; snippet?: string; text?: string }> =
-            Array.isArray(data.results) ? data.results : [];
+          const results: Array<{
+            title?: string;
+            url?: string;
+            snippet?: string;
+            text?: string;
+          }> = Array.isArray(data.results) ? data.results : [];
           if (results.length) {
             const combined = results
-              .map((rr, i) =>
-                `### Source ${i + 1}: ${rr.title || '(untitled)'}\nURL: ${rr.url || ''}\n${rr.snippet || ''}\n\n${rr.text || '(no page text extracted)'}`,
+              .map(
+                (rr, i) =>
+                  `### Source ${i + 1}: ${rr.title || '(untitled)'}\nURL: ${rr.url || ''}\n${rr.snippet || ''}\n\n${rr.text || '(no page text extracted)'}`,
               )
               .join('\n\n---\n\n');
             const webAtt: ChatAttachment = {
@@ -5565,7 +6370,9 @@ function ChatPanel() {
               text: `Web search results for: ${text}\n\n${combined}`,
             };
             effectiveAttachments = [...effectiveAttachments, webAtt];
-            setStatusMsg(`🌐 Found ${results.length} source${results.length === 1 ? '' : 's'}`);
+            setStatusMsg(
+              `🌐 Found ${results.length} source${results.length === 1 ? '' : 's'}`,
+            );
           } else {
             setStatusMsg('🌐 No results found');
           }
@@ -5584,13 +6391,18 @@ function ChatPanel() {
       id: Date.now().toString(),
       role: 'user',
       content: text,
-      attachments: effectiveAttachments.length ? effectiveAttachments : undefined,
+      attachments: effectiveAttachments.length
+        ? effectiveAttachments
+        : undefined,
     };
     let composed = text;
     if (effectiveAttachments.length) {
       const parts = effectiveAttachments
         .filter((a) => a.text)
-        .map((a) => `\n\n--- Attached: ${a.name} (${a.type}) ---\n${a.text}\n--- end ---`)
+        .map(
+          (a) =>
+            `\n\n--- Attached: ${a.name} (${a.type}) ---\n${a.text}\n--- end ---`,
+        )
         .join('');
       if (parts) composed = `${text}${parts}`;
     }
@@ -5599,8 +6411,22 @@ function ChatPanel() {
     setAttachments([]);
     const oneShot = pendingModel;
     setPendingModel('');
-    await sendWithMessages(newMessages, { titleSeed, modelOverride: oneShot || undefined });
-  }, [input, loading, active, attachments, pendingModel, runSlash, sendWithMessages, sendCompare, compareRoutes, webEnabled]);
+    await sendWithMessages(newMessages, {
+      titleSeed,
+      modelOverride: oneShot || undefined,
+    });
+  }, [
+    input,
+    loading,
+    active,
+    attachments,
+    pendingModel,
+    runSlash,
+    sendWithMessages,
+    sendCompare,
+    compareRoutes,
+    webEnabled,
+  ]);
 
   // ── Edit user message + resend ──
   const startEdit = (m: ChatMsg) => {
@@ -5617,7 +6443,11 @@ function ChatPanel() {
     const idx = active.messages.findIndex((m) => m.id === editingId);
     if (idx < 0) return;
     const truncated = active.messages.slice(0, idx);
-    const replaced: ChatMsg = { ...active.messages[idx], content: editingText, edited: true };
+    const replaced: ChatMsg = {
+      ...active.messages[idx],
+      content: editingText,
+      edited: true,
+    };
     setEditingId(null);
     setEditingText('');
     await sendWithMessages([...truncated, replaced]);
@@ -5636,7 +6466,8 @@ function ChatPanel() {
   const regenerateOnRoute = async (assistantId: string) => {
     if (!active || loading) return;
     const choice = window.prompt(
-      'Retry this reply on which route?\n\nOptions: light, heavy, ' + nodesList.map((n) => n.name).join(', '),
+      'Retry this reply on which route?\n\nOptions: light, heavy, ' +
+        nodesList.map((n) => n.name).join(', '),
       'heavy',
     );
     if (!choice) return;
@@ -5664,26 +6495,52 @@ function ChatPanel() {
   };
 
   // ── Pin / Star / Archive ──
-  const togglePin = (id: string) => persist(sessions.map((s) => (s.id === id ? { ...s, pinned: !s.pinned } : s)));
-  const toggleStar = (id: string) => persist(sessions.map((s) => (s.id === id ? { ...s, starred: !s.starred } : s)));
-  const toggleArchive = (id: string) => persist(sessions.map((s) => (s.id === id ? { ...s, archived: !s.archived } : s)));
+  const togglePin = (id: string) =>
+    persist(
+      sessions.map((s) => (s.id === id ? { ...s, pinned: !s.pinned } : s)),
+    );
+  const toggleStar = (id: string) =>
+    persist(
+      sessions.map((s) => (s.id === id ? { ...s, starred: !s.starred } : s)),
+    );
+  const toggleArchive = (id: string) =>
+    persist(
+      sessions.map((s) => (s.id === id ? { ...s, archived: !s.archived } : s)),
+    );
 
   // ── Voice input ──
-  const { supported: micSupported, listening, start: micStart, stop: micStop } = useSpeechRecognition((t) => {
+  const {
+    supported: micSupported,
+    listening,
+    start: micStart,
+    stop: micStop,
+  } = useSpeechRecognition((t) => {
     setInput((prev) => (prev ? prev + ' ' + t : t));
   });
   const [ttsOn, setTtsOn] = useState<boolean>(() => {
-    try { return localStorage.getItem('chat-tts') === '1'; } catch { return false; }
+    try {
+      return localStorage.getItem('chat-tts') === '1';
+    } catch {
+      return false;
+    }
   });
   useEffect(() => {
-    try { localStorage.setItem('chat-tts', ttsOn ? '1' : '0'); } catch { /* ignore */ }
+    try {
+      localStorage.setItem('chat-tts', ttsOn ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
   }, [ttsOn]);
   // Speak final assistant content when it appears
   const lastSpokenRef = useRef<string | null>(null);
   useEffect(() => {
     if (!ttsOn || !active) return;
     const last = active.messages[active.messages.length - 1];
-    if (last && last.role === 'assistant' && last.id !== lastSpokenRef.current) {
+    if (
+      last &&
+      last.role === 'assistant' &&
+      last.id !== lastSpokenRef.current
+    ) {
       lastSpokenRef.current = last.id;
       speak(last.content);
     }
@@ -5705,7 +6562,13 @@ function ChatPanel() {
         items.push({ id, name: f.name, type: f.type, size: f.size, dataUrl });
       } else if (f.size <= 200_000) {
         const text = await f.text();
-        items.push({ id, name: f.name, type: f.type || 'text/plain', size: f.size, text });
+        items.push({
+          id,
+          name: f.name,
+          type: f.type || 'text/plain',
+          size: f.size,
+          text,
+        });
       } else {
         setStatusMsg(`Skipped ${f.name} (>200KB and not an image)`);
       }
@@ -5713,7 +6576,9 @@ function ChatPanel() {
     setAttachments((prev) => [...prev, ...items]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
-  const onPasteCompose = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+  const onPasteCompose = async (
+    e: React.ClipboardEvent<HTMLTextAreaElement>,
+  ) => {
     const items = Array.from(e.clipboardData?.items || []);
     const files = items.map((i) => i.getAsFile()).filter(Boolean) as File[];
     if (files.length) {
@@ -5738,21 +6603,49 @@ function ChatPanel() {
 
   // ── Mention helpers (@app, @node) ──
   const [appsList, setAppsList] = useState<AppInfo[]>([]);
-  const [nodesList, setNodesList] = useState<Array<{ name: string; tier?: string }>>([]);
+  const [nodesList, setNodesList] = useState<
+    Array<{ name: string; tier?: string }>
+  >([]);
   useEffect(() => {
-    fetch(`${API_BASE}/api/apps`).then((r) => r.json()).then((d) => Array.isArray(d) && setAppsList(d)).catch(() => {});
-    fetch(`${API_BASE}/api/nodes`).then((r) => r.json()).then((d) => Array.isArray(d) && setNodesList(d.map((n: NodeConfig) => ({ name: n.name, tier: n.tier })))).catch(() => {});
+    fetch(`${API_BASE}/api/apps`)
+      .then((r) => r.json())
+      .then((d) => Array.isArray(d) && setAppsList(d))
+      .catch(() => {});
+    fetch(`${API_BASE}/api/nodes`)
+      .then((r) => r.json())
+      .then(
+        (d) =>
+          Array.isArray(d) &&
+          setNodesList(
+            d.map((n: NodeConfig) => ({ name: n.name, tier: n.tier })),
+          ),
+      )
+      .catch(() => {});
   }, []);
   const mentionState = useMemo(() => {
     const m = /(^|\s)@([a-zA-Z0-9_-]*)$/.exec(input);
     if (!m) return null;
     const q = m[2].toLowerCase();
-    const apps = appsList.filter((a) => a.name.toLowerCase().includes(q)).slice(0, 5).map((a) => ({ kind: 'app' as const, name: a.name }));
-    const nodes = nodesList.filter((n) => n.name.toLowerCase().includes(q)).slice(0, 5).map((n) => ({ kind: 'node' as const, name: n.name }));
-    return { items: [...apps, ...nodes], replaceLen: m[0].length - (m[1].length || 0) };
+    const apps = appsList
+      .filter((a) => a.name.toLowerCase().includes(q))
+      .slice(0, 5)
+      .map((a) => ({ kind: 'app' as const, name: a.name }));
+    const nodes = nodesList
+      .filter((n) => n.name.toLowerCase().includes(q))
+      .slice(0, 5)
+      .map((n) => ({ kind: 'node' as const, name: n.name }));
+    return {
+      items: [...apps, ...nodes],
+      replaceLen: m[0].length - (m[1].length || 0),
+    };
   }, [input, appsList, nodesList]);
   const insertMention = (name: string) => {
-    setInput((prev) => prev.replace(/(^|\s)@[a-zA-Z0-9_-]*$/, (_full, lead) => `${lead}@${name} `));
+    setInput((prev) =>
+      prev.replace(
+        /(^|\s)@[a-zA-Z0-9_-]*$/,
+        (_full, lead) => `${lead}@${name} `,
+      ),
+    );
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
@@ -5854,7 +6747,10 @@ function ChatPanel() {
     if (showFilter === 'pinned') arr = arr.filter((s) => s.pinned);
     else if (showFilter === 'archived') arr = arr.filter((s) => s.archived);
     else arr = arr.filter((s) => !s.archived);
-    arr.sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt - a.updatedAt);
+    arr.sort(
+      (a, b) =>
+        Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt - a.updatedAt,
+    );
     return arr;
   }, [sessions, showFilter]);
 
@@ -5862,7 +6758,9 @@ function ChatPanel() {
     ? (active.totalPromptTokens || 0) + (active.totalCompletionTokens || 0)
     : 0;
 
-  const lastUserMsg = active ? [...active.messages].reverse().find((m) => m.role === 'user') : null;
+  const lastUserMsg = active
+    ? [...active.messages].reverse().find((m) => m.role === 'user')
+    : null;
 
   return (
     <div className="flex h-[calc(100vh-7rem)] -m-6 -mt-0 relative">
@@ -5878,7 +6776,11 @@ function ChatPanel() {
       <div
         className={`${sideOpen ? 'w-64' : 'w-0'} transition-all overflow-hidden border-r border-border/20 bg-muted/10 shrink-0 flex flex-col`}>
         <div className="p-2 space-y-1 flex flex-col h-full">
-          <Button size="sm" variant="outline" onClick={() => newSession()} className="w-full text-xs mb-1">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => newSession()}
+            className="w-full text-xs mb-1">
             <Plus size={12} /> New Chat
           </Button>
           <div className="flex gap-1 text-[10px]">
@@ -5910,34 +6812,58 @@ function ChatPanel() {
                 className={`group flex items-center gap-1 px-2 py-1.5 rounded text-xs cursor-pointer transition-colors ${s.id === activeId ? 'bg-muted/50 text-foreground' : 'text-muted-foreground hover:bg-muted/30'}`}
                 onClick={() => {
                   setActiveId(s.id);
-                  try { localStorage.setItem('chat-active', s.id); } catch { /* ignore */ }
+                  try {
+                    localStorage.setItem('chat-active', s.id);
+                  } catch {
+                    /* ignore */
+                  }
                 }}>
-                {s.pinned && <Pin size={9} className="text-violet-400 shrink-0" />}
-                {s.starred && <Star size={9} className="text-amber-400 shrink-0" />}
+                {s.pinned && (
+                  <Pin size={9} className="text-violet-400 shrink-0" />
+                )}
+                {s.starred && (
+                  <Star size={9} className="text-amber-400 shrink-0" />
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="truncate">{s.title || 'Untitled'}</div>
                   <div className="flex items-center gap-1 text-[9px] text-muted-foreground/40 mt-0.5">
                     <span>{relTime(s.updatedAt)}</span>
                     <span>·</span>
-                    <span>{s.messages.filter((m) => m.role !== 'system' && !m.stepType).length} msg</span>
+                    <span>
+                      {
+                        s.messages.filter(
+                          (m) => m.role !== 'system' && !m.stepType,
+                        ).length
+                      }{' '}
+                      msg
+                    </span>
                   </div>
                 </div>
                 <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5">
                   <button
                     title={s.pinned ? 'Unpin' : 'Pin'}
-                    onClick={(e) => { e.stopPropagation(); togglePin(s.id); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePin(s.id);
+                    }}
                     className="p-0.5 text-muted-foreground/60 hover:text-violet-300">
                     <Pin size={10} />
                   </button>
                   <button
                     title={s.archived ? 'Unarchive' : 'Archive'}
-                    onClick={(e) => { e.stopPropagation(); toggleArchive(s.id); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleArchive(s.id);
+                    }}
                     className="p-0.5 text-muted-foreground/60 hover:text-foreground">
                     <Archive size={10} />
                   </button>
                   <button
                     title="Delete"
-                    onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${s.title}"?`)) deleteSession(s.id); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Delete "${s.title}"?`)) deleteSession(s.id);
+                    }}
                     className="p-0.5 text-red-400 hover:text-red-300">
                     <Trash2 size={10} />
                   </button>
@@ -5945,7 +6871,9 @@ function ChatPanel() {
               </div>
             ))}
             {filteredSessions.length === 0 && (
-              <div className="text-[10px] text-muted-foreground/40 italic px-2 py-2">No sessions.</div>
+              <div className="text-[10px] text-muted-foreground/40 italic px-2 py-2">
+                No sessions.
+              </div>
             )}
           </div>
         </div>
@@ -5977,17 +6905,27 @@ function ChatPanel() {
                 className={`p-1 rounded hover:bg-white/5 ${active.starred ? 'text-amber-400' : 'text-muted-foreground/40'}`}>
                 <Star size={12} />
               </button>
-              <button onClick={exportSession} title="Export as Markdown" className="p-1 rounded hover:bg-white/5 text-muted-foreground/60 hover:text-foreground">
+              <button
+                onClick={exportSession}
+                title="Export as Markdown"
+                className="p-1 rounded hover:bg-white/5 text-muted-foreground/60 hover:text-foreground">
                 <Download size={12} />
               </button>
               <button
-                onClick={() => setTtsOn((v) => { if (v) stopSpeaking(); return !v; })}
+                onClick={() =>
+                  setTtsOn((v) => {
+                    if (v) stopSpeaking();
+                    return !v;
+                  })
+                }
                 title={ttsOn ? 'Disable speech' : 'Speak replies'}
                 className={`p-1 rounded hover:bg-white/5 ${ttsOn ? 'text-violet-300' : 'text-muted-foreground/40'}`}>
                 <Volume2 size={12} />
               </button>
               {sessionTokens > 0 && (
-                <span className="text-[10px] text-muted-foreground/50 font-mono ml-1">{sessionTokens} tok</span>
+                <span className="text-[10px] text-muted-foreground/50 font-mono ml-1">
+                  {sessionTokens} tok
+                </span>
               )}
             </>
           )}
@@ -5996,8 +6934,12 @@ function ChatPanel() {
         {/* Resume banner */}
         {resumeBanner && (
           <div className="px-4 py-2 text-[11px] bg-amber-500/10 border-b border-amber-500/20 text-amber-200/90 flex items-center justify-between">
-            <span>The previous request was interrupted. The reply may be missing.</span>
-            <button onClick={() => setResumeBanner(false)} className="text-amber-200/70 hover:text-amber-100">
+            <span>
+              The previous request was interrupted. The reply may be missing.
+            </span>
+            <button
+              onClick={() => setResumeBanner(false)}
+              className="text-amber-200/70 hover:text-amber-100">
               <X size={12} />
             </button>
           </div>
@@ -6007,12 +6949,16 @@ function ChatPanel() {
         {systemEditOpen && active && (
           <div className="px-4 py-3 border-b border-border/20 bg-white/[0.02] space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50">System prompt / persona</span>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50">
+                System prompt / persona
+              </span>
               <div className="flex items-center gap-1">
                 {personas.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => updateActive((s) => ({ ...s, system: p.system }))}
+                    onClick={() =>
+                      updateActive((s) => ({ ...s, system: p.system }))
+                    }
                     title={p.name}
                     className="text-[10px] px-2 py-0.5 rounded border border-border/30 text-muted-foreground/70 hover:text-foreground hover:bg-white/5">
                     {p.emoji} {p.name}
@@ -6022,7 +6968,9 @@ function ChatPanel() {
             </div>
             <textarea
               value={active.system || ''}
-              onChange={(e) => updateActive((s) => ({ ...s, system: e.target.value }))}
+              onChange={(e) =>
+                updateActive((s) => ({ ...s, system: e.target.value }))
+              }
               rows={3}
               placeholder="e.g. You are a Rust expert. Reply in code-first style."
               className="w-full bg-black/30 border border-white/10 rounded p-2 text-[12px] text-foreground/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-400/40 resize-none"
@@ -6035,22 +6983,35 @@ function ChatPanel() {
                 max={2}
                 step={0.1}
                 value={active.temperature ?? 0.7}
-                onChange={(e) => updateActive((s) => ({ ...s, temperature: parseFloat(e.target.value) }))}
+                onChange={(e) =>
+                  updateActive((s) => ({
+                    ...s,
+                    temperature: parseFloat(e.target.value),
+                  }))
+                }
                 className="w-16 bg-black/30 border border-white/10 rounded px-1 py-0.5 text-foreground/80 font-mono"
               />
-              <label className="text-muted-foreground/60 ml-2">Default route</label>
+              <label className="text-muted-foreground/60 ml-2">
+                Default route
+              </label>
               <select
                 value={active.modelOverride || 'auto'}
-                onChange={(e) => updateActive((s) => ({ ...s, modelOverride: e.target.value }))}
+                onChange={(e) =>
+                  updateActive((s) => ({ ...s, modelOverride: e.target.value }))
+                }
                 className="bg-black/30 border border-white/10 rounded px-1 py-0.5 text-foreground/80">
                 <option value="auto">auto</option>
                 <option value="light">light</option>
                 <option value="heavy">heavy</option>
                 {nodesList.map((n) => (
-                  <option key={n.name} value={n.name}>{n.name}</option>
+                  <option key={n.name} value={n.name}>
+                    {n.name}
+                  </option>
                 ))}
               </select>
-              <span className="ml-auto text-muted-foreground/40">Saved per chat</span>
+              <span className="ml-auto text-muted-foreground/40">
+                Saved per chat
+              </span>
             </div>
           </div>
         )}
@@ -6059,7 +7020,10 @@ function ChatPanel() {
         <div
           ref={messagesScrollRef}
           className={`flex-1 overflow-auto relative ${dragOver ? 'ring-2 ring-inset ring-violet-400/40 bg-violet-500/5' : ''}`}
-          onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (!dragOver) setDragOver(true);
+          }}
           onDragLeave={() => setDragOver(false)}
           onDrop={(e) => {
             e.preventDefault();
@@ -6076,18 +7040,24 @@ function ChatPanel() {
               <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
                 <div className="text-2xl opacity-20">◇</div>
                 <p className="text-sm text-muted-foreground/50">
-                  {active?.system ? 'Persona active — send a message to begin' : 'Send a message to start chatting'}
+                  {active?.system
+                    ? 'Persona active — send a message to begin'
+                    : 'Send a message to start chatting'}
                 </p>
                 {active?.system && (
                   <div className="text-[10px] text-violet-300/60 max-w-md truncate font-mono px-4 py-1 border border-violet-400/20 rounded-full">
-                    system: {active.system.slice(0, 80)}{active.system.length > 80 ? '…' : ''}
+                    system: {active.system.slice(0, 80)}
+                    {active.system.length > 80 ? '…' : ''}
                   </div>
                 )}
                 <div className="flex flex-wrap gap-1.5 justify-center max-w-lg">
                   {SLASH_COMMANDS.slice(0, 10).map((c) => (
                     <button
                       key={c.cmd}
-                      onClick={() => { setInput(c.cmd + ' '); setTimeout(() => inputRef.current?.focus(), 0); }}
+                      onClick={() => {
+                        setInput(c.cmd + ' ');
+                        setTimeout(() => inputRef.current?.focus(), 0);
+                      }}
                       title={c.hint}
                       className="text-[10px] px-2 py-1 rounded border border-border/30 text-muted-foreground/60 hover:text-foreground hover:bg-white/5 font-mono">
                       {c.cmd}
@@ -6113,18 +7083,32 @@ function ChatPanel() {
                 if (m.role === 'system' || m.stepType) {
                   let j = i;
                   const group: ChatMsg[] = [];
-                  while (j < displayMessages.length && (displayMessages[j].role === 'system' || displayMessages[j].stepType)) {
+                  while (
+                    j < displayMessages.length &&
+                    (displayMessages[j].role === 'system' ||
+                      displayMessages[j].stepType)
+                  ) {
                     group.push(displayMessages[j]);
                     j++;
                   }
                   const groupKey = `g-${group[0].id}`;
-                  const collapsed = collapsedReasoning[groupKey] ?? group.length > 2;
+                  const collapsed =
+                    collapsedReasoning[groupKey] ?? group.length > 2;
                   out.push(
                     <div key={groupKey} className="text-[11px]">
                       <button
-                        onClick={() => setCollapsedReasoning((p) => ({ ...p, [groupKey]: !collapsed }))}
+                        onClick={() =>
+                          setCollapsedReasoning((p) => ({
+                            ...p,
+                            [groupKey]: !collapsed,
+                          }))
+                        }
                         className="flex items-center gap-1 text-muted-foreground/50 hover:text-muted-foreground/80">
-                        {collapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
+                        {collapsed ? (
+                          <ChevronRight size={10} />
+                        ) : (
+                          <ChevronDown size={10} />
+                        )}
                         Reasoning ({group.length})
                       </button>
                       {!collapsed && (
@@ -6146,7 +7130,9 @@ function ChatPanel() {
                                             : 'bg-zinc-400'
                                 }`}
                               />
-                              <span className="text-muted-foreground">{g.content}</span>
+                              <span className="text-muted-foreground">
+                                {g.content}
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -6164,31 +7150,46 @@ function ChatPanel() {
                           <textarea
                             value={editingText}
                             onChange={(e) => setEditingText(e.target.value)}
-                            rows={Math.min(6, Math.max(2, editingText.split('\n').length))}
+                            rows={Math.min(
+                              6,
+                              Math.max(2, editingText.split('\n').length),
+                            )}
                             className="w-full bg-black/30 border border-violet-400/40 rounded p-2 text-sm text-foreground focus:outline-none resize-none"
                           />
                           <div className="flex justify-end gap-1">
-                            <button onClick={cancelEdit} className="text-[10px] px-2 py-1 text-muted-foreground hover:text-foreground">
+                            <button
+                              onClick={cancelEdit}
+                              className="text-[10px] px-2 py-1 text-muted-foreground hover:text-foreground">
                               Cancel
                             </button>
-                            <button onClick={saveEditAndResend} className="text-[10px] px-2 py-1 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-400/30 rounded text-violet-100">
+                            <button
+                              onClick={saveEditAndResend}
+                              className="text-[10px] px-2 py-1 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-400/30 rounded text-violet-100">
                               Save & resend
                             </button>
                           </div>
                         </div>
                       ) : (
                         <div className="bg-foreground/10 rounded-2xl rounded-br-sm px-4 py-2.5 max-w-[85%] relative">
-                          <p className="text-sm whitespace-pre-wrap">{m.content.split(/\n\n--- Attached: /)[0]}</p>
+                          <p className="text-sm whitespace-pre-wrap">
+                            {m.content.split(/\n\n--- Attached: /)[0]}
+                          </p>
                           {m.attachments && m.attachments.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-1">
                               {m.attachments.map((a) => (
-                                <span key={a.id} className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-foreground/70">
+                                <span
+                                  key={a.id}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-foreground/70">
                                   📎 {a.name}
                                 </span>
                               ))}
                             </div>
                           )}
-                          {m.edited && <span className="text-[9px] text-muted-foreground/40 ml-1">(edited)</span>}
+                          {m.edited && (
+                            <span className="text-[9px] text-muted-foreground/40 ml-1">
+                              (edited)
+                            </span>
+                          )}
                           <button
                             onClick={() => startEdit(m)}
                             title="Edit & resend"
@@ -6203,18 +7204,29 @@ function ChatPanel() {
                   continue;
                 }
                 // assistant
-                const reasoning = m.reasoningSteps && m.reasoningSteps.length > 1;
+                const reasoning =
+                  m.reasoningSteps && m.reasoningSteps.length > 1;
                 const reasoningKey = `r-${m.id}`;
-                const reasoningCollapsed = collapsedReasoning[reasoningKey] ?? true;
+                const reasoningCollapsed =
+                  collapsedReasoning[reasoningKey] ?? true;
                 out.push(
                   <div key={m.id} className="flex justify-start group">
                     <div className="rounded-2xl rounded-bl-sm px-4 py-2.5 max-w-[85%] space-y-2 w-full">
                       {reasoning && (
                         <div className="text-[10px]">
                           <button
-                            onClick={() => setCollapsedReasoning((p) => ({ ...p, [reasoningKey]: !reasoningCollapsed }))}
+                            onClick={() =>
+                              setCollapsedReasoning((p) => ({
+                                ...p,
+                                [reasoningKey]: !reasoningCollapsed,
+                              }))
+                            }
                             className="flex items-center gap-1 text-muted-foreground/50 hover:text-muted-foreground/80">
-                            {reasoningCollapsed ? <ChevronRight size={9} /> : <ChevronDown size={9} />}
+                            {reasoningCollapsed ? (
+                              <ChevronRight size={9} />
+                            ) : (
+                              <ChevronDown size={9} />
+                            )}
                             Reasoning ({m.reasoningSteps?.length})
                           </button>
                           {!reasoningCollapsed && (
@@ -6227,30 +7239,53 @@ function ChatPanel() {
                         </div>
                       )}
                       {m.content.startsWith('__COMPARE__') ? (
-                        <CompareBlock payload={m.content.slice('__COMPARE__'.length).trim()} />
-                      ) : (() => {
-                        const sections = m.content.split(/\n-{3,}\n/).map((s) => s.trim()).filter(Boolean);
-                        if (sections.length <= 1) return <MarkdownView text={m.content} />;
-                        return (
-                          <div className="space-y-2">
-                            {sections.map((s, si) => (
-                              <div key={si} className="rounded-xl bg-white/[0.03] border border-white/5 px-3 py-2">
-                                <MarkdownView text={s} />
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
+                        <CompareBlock
+                          payload={m.content.slice('__COMPARE__'.length).trim()}
+                        />
+                      ) : (
+                        (() => {
+                          const sections = m.content
+                            .split(/\n-{3,}\n/)
+                            .map((s) => s.trim())
+                            .filter(Boolean);
+                          if (sections.length <= 1)
+                            return <MarkdownView text={m.content} />;
+                          return (
+                            <div className="space-y-2">
+                              {sections.map((s, si) => (
+                                <div
+                                  key={si}
+                                  className="rounded-xl bg-white/[0.03] border border-white/5 px-3 py-2">
+                                  <MarkdownView text={s} />
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()
+                      )}
                       {/* Trace strip */}
                       {(m.node || m.latency) && (
                         <div className="flex flex-wrap gap-2 pt-1 items-center text-[10px] text-muted-foreground/60">
-                          {m.node && <span className="text-violet-400/80">{m.node}</span>}
-                          {m.tier && <span className="opacity-60">· {m.tier}</span>}
-                          {m.model && <span className="font-mono opacity-60">· {m.model}</span>}
+                          {m.node && (
+                            <span className="text-violet-400/80">{m.node}</span>
+                          )}
+                          {m.tier && (
+                            <span className="opacity-60">· {m.tier}</span>
+                          )}
+                          {m.model && (
+                            <span className="font-mono opacity-60">
+                              · {m.model}
+                            </span>
+                          )}
                           {m.latency && <span>· {m.latency}</span>}
-                          {m.classifierLatency && <span>· cls {m.classifierLatency}</span>}
+                          {m.classifierLatency && (
+                            <span>· cls {m.classifierLatency}</span>
+                          )}
                           {m.totalTokens != null && m.totalTokens > 0 && (
-                            <span className="font-mono">· {m.promptTokens}→{m.completionTokens} ({m.totalTokens} tok)</span>
+                            <span className="font-mono">
+                              · {m.promptTokens}→{m.completionTokens} (
+                              {m.totalTokens} tok)
+                            </span>
                           )}
                           <span className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
@@ -6278,7 +7313,13 @@ function ChatPanel() {
                               <GitBranch size={10} />
                             </button>
                             <button
-                              onClick={() => saveSnippet({ title: active?.title || 'Reply', body: m.content, kind: 'reply' })}
+                              onClick={() =>
+                                saveSnippet({
+                                  title: active?.title || 'Reply',
+                                  body: m.content,
+                                  kind: 'reply',
+                                })
+                              }
                               title="Save as snippet"
                               className="p-0.5 hover:text-foreground">
                               <Star size={10} />
@@ -6290,7 +7331,9 @@ function ChatPanel() {
                               <Volume2 size={10} />
                             </button>
                             <button
-                              onClick={() => gotoPage('apps', { prompt: m.content })}
+                              onClick={() =>
+                                gotoPage('apps', { prompt: m.content })
+                              }
                               title="Send to Apps wizard"
                               className="p-0.5 hover:text-foreground">
                               <Blocks size={10} />
@@ -6325,7 +7368,9 @@ function ChatPanel() {
         {statusMsg && (
           <div className="px-4 py-1 text-[11px] text-muted-foreground/70 border-t border-border/10 bg-white/[0.02] flex items-start gap-2 max-w-3xl mx-auto w-full">
             <span className="whitespace-pre-wrap flex-1">{statusMsg}</span>
-            <button onClick={() => setStatusMsg(null)} className="text-muted-foreground/40 hover:text-foreground">
+            <button
+              onClick={() => setStatusMsg(null)}
+              className="text-muted-foreground/40 hover:text-foreground">
               <X size={11} />
             </button>
           </div>
@@ -6338,10 +7383,14 @@ function ChatPanel() {
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {attachments.map((a) => (
-                  <span key={a.id} className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-white/10 text-foreground/80">
+                  <span
+                    key={a.id}
+                    className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-white/10 text-foreground/80">
                     📎 {a.name}
                     <button
-                      onClick={() => setAttachments((p) => p.filter((x) => x.id !== a.id))}
+                      onClick={() =>
+                        setAttachments((p) => p.filter((x) => x.id !== a.id))
+                      }
                       className="text-muted-foreground hover:text-red-300">
                       <X size={9} />
                     </button>
@@ -6354,8 +7403,12 @@ function ChatPanel() {
             {pendingModel && (
               <div className="flex items-center gap-1 text-[10px]">
                 <span className="text-muted-foreground/60">Next turn →</span>
-                <span className="px-2 py-0.5 rounded bg-violet-500/15 border border-violet-400/30 text-violet-200">{pendingModel}</span>
-                <button onClick={() => setPendingModel('')} className="text-muted-foreground/60 hover:text-foreground">
+                <span className="px-2 py-0.5 rounded bg-violet-500/15 border border-violet-400/30 text-violet-200">
+                  {pendingModel}
+                </span>
+                <button
+                  onClick={() => setPendingModel('')}
+                  className="text-muted-foreground/60 hover:text-foreground">
                   <X size={10} />
                 </button>
               </div>
@@ -6367,7 +7420,9 @@ function ChatPanel() {
                 <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-400/30 text-emerald-200">
                   tools: on
                 </span>
-                <button onClick={() => setToolsEnabled(false)} className="text-muted-foreground/60 hover:text-foreground">
+                <button
+                  onClick={() => setToolsEnabled(false)}
+                  className="text-muted-foreground/60 hover:text-foreground">
                   <X size={10} />
                 </button>
               </div>
@@ -6379,7 +7434,9 @@ function ChatPanel() {
                 <span className="px-2 py-0.5 rounded bg-sky-500/15 border border-sky-400/30 text-sky-200">
                   🌐 web: on (next message will search the web)
                 </span>
-                <button onClick={() => setWebEnabled(false)} className="text-muted-foreground/60 hover:text-foreground">
+                <button
+                  onClick={() => setWebEnabled(false)}
+                  className="text-muted-foreground/60 hover:text-foreground">
                   <X size={10} />
                 </button>
               </div>
@@ -6391,7 +7448,9 @@ function ChatPanel() {
                 <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-400/30 text-amber-200">
                   compare: {compareRoutes.join(' vs ')}
                 </span>
-                <button onClick={() => setCompareRoutes(null)} className="text-muted-foreground/60 hover:text-foreground">
+                <button
+                  onClick={() => setCompareRoutes(null)}
+                  className="text-muted-foreground/60 hover:text-foreground">
                   <X size={10} />
                 </button>
               </div>
@@ -6415,7 +7474,11 @@ function ChatPanel() {
               )}
               <button
                 onClick={() => setWebEnabled((v) => !v)}
-                title={webEnabled ? 'Web search: ON (next message)' : 'Enable web search for next message'}
+                title={
+                  webEnabled
+                    ? 'Web search: ON (next message)'
+                    : 'Enable web search for next message'
+                }
                 disabled={loading}
                 className={`p-2 rounded hover:bg-white/5 disabled:opacity-30 ${webEnabled ? 'text-sky-300 bg-sky-500/10' : 'text-muted-foreground/60 hover:text-foreground'}`}>
                 <Globe size={14} />
@@ -6429,7 +7492,9 @@ function ChatPanel() {
                 <option value="light">light</option>
                 <option value="heavy">heavy</option>
                 {nodesList.map((n) => (
-                  <option key={n.name} value={n.name}>{n.name}</option>
+                  <option key={n.name} value={n.name}>
+                    {n.name}
+                  </option>
                 ))}
               </select>
               <textarea
@@ -6438,7 +7503,11 @@ function ChatPanel() {
                 onChange={(e) => setInput(e.target.value)}
                 onPaste={onPasteCompose}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && (e.metaKey || e.ctrlKey || !e.altKey)) {
+                  if (
+                    e.key === 'Enter' &&
+                    !e.shiftKey &&
+                    (e.metaKey || e.ctrlKey || !e.altKey)
+                  ) {
                     if (!e.shiftKey) {
                       e.preventDefault();
                       send();
@@ -6446,21 +7515,39 @@ function ChatPanel() {
                   } else if (e.key === 'ArrowUp' && !input && lastUserMsg) {
                     e.preventDefault();
                     startEdit(lastUserMsg);
-                  } else if (e.key === 'Tab' && mentionState && mentionState.items.length > 0) {
+                  } else if (
+                    e.key === 'Tab' &&
+                    mentionState &&
+                    mentionState.items.length > 0
+                  ) {
                     e.preventDefault();
                     insertMention(mentionState.items[0].name);
                   }
                 }}
-                placeholder={loading ? 'Generating… press Esc to stop' : 'Message…   /  for commands,  @  to mention,  ⌘↵ to send'}
+                placeholder={
+                  loading
+                    ? 'Generating… press Esc to stop'
+                    : 'Message…   /  for commands,  @  to mention,  ⌘↵ to send'
+                }
                 rows={1}
                 className="flex-1 bg-muted/30 border border-border/40 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none overflow-hidden"
               />
               {loading ? (
-                <Button onClick={stop} size="sm" variant="destructive" className="px-3" title="Stop (Esc)">
+                <Button
+                  onClick={stop}
+                  size="sm"
+                  variant="destructive"
+                  className="px-3"
+                  title="Stop (Esc)">
                   <Square size={14} />
                 </Button>
               ) : (
-                <Button onClick={send} disabled={!input.trim() && attachments.length === 0} size="sm" className="px-3" title="Send (⌘↵)">
+                <Button
+                  onClick={send}
+                  disabled={!input.trim() && attachments.length === 0}
+                  size="sm"
+                  className="px-3"
+                  title="Send (⌘↵)">
                   <Send size={14} />
                 </Button>
               )}
@@ -6469,10 +7556,16 @@ function ChatPanel() {
             {/* Slash menu */}
             {showSlash && (
               <div className="absolute bottom-full left-3 right-3 mb-2 max-w-3xl mx-auto bg-[#0a0a0a] border border-white/10 rounded-lg shadow-xl overflow-hidden z-10">
-                {SLASH_COMMANDS.filter((c) => c.cmd.startsWith(input.split(' ')[0]) || input === '/').map((c) => (
+                {SLASH_COMMANDS.filter(
+                  (c) => c.cmd.startsWith(input.split(' ')[0]) || input === '/',
+                ).map((c) => (
                   <button
                     key={c.cmd}
-                    onClick={() => { setInput(c.cmd + ' '); setTimeout(() => inputRef.current?.focus(), 0); setShowSlash(false); }}
+                    onClick={() => {
+                      setInput(c.cmd + ' ');
+                      setTimeout(() => inputRef.current?.focus(), 0);
+                      setShowSlash(false);
+                    }}
                     className="w-full text-left px-3 py-1.5 hover:bg-white/5 text-[11px] flex items-baseline gap-2">
                     <span className="font-mono text-violet-300">{c.cmd}</span>
                     <span className="text-muted-foreground/60">{c.hint}</span>
@@ -6489,9 +7582,16 @@ function ChatPanel() {
                     key={`${it.kind}:${it.name}`}
                     onClick={() => insertMention(it.name)}
                     className="w-full text-left px-3 py-1.5 hover:bg-white/5 text-[11px] flex items-center gap-2">
-                    <span className={`text-[9px] uppercase tracking-wider ${it.kind === 'app' ? 'text-blue-300/70' : 'text-amber-300/70'}`}>{it.kind}</span>
-                    <span className="font-mono text-foreground">@{it.name}</span>
-                    <span className="ml-auto text-[9px] text-muted-foreground/40">↹ Tab</span>
+                    <span
+                      className={`text-[9px] uppercase tracking-wider ${it.kind === 'app' ? 'text-blue-300/70' : 'text-amber-300/70'}`}>
+                      {it.kind}
+                    </span>
+                    <span className="font-mono text-foreground">
+                      @{it.name}
+                    </span>
+                    <span className="ml-auto text-[9px] text-muted-foreground/40">
+                      ↹ Tab
+                    </span>
                   </button>
                 ))}
               </div>
@@ -6508,7 +7608,11 @@ function ChatPanel() {
           setQuery={setSearchQ}
           onPick={(id) => {
             setActiveId(id);
-            try { localStorage.setItem('chat-active', id); } catch { /* ignore */ }
+            try {
+              localStorage.setItem('chat-active', id);
+            } catch {
+              /* ignore */
+            }
             setSearchOpen(false);
           }}
           onClose={() => setSearchOpen(false)}
@@ -6516,7 +7620,9 @@ function ChatPanel() {
       )}
 
       {/* Schedules modal */}
-      {schedulesOpen && <SchedulesModal onClose={() => setSchedulesOpen(false)} />}
+      {schedulesOpen && (
+        <SchedulesModal onClose={() => setSchedulesOpen(false)} />
+      )}
 
       {/* Persona library trigger (subtle) */}
       <PersonaQuickAdd personas={personas} onSave={persistPersonas} />
@@ -6533,11 +7639,15 @@ function SearchPalette(props: {
 }) {
   const { sessions, query, setQuery, onPick, onClose } = props;
   const ref = useRef<HTMLInputElement | null>(null);
-  useEffect(() => { ref.current?.focus(); }, []);
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return sessions.slice(0, 30).sort((a, b) => b.updatedAt - a.updatedAt);
-    const out: Array<{ session: ChatSession; snippet: string; score: number }> = [];
+    if (!q)
+      return sessions.slice(0, 30).sort((a, b) => b.updatedAt - a.updatedAt);
+    const out: Array<{ session: ChatSession; snippet: string; score: number }> =
+      [];
     for (const s of sessions) {
       const titleHit = s.title.toLowerCase().includes(q);
       let snippet = '';
@@ -6549,18 +7659,33 @@ function SearchPalette(props: {
           score += 10;
           if (!snippet) {
             const start = Math.max(0, idx - 30);
-            snippet = (start > 0 ? '…' : '') + m.content.slice(start, idx + q.length + 60).replace(/\n/g, ' ');
+            snippet =
+              (start > 0 ? '…' : '') +
+              m.content.slice(start, idx + q.length + 60).replace(/\n/g, ' ');
           }
         }
       }
-      if (score > 0) out.push({ session: s, snippet: snippet || s.title, score });
+      if (score > 0)
+        out.push({ session: s, snippet: snippet || s.title, score });
     }
-    return out.sort((a, b) => b.score - a.score).slice(0, 30).map((r) => ({ ...r.session, _snippet: r.snippet } as ChatSession & { _snippet?: string }));
+    return out
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 30)
+      .map(
+        (r) =>
+          ({ ...r.session, _snippet: r.snippet }) as ChatSession & {
+            _snippet?: string;
+          },
+      );
   }, [sessions, query]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm pt-24" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-[640px] max-w-[92vw] bg-[#0a0a0a] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm pt-24"
+      onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-[640px] max-w-[92vw] bg-[#0a0a0a] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2 border-b border-white/5">
           <Search size={12} className="text-muted-foreground/60" />
           <input
@@ -6578,18 +7703,26 @@ function SearchPalette(props: {
         </div>
         <div className="max-h-[60vh] overflow-auto">
           {results.length === 0 && (
-            <div className="px-3 py-6 text-center text-[12px] text-muted-foreground/40">No matches</div>
+            <div className="px-3 py-6 text-center text-[12px] text-muted-foreground/40">
+              No matches
+            </div>
           )}
           {results.map((s) => (
             <button
               key={s.id}
               onClick={() => onPick(s.id)}
               className="w-full text-left px-3 py-2 hover:bg-white/5 border-b border-white/5">
-              <div className="text-[12px] text-foreground/90 truncate">{s.title}</div>
+              <div className="text-[12px] text-foreground/90 truncate">
+                {s.title}
+              </div>
               {(s as ChatSession & { _snippet?: string })._snippet && (
-                <div className="text-[10px] text-muted-foreground/60 truncate">{(s as ChatSession & { _snippet?: string })._snippet}</div>
+                <div className="text-[10px] text-muted-foreground/60 truncate">
+                  {(s as ChatSession & { _snippet?: string })._snippet}
+                </div>
               )}
-              <div className="text-[9px] text-muted-foreground/40 font-mono">{new Date(s.updatedAt).toLocaleString()}</div>
+              <div className="text-[9px] text-muted-foreground/40 font-mono">
+                {new Date(s.updatedAt).toLocaleString()}
+              </div>
             </button>
           ))}
         </div>
@@ -6629,7 +7762,9 @@ function SchedulesModal({ onClose }: { onClose: () => void }) {
       setLoading(false);
     }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const toggle = async (sc: ScheduleRec) => {
     setBusy(sc.id);
@@ -6647,7 +7782,10 @@ function SchedulesModal({ onClose }: { onClose: () => void }) {
   const runNow = async (sc: ScheduleRec) => {
     setBusy(sc.id);
     try {
-      await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(sc.id)}/run`, { method: 'POST' });
+      await fetch(
+        `${API_BASE}/api/schedules/${encodeURIComponent(sc.id)}/run`,
+        { method: 'POST' },
+      );
       await load();
     } finally {
       setBusy(null);
@@ -6657,7 +7795,9 @@ function SchedulesModal({ onClose }: { onClose: () => void }) {
     if (!confirm(`Delete schedule "${sc.title}"?`)) return;
     setBusy(sc.id);
     try {
-      await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(sc.id)}`, { method: 'DELETE' });
+      await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(sc.id)}`, {
+        method: 'DELETE',
+      });
       await load();
     } finally {
       setBusy(null);
@@ -6665,17 +7805,29 @@ function SchedulesModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm pt-20" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-[720px] max-w-[94vw] bg-[#0a0a0a] border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm pt-20"
+      onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-[720px] max-w-[94vw] bg-[#0a0a0a] border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
         <div className="flex items-center gap-2 px-3 py-2 border-b border-white/5">
           <Clock size={12} className="text-muted-foreground/60" />
-          <span className="text-sm text-foreground flex-1">Scheduled prompts</span>
-          <button onClick={onClose} className="text-muted-foreground/50 hover:text-foreground">
+          <span className="text-sm text-foreground flex-1">
+            Scheduled prompts
+          </span>
+          <button
+            onClick={onClose}
+            className="text-muted-foreground/50 hover:text-foreground">
             <X size={12} />
           </button>
         </div>
         <div className="overflow-auto divide-y divide-white/5">
-          {loading && <div className="px-3 py-8 text-center text-[11px] text-muted-foreground/50">Loading…</div>}
+          {loading && (
+            <div className="px-3 py-8 text-center text-[11px] text-muted-foreground/50">
+              Loading…
+            </div>
+          )}
           {!loading && items.length === 0 && (
             <div className="px-3 py-10 text-center text-[12px] text-muted-foreground/40 space-y-2">
               <div>No schedules yet.</div>
@@ -6694,11 +7846,14 @@ function SchedulesModal({ onClose }: { onClose: () => void }) {
                   className={`w-2 h-2 rounded-full shrink-0 ${sc.enabled ? 'bg-emerald-400' : 'bg-muted-foreground/30'}`}
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[12px] text-foreground/90 truncate">{sc.title}</div>
+                  <div className="text-[12px] text-foreground/90 truncate">
+                    {sc.title}
+                  </div>
                   <div className="text-[10px] text-muted-foreground/60 font-mono">
                     {sc.cron}
                     {sc.route && ` · ${sc.route}`}
-                    {sc.nextRun && ` · next ${new Date(sc.nextRun).toLocaleString()}`}
+                    {sc.nextRun &&
+                      ` · next ${new Date(sc.nextRun).toLocaleString()}`}
                   </div>
                 </div>
                 <button
@@ -6717,10 +7872,14 @@ function SchedulesModal({ onClose }: { onClose: () => void }) {
                 </button>
               </div>
               {sc.lastError && (
-                <div className="text-[10px] text-red-300/80 font-mono truncate">✗ {sc.lastError}</div>
+                <div className="text-[10px] text-red-300/80 font-mono truncate">
+                  ✗ {sc.lastError}
+                </div>
               )}
               {sc.lastResult && !sc.lastError && (
-                <div className="text-[10px] text-muted-foreground/50 truncate italic">↳ {sc.lastResult.slice(0, 120)}</div>
+                <div className="text-[10px] text-muted-foreground/50 truncate italic">
+                  ↳ {sc.lastResult.slice(0, 120)}
+                </div>
               )}
             </div>
           ))}
@@ -6730,7 +7889,13 @@ function SchedulesModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function PersonaQuickAdd({ personas, onSave }: { personas: Persona[]; onSave: (arr: Persona[]) => void }) {
+function PersonaQuickAdd({
+  personas,
+  onSave,
+}: {
+  personas: Persona[];
+  onSave: (arr: Persona[]) => void;
+}) {
   // hidden helper that listens for a custom event to add a persona; keeps the panel small.
   useEffect(() => {
     const onAdd = (e: Event) => {
@@ -6740,7 +7905,8 @@ function PersonaQuickAdd({ personas, onSave }: { personas: Persona[]; onSave: (a
       onSave([...personas, detail]);
     };
     window.addEventListener('chat:persona-add', onAdd as EventListener);
-    return () => window.removeEventListener('chat:persona-add', onAdd as EventListener);
+    return () =>
+      window.removeEventListener('chat:persona-add', onAdd as EventListener);
   }, [personas, onSave]);
   return null;
 }
@@ -6759,7 +7925,10 @@ interface NodeConfig {
   temperature?: number | null;
 }
 
-const PROMPT_META: Record<string, { label: string; desc: string; vars: string }> = {
+const PROMPT_META: Record<
+  string,
+  { label: string; desc: string; vars: string }
+> = {
   build: {
     label: 'Build (New App)',
     desc: 'Base system prompt sent to aider when creating a new app. Defines the scaffold, rules, and coding conventions.',
@@ -6768,7 +7937,7 @@ const PROMPT_META: Record<string, { label: string; desc: string; vars: string }>
   rebuild: {
     label: 'Rebuild (Change Request)',
     desc: 'Sent to aider when applying changes to an existing app.',
-    vars: '{{change}} — the user\'s change request, {{port}} — the app port.',
+    vars: "{{change}} — the user's change request, {{port}} — the app port.",
   },
   fix: {
     label: 'Fix (With User Report)',
@@ -6816,10 +7985,13 @@ function PromptsEditor({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-medium text-foreground/80">System Prompts</h3>
+          <h3 className="text-sm font-medium text-foreground/80">
+            System Prompts
+          </h3>
           <p className="text-[11px] text-muted-foreground/50 mt-0.5">
-            Edit the prompts sent to aider during build, rebuild, and fix phases.
-            Use template variables like {'{{port}}'} that get replaced at runtime.
+            Edit the prompts sent to aider during build, rebuild, and fix
+            phases. Use template variables like {'{{port}}'} that get replaced
+            at runtime.
           </p>
         </div>
         <div className="flex gap-2">
@@ -6844,16 +8016,24 @@ function PromptsEditor({
         const value = prompts[key] || '';
         const lines = value.split('\n').length;
         return (
-          <div key={key} className="rounded-lg border border-border/20 overflow-hidden">
+          <div
+            key={key}
+            className="rounded-lg border border-border/20 overflow-hidden">
             <button
               onClick={() => setExpanded(isOpen ? null : key)}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/10 transition-colors text-left">
               <div>
-                <span className="text-sm font-medium text-foreground/70">{meta.label}</span>
-                <p className="text-[10px] text-muted-foreground/40 mt-0.5">{meta.desc}</p>
+                <span className="text-sm font-medium text-foreground/70">
+                  {meta.label}
+                </span>
+                <p className="text-[10px] text-muted-foreground/40 mt-0.5">
+                  {meta.desc}
+                </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[9px] text-muted-foreground/30 tabular-nums">{lines} lines</span>
+                <span className="text-[9px] text-muted-foreground/30 tabular-nums">
+                  {lines} lines
+                </span>
                 <ChevronDown
                   size={14}
                   className={`text-muted-foreground/30 transition-transform ${isOpen ? 'rotate-180' : ''}`}
@@ -6864,7 +8044,9 @@ function PromptsEditor({
               <div className="border-t border-border/10 p-3 space-y-2">
                 <div className="flex items-center gap-2 text-[9px] text-muted-foreground/30">
                   <span>Variables:</span>
-                  <code className="bg-muted/20 px-1.5 py-0.5 rounded">{meta.vars}</code>
+                  <code className="bg-muted/20 px-1.5 py-0.5 rounded">
+                    {meta.vars}
+                  </code>
                 </div>
                 <textarea
                   value={value}
@@ -6882,7 +8064,12 @@ function PromptsEditor({
   );
 }
 
-function SettingsCard({ title, icon, actions, children }: {
+function SettingsCard({
+  title,
+  icon,
+  actions,
+  children,
+}: {
   title: string;
   icon?: React.ReactNode;
   actions?: React.ReactNode;
@@ -6902,7 +8089,13 @@ function SettingsCard({ title, icon, actions, children }: {
   );
 }
 
-function SkeletonRows({ rows = 3, block = false }: { rows?: number; block?: boolean }) {
+function SkeletonRows({
+  rows = 3,
+  block = false,
+}: {
+  rows?: number;
+  block?: boolean;
+}) {
   return (
     <div className="space-y-2 animate-pulse">
       {Array.from({ length: rows }).map((_, i) => (
@@ -6916,7 +8109,13 @@ function SkeletonRows({ rows = 3, block = false }: { rows?: number; block?: bool
   );
 }
 
-function InfoRow({ label, value, mono, full, valueClass }: {
+function InfoRow({
+  label,
+  value,
+  mono,
+  full,
+  valueClass,
+}: {
   label: string;
   value: string;
   mono?: boolean;
@@ -6925,7 +8124,9 @@ function InfoRow({ label, value, mono, full, valueClass }: {
 }) {
   return (
     <div className={`flex flex-col gap-0.5 ${full ? 'col-span-2' : ''}`}>
-      <span className="text-[9px] uppercase tracking-wider text-muted-foreground/40">{label}</span>
+      <span className="text-[9px] uppercase tracking-wider text-muted-foreground/40">
+        {label}
+      </span>
       <span
         className={`text-[11px] truncate ${mono ? 'font-mono' : ''} ${valueClass || 'text-foreground/80'}`}
         title={value}>
@@ -6935,7 +8136,13 @@ function InfoRow({ label, value, mono, full, valueClass }: {
   );
 }
 
-function ToggleRow({ label, hint, value, onChange, disabled }: {
+function ToggleRow({
+  label,
+  hint,
+  value,
+  onChange,
+  disabled,
+}: {
   label: string;
   hint?: string;
   value: boolean;
@@ -6961,13 +8168,26 @@ function ToggleRow({ label, hint, value, onChange, disabled }: {
       </button>
       <div className="flex-1 min-w-0">
         <div className="text-[11px] text-foreground/80">{label}</div>
-        {hint && <div className="text-[10px] text-muted-foreground/50 mt-0.5">{hint}</div>}
+        {hint && (
+          <div className="text-[10px] text-muted-foreground/50 mt-0.5">
+            {hint}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function NumberRow({ label, hint, value, onChange, step, min, max, suffix }: {
+function NumberRow({
+  label,
+  hint,
+  value,
+  onChange,
+  step,
+  min,
+  max,
+  suffix,
+}: {
   label: string;
   hint?: string;
   value: number;
@@ -6981,7 +8201,11 @@ function NumberRow({ label, hint, value, onChange, step, min, max, suffix }: {
     <div className="flex items-start gap-3">
       <div className="flex-1 min-w-0">
         <div className="text-[11px] text-foreground/80">{label}</div>
-        {hint && <div className="text-[10px] text-muted-foreground/50 mt-0.5">{hint}</div>}
+        {hint && (
+          <div className="text-[10px] text-muted-foreground/50 mt-0.5">
+            {hint}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-1 shrink-0">
         <input
@@ -6996,16 +8220,18 @@ function NumberRow({ label, hint, value, onChange, step, min, max, suffix }: {
           }}
           className="w-16 h-7 text-[11px] tabular-nums text-right rounded-md border border-border/30 bg-transparent px-2 focus:outline-none focus:ring-1 focus:ring-ring/30"
         />
-        {suffix && <span className="text-[10px] text-muted-foreground/50">{suffix}</span>}
+        {suffix && (
+          <span className="text-[10px] text-muted-foreground/50">{suffix}</span>
+        )}
       </div>
     </div>
   );
 }
 
 function SettingsPanel() {
-  const [tab, setTab] = useState<'general' | 'nodes' | 'homekit' | 'api' | 'prompts'>(
-    'general',
-  );
+  const [tab, setTab] = useState<
+    'general' | 'nodes' | 'homekit' | 'api' | 'prompts'
+  >('general');
   const [routerModel, setRouterModel] = useState('');
   const [ollamaHost, setOllamaHost] = useState('');
   const [ollamaOnline, setOllamaOnline] = useState(false);
@@ -7091,7 +8317,9 @@ function SettingsPanel() {
     if (!confirm('Reset all prompts to defaults?')) return;
     setPromptsSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/api/prompts/reset`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/api/prompts/reset`, {
+        method: 'POST',
+      });
       const d = await res.json();
       setPrompts(d);
       setPromptsDirty(false);
@@ -7118,7 +8346,9 @@ function SettingsPanel() {
         setOllamaOnline(health.backends?.ollama || false);
         setNodes((health.backends?.nodes || []).map((n: any) => ({ ...n })));
       })
-      .catch((e) => setLoadError(e instanceof Error ? e.message : 'Failed to load'))
+      .catch((e) =>
+        setLoadError(e instanceof Error ? e.message : 'Failed to load'),
+      )
       .finally(() => setLoading(false));
   }, []);
 
@@ -7139,7 +8369,10 @@ function SettingsPanel() {
     refreshSettings();
   }, [refresh, refreshSettings]);
 
-  const updateSetting = <K extends keyof RuntimeSettings>(k: K, v: RuntimeSettings[K]) => {
+  const updateSetting = <K extends keyof RuntimeSettings>(
+    k: K,
+    v: RuntimeSettings[K],
+  ) => {
     setSettings((prev) => ({ ...prev, [k]: v }));
     setSettingsDirty(true);
   };
@@ -7165,7 +8398,9 @@ function SettingsPanel() {
     if (!confirm('Reset all runtime settings to defaults?')) return;
     setSettingsSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/api/settings/reset`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/api/settings/reset`, {
+        method: 'POST',
+      });
       const d = await res.json();
       setSettings({ ...defaultSettings, ...d });
       setSettingsDirty(false);
@@ -7283,13 +8518,23 @@ function SettingsPanel() {
           {/* Top action bar */}
           <div className="flex items-center justify-between">
             <p className="text-[11px] text-muted-foreground/60">
-              {loading ? 'Loading…' : sysCfg ? `home-server ${sysCfg.version} · uptime ${formatUptime(sysCfg.uptime_seconds)}` : 'Configuration'}
+              {loading
+                ? 'Loading…'
+                : sysCfg
+                  ? `home-server ${sysCfg.version} · uptime ${formatUptime(sysCfg.uptime_seconds)}`
+                  : 'Configuration'}
             </p>
             <button
-              onClick={() => { refresh(); refreshSettings(); }}
+              onClick={() => {
+                refresh();
+                refreshSettings();
+              }}
               disabled={loading || settingsLoading}
               className="text-[10px] flex items-center gap-1 px-2 py-1 text-muted-foreground/50 hover:text-foreground/80 disabled:opacity-30 transition-colors">
-              <RefreshCw size={10} className={(loading || settingsLoading) ? 'animate-spin' : ''} />
+              <RefreshCw
+                size={10}
+                className={loading || settingsLoading ? 'animate-spin' : ''}
+              />
               Refresh
             </button>
           </div>
@@ -7308,8 +8553,14 @@ function SettingsPanel() {
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
                 <InfoRow label="Version" value={sysCfg.version} />
                 <InfoRow label="Port" value={sysCfg.port} mono />
-                <InfoRow label="Started" value={new Date(sysCfg.started_at).toLocaleString()} />
-                <InfoRow label="Uptime" value={formatUptime(sysCfg.uptime_seconds)} />
+                <InfoRow
+                  label="Started"
+                  value={new Date(sysCfg.started_at).toLocaleString()}
+                />
+                <InfoRow
+                  label="Uptime"
+                  value={formatUptime(sysCfg.uptime_seconds)}
+                />
                 <InfoRow label="Apps" value={String(sysCfg.apps_count)} />
                 <InfoRow label="Nodes" value={String(sysCfg.nodes_count)} />
                 <InfoRow label="Data dir" value={sysCfg.data_dir} mono full />
@@ -7318,7 +8569,11 @@ function SettingsPanel() {
                 <InfoRow
                   label="Anthropic key"
                   value={sysCfg.anthropic_set ? 'configured' : 'not set'}
-                  valueClass={sysCfg.anthropic_set ? 'text-emerald-400/80' : 'text-muted-foreground/50'}
+                  valueClass={
+                    sysCfg.anthropic_set
+                      ? 'text-emerald-400/80'
+                      : 'text-muted-foreground/50'
+                  }
                 />
               </div>
             )}
@@ -7331,13 +8586,21 @@ function SettingsPanel() {
             ) : (
               <>
                 <div className="flex items-center gap-3">
-                  <span className={`w-2 h-2 rounded-full ${ollamaOnline ? 'bg-emerald-500' : 'bg-zinc-500'}`} />
+                  <span
+                    className={`w-2 h-2 rounded-full ${ollamaOnline ? 'bg-emerald-500' : 'bg-zinc-500'}`}
+                  />
                   <span className="text-sm font-medium">Ollama</span>
-                  <span className="text-[11px] text-muted-foreground">{ollamaOnline ? 'Online' : 'Offline'}</span>
-                  <span className="text-[10px] text-muted-foreground/50 ml-auto font-mono">{ollamaHost}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {ollamaOnline ? 'Online' : 'Offline'}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/50 ml-auto font-mono">
+                    {ollamaHost}
+                  </span>
                 </div>
                 <div className="space-y-1.5 pt-3 border-t border-border/10">
-                  <label className="text-[11px] text-muted-foreground">Router Model (Ollama classifier)</label>
+                  <label className="text-[11px] text-muted-foreground">
+                    Router Model (Ollama classifier)
+                  </label>
                   <div className="flex gap-2">
                     <input
                       value={routerModel}
@@ -7394,21 +8657,29 @@ function SettingsPanel() {
                   label="Default temperature"
                   hint="Used as the LLM temperature default for new nodes (0.0–2.0)"
                   value={settings.defaultTemperature}
-                  step={0.1} min={0} max={2}
+                  step={0.1}
+                  min={0}
+                  max={2}
                   onChange={(v) => updateSetting('defaultTemperature', v)}
                 />
                 <NumberRow
                   label="Build timeout"
                   hint="Hard cap on how long a single build pipeline run may take, in minutes"
                   value={settings.buildTimeoutMin}
-                  step={1} min={1} max={240} suffix="min"
+                  step={1}
+                  min={1}
+                  max={240}
+                  suffix="min"
                   onChange={(v) => updateSetting('buildTimeoutMin', v)}
                 />
                 <NumberRow
                   label="Keep build history"
                   hint="Number of past builds retained per app"
                   value={settings.keepBuildHistory}
-                  step={1} min={1} max={200} suffix="entries"
+                  step={1}
+                  min={1}
+                  max={200}
+                  suffix="entries"
                   onChange={(v) => updateSetting('keepBuildHistory', v)}
                 />
               </div>
@@ -7419,19 +8690,30 @@ function SettingsPanel() {
           <SettingsCard title="About" icon={<Blocks size={12} />}>
             <div className="space-y-2 text-[11px] text-muted-foreground/70">
               <p>
-                <span className="text-foreground/80">home-server</span> — a self-hosted dashboard that turns natural-language prompts into running web apps on your Raspberry Pi.
+                <span className="text-foreground/80">home-server</span> — a
+                self-hosted dashboard that turns natural-language prompts into
+                running web apps on your Raspberry Pi.
               </p>
               <div className="flex flex-wrap gap-3 pt-1">
-                <a href="https://github.com/acanturgut/home-server" target="_blank" rel="noreferrer"
-                   className="text-[10px] text-blue-400/80 hover:text-blue-300 inline-flex items-center gap-1">
+                <a
+                  href="https://github.com/acanturgut/home-server"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[10px] text-blue-400/80 hover:text-blue-300 inline-flex items-center gap-1">
                   <ExternalLink size={9} /> GitHub
                 </a>
-                <a href={`${API_BASE}/api/health`} target="_blank" rel="noreferrer"
-                   className="text-[10px] text-blue-400/80 hover:text-blue-300 inline-flex items-center gap-1">
+                <a
+                  href={`${API_BASE}/api/health`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[10px] text-blue-400/80 hover:text-blue-300 inline-flex items-center gap-1">
                   <ExternalLink size={9} /> /api/health
                 </a>
-                <a href={`${API_BASE}/api/system`} target="_blank" rel="noreferrer"
-                   className="text-[10px] text-blue-400/80 hover:text-blue-300 inline-flex items-center gap-1">
+                <a
+                  href={`${API_BASE}/api/system`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[10px] text-blue-400/80 hover:text-blue-300 inline-flex items-center gap-1">
                   <ExternalLink size={9} /> /api/system
                 </a>
               </div>
@@ -7445,14 +8727,19 @@ function SettingsPanel() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
-              {loading ? 'Loading nodes…' : `${nodes.length} node${nodes.length !== 1 ? 's' : ''} configured`}
+              {loading
+                ? 'Loading nodes…'
+                : `${nodes.length} node${nodes.length !== 1 ? 's' : ''} configured`}
             </p>
             <div className="flex items-center gap-2">
               <button
                 onClick={refresh}
                 disabled={loading}
                 className="text-[10px] flex items-center gap-1 px-2 py-1 text-muted-foreground/50 hover:text-foreground/80 disabled:opacity-30 transition-colors">
-                <RefreshCw size={10} className={loading ? 'animate-spin' : ''} />
+                <RefreshCw
+                  size={10}
+                  className={loading ? 'animate-spin' : ''}
+                />
                 Refresh
               </button>
               <button
@@ -7470,7 +8757,13 @@ function SettingsPanel() {
                   });
                 }}
                 className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors">
-                {showAdd ? <><X size={11} className="inline" /> Cancel</> : '+ Add Node'}
+                {showAdd ? (
+                  <>
+                    <X size={11} className="inline" /> Cancel
+                  </>
+                ) : (
+                  '+ Add Node'
+                )}
               </button>
             </div>
           </div>
@@ -7783,7 +9076,9 @@ function NodeFormInline({
                   </button>
                 )}
                 {form.model === m && (
-                  <span className="text-[10px] text-emerald-400 flex items-center gap-1"><Circle size={6} fill="currentColor" /> Active</span>
+                  <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                    <Circle size={6} fill="currentColor" /> Active
+                  </span>
                 )}
                 <button
                   onClick={() => unloadModel(m)}
@@ -7841,13 +9136,17 @@ function App() {
   // Cross-panel navigation via custom event (used by Chat → Apps handoff)
   useEffect(() => {
     const onNav = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { page?: string; payload?: unknown } | undefined;
+      const detail = (e as CustomEvent).detail as
+        | { page?: string; payload?: unknown }
+        | undefined;
       if (!detail?.page) return;
       setPage(detail.page);
       if (detail.page === 'apps' && detail.payload) {
         // Re-dispatch so AppsPanel (already mounted) can pick it up
         setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('apps:prefill-prompt', { detail: detail.payload }));
+          window.dispatchEvent(
+            new CustomEvent('apps:prefill-prompt', { detail: detail.payload }),
+          );
         }, 50);
       }
     };
@@ -7877,7 +9176,11 @@ function App() {
   }, []);
 
   const nav = [
-    { id: 'dashboard', icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
+    {
+      id: 'dashboard',
+      icon: <LayoutDashboard size={18} />,
+      label: 'Dashboard',
+    },
     { id: 'chat', icon: <MessageSquare size={18} />, label: 'Chat' },
     { id: 'apps', icon: <Blocks size={18} />, label: 'Apps' },
     { id: 'settings', icon: <Settings size={18} />, label: 'Settings' },
@@ -7920,7 +9223,12 @@ function App() {
           )}
 
           {/* Apps gets full bleed (always mounted to preserve build streams), others get padding */}
-          <div className={page === 'apps' ? 'flex-1 overflow-hidden flex flex-col' : 'hidden'}>
+          <div
+            className={
+              page === 'apps'
+                ? 'flex-1 overflow-hidden flex flex-col'
+                : 'hidden'
+            }>
             <AppsPanel />
           </div>
           {page !== 'apps' && (
@@ -8031,7 +9339,15 @@ function App() {
                     ? 'text-foreground bg-foreground/10'
                     : 'hover:text-foreground'
                 }`}>
-                {logsOpen ? <><ChevronDown size={12} className="inline" /> Logs</> : <><ChevronRight size={12} className="inline" /> Logs</>}
+                {logsOpen ? (
+                  <>
+                    <ChevronDown size={12} className="inline" /> Logs
+                  </>
+                ) : (
+                  <>
+                    <ChevronRight size={12} className="inline" /> Logs
+                  </>
+                )}
               </button>
             </span>
           </>
@@ -8059,14 +9375,23 @@ const memChartConfig: ChartConfig = {
 
 function SystemCharts() {
   const [history, setHistory] = useState<
-    { t: string; cpu: number; mem: number; disk: number; mem_mb: number; mem_max: number }[]
+    {
+      t: string;
+      cpu: number;
+      mem: number;
+      disk: number;
+      mem_mb: number;
+      mem_max: number;
+    }[]
   >([]);
 
   useEffect(() => {
     const load = () =>
       fetch(`${API_BASE}/api/system/history`)
         .then((r) => r.json())
-        .then((d) => { if (Array.isArray(d)) setHistory(d); })
+        .then((d) => {
+          if (Array.isArray(d)) setHistory(d);
+        })
         .catch(() => {});
     load();
     const id = setInterval(load, 5000);
@@ -8080,20 +9405,28 @@ function SystemCharts() {
       {/* CPU chart */}
       <div className="rounded-lg border border-border/30 p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-medium text-muted-foreground">CPU Usage</span>
+          <span className="text-[11px] font-medium text-muted-foreground">
+            CPU Usage
+          </span>
           <span className="text-[11px] tabular-nums text-blue-400">
             {history[history.length - 1]?.cpu.toFixed(1)}%
           </span>
         </div>
         <ChartContainer config={cpuChartConfig} className="h-[120px] w-full">
-          <AreaChart data={history} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+          <AreaChart
+            data={history}
+            margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
             <defs>
               <linearGradient id="cpuGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.3} />
                 <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.15} />
+            <CartesianGrid
+              vertical={false}
+              stroke="hsl(var(--border))"
+              strokeOpacity={0.15}
+            />
             <XAxis
               dataKey="t"
               tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
@@ -8109,7 +9442,13 @@ function SystemCharts() {
               axisLine={false}
               tickFormatter={(v) => `${v}%`}
             />
-            <ChartTooltip content={<ChartTooltipContent formatter={(value) => `${Number(value).toFixed(1)}%`} />} />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  formatter={(value) => `${Number(value).toFixed(1)}%`}
+                />
+              }
+            />
             <Area
               type="monotone"
               dataKey="cpu"
@@ -8125,7 +9464,9 @@ function SystemCharts() {
       {/* Memory chart */}
       <div className="rounded-lg border border-border/30 p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-medium text-muted-foreground">Memory Usage</span>
+          <span className="text-[11px] font-medium text-muted-foreground">
+            Memory Usage
+          </span>
           <span className="text-[11px] tabular-nums text-purple-400">
             {history[history.length - 1]?.mem.toFixed(1)}%
             <span className="text-muted-foreground/50 ml-1">
@@ -8134,14 +9475,20 @@ function SystemCharts() {
           </span>
         </div>
         <ChartContainer config={memChartConfig} className="h-[120px] w-full">
-          <AreaChart data={history} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+          <AreaChart
+            data={history}
+            margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
             <defs>
               <linearGradient id="memGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#a855f7" stopOpacity={0.3} />
                 <stop offset="100%" stopColor="#a855f7" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.15} />
+            <CartesianGrid
+              vertical={false}
+              stroke="hsl(var(--border))"
+              strokeOpacity={0.15}
+            />
             <XAxis
               dataKey="t"
               tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
@@ -8157,7 +9504,13 @@ function SystemCharts() {
               axisLine={false}
               tickFormatter={(v) => `${v}%`}
             />
-            <ChartTooltip content={<ChartTooltipContent formatter={(value) => `${Number(value).toFixed(1)}%`} />} />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  formatter={(value) => `${Number(value).toFixed(1)}%`}
+                />
+              }
+            />
             <Area
               type="monotone"
               dataKey="mem"
