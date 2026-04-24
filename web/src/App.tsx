@@ -66,6 +66,8 @@ import {
   Globe,
   PanelLeft,
   Rows3,
+  Undo2,
+  Rocket,
 } from 'lucide-react';
 import {
   EditorView,
@@ -1256,7 +1258,7 @@ function parseUnifiedDiff(diff: string): DiffFile[] {
 function FileBlock({ f, mode }: { f: DiffFile; mode: 'split' | 'unified' }) {
   return (
     <div className="rounded border border-white/10 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] border-b border-white/10 text-[11px]">
+      <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-[#0a0a0a] border-b border-white/10 text-[11px]">
         <FileCode2 size={11} className="text-violet-400/70 shrink-0" />
         <span className="font-mono text-foreground/80 truncate flex-1">{f.path}</span>
         {f.isNew && <span className="text-[9px] uppercase text-emerald-400/80">new</span>}
@@ -2526,7 +2528,7 @@ function AppsPanel() {
   }, [selectedApp]);
 
   // Refresh git log when the selected app changes (or after a build/fix completes).
-  useEffect(() => {
+  const loadCommits = useCallback(() => {
     if (!selectedApp) {
       setCommits([]);
       return;
@@ -2535,7 +2537,10 @@ function AppsPanel() {
       .then((r) => r.json())
       .then((d) => setCommits(Array.isArray(d.commits) ? d.commits : []))
       .catch(() => setCommits([]));
-  }, [selectedApp, building]);
+  }, [selectedApp]);
+  useEffect(() => {
+    loadCommits();
+  }, [loadCommits, building]);
 
   // Load diff lazily when the user opens a commit.
   useEffect(() => {
@@ -3617,27 +3622,60 @@ function AppsPanel() {
                         {gitOpen && (
                           <div className="space-y-1 max-h-60 overflow-auto">
                             {commits.map((c) => (
-                              <button
+                              <div
                                 key={c.sha}
-                                onClick={() => setDiffSha(c.sha)}
-                                className="w-full text-left flex items-center gap-2 text-[10px] py-1 px-1.5 rounded hover:bg-white/[0.03] transition-colors">
-                                <span className="font-mono text-muted-foreground/40 shrink-0">{c.short_sha}</span>
-                                {c.action && (
-                                  <span className={`text-[9px] uppercase shrink-0 ${
-                                    c.action === 'fix' ? 'text-amber-400/70' :
-                                    c.action === 'rebuild' ? 'text-violet-400/70' :
-                                    c.action === 'build' ? 'text-emerald-400/70' :
-                                    'text-muted-foreground/50'
-                                  }`}>{c.action}</span>
-                                )}
-                                <span className="text-foreground/70 flex-1 truncate">
-                                  {c.subject.replace(/^(build|fix|rebuild|deploy):\s*/, '')}
-                                </span>
-                                {c.files ? <span className="text-muted-foreground/40 tabular-nums shrink-0">{c.files}f</span> : null}
-                                <span className="text-muted-foreground/30 tabular-nums shrink-0">
-                                  {new Date(c.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                                </span>
-                              </button>
+                                className="group w-full flex items-center gap-2 text-[10px] py-1 px-1.5 rounded hover:bg-white/[0.03] transition-colors">
+                                <button
+                                  onClick={() => setDiffSha(c.sha)}
+                                  className="flex-1 min-w-0 flex items-center gap-2 text-left">
+                                  <span className="font-mono text-muted-foreground/40 shrink-0">{c.short_sha}</span>
+                                  {c.action && (
+                                    <span className={`text-[9px] uppercase shrink-0 ${
+                                      c.action === 'fix' ? 'text-amber-400/70' :
+                                      c.action === 'rebuild' ? 'text-violet-400/70' :
+                                      c.action === 'build' ? 'text-emerald-400/70' :
+                                      c.action === 'revert' ? 'text-red-400/70' :
+                                      'text-muted-foreground/50'
+                                    }`}>{c.action}</span>
+                                  )}
+                                  <span className="text-foreground/70 flex-1 truncate">
+                                    {c.subject.replace(/^(build|fix|rebuild|deploy|revert):\s*/, '')}
+                                  </span>
+                                  {c.files ? <span className="text-muted-foreground/40 tabular-nums shrink-0">{c.files}f</span> : null}
+                                  <span className="text-muted-foreground/30 tabular-nums shrink-0">
+                                    {new Date(c.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                  </span>
+                                </button>
+                                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                  <button
+                                    title="Revert this change (creates a new commit)"
+                                    onClick={async () => {
+                                      if (!selectedApp) return;
+                                      if (!confirm(`Revert ${c.short_sha}?\n\n"${c.subject}"\n\nThis creates a new commit that undoes the change. You can deploy after to apply it.`)) return;
+                                      try {
+                                        const res = await fetch(`${API_BASE}/api/apps/${selectedApp}/git/revert/${c.sha}`, { method: 'POST' });
+                                        const data = await res.json();
+                                        if (!res.ok) {
+                                          alert('Revert failed: ' + (data.error || 'unknown'));
+                                          return;
+                                        }
+                                        loadCommits();
+                                      } catch (e) {
+                                        alert('Revert failed: ' + (e instanceof Error ? e.message : 'unknown'));
+                                      }
+                                    }}
+                                    className="p-1 rounded hover:bg-red-500/15 text-red-400/70 hover:text-red-300">
+                                    <Undo2 size={10} />
+                                  </button>
+                                  <button
+                                    title="Deploy current files (rebuild Docker image)"
+                                    onClick={() => deployApp()}
+                                    disabled={deploying}
+                                    className="p-1 rounded hover:bg-emerald-500/15 text-emerald-400/70 hover:text-emerald-300 disabled:opacity-30">
+                                    <Rocket size={10} />
+                                  </button>
+                                </div>
+                              </div>
                             ))}
                           </div>
                         )}

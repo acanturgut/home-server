@@ -751,6 +751,11 @@ func (p *Pipeline) GitDiff(name, sha string, maxBytes int) string {
 	return gitDiff(p.store.ProjectDir(name), sha, maxBytes)
 }
 
+// GitRevert creates a new commit that undoes the given sha.
+func (p *Pipeline) GitRevert(name, sha string) (string, error) {
+	return gitRevert(p.store.ProjectDir(name), sha)
+}
+
 // Deploy rebuilds the Docker image from current files and restarts the container (no AI).
 func (p *Pipeline) Deploy(ctx context.Context, name string, port int, emit func(PipelineEvent)) {
 	start := time.Now()

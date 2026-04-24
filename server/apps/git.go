@@ -2,6 +2,7 @@ package apps
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -163,6 +164,27 @@ func gitDiff(projectDir, sha string, maxBytes int) string {
 		out = out[:maxBytes] + "\n…(truncated)…\n"
 	}
 	return out
+}
+
+// gitRevert creates a new commit that undoes the changes of the given sha.
+// Returns the new HEAD sha on success, or an error message string prefixed
+// with "error: " on failure.
+func gitRevert(projectDir, sha string) (string, error) {
+	if projectDir == "" || sha == "" {
+		return "", fmt.Errorf("missing projectDir or sha")
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, ".git")); err != nil {
+		return "", fmt.Errorf("no git repo")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	// Abort any in-progress revert/merge first to keep idempotent.
+	runCmd(ctx, projectDir, "git", "revert", "--abort")
+	if out, err := runCmd(ctx, projectDir, "git", "revert", "--no-edit", sha); err != nil {
+		return "", fmt.Errorf("git revert failed: %s", strings.TrimSpace(out))
+	}
+	head, _ := runCmd(ctx, projectDir, "git", "rev-parse", "HEAD")
+	return strings.TrimSpace(head), nil
 }
 
 // itoa / atoi tiny helpers to avoid pulling strconv just for this file.

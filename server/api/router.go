@@ -37,6 +37,7 @@ func NewRouter(h *Handler) http.Handler {
 	mux.HandleFunc("POST /api/apps/{name}/restart", h.RestartApp)
 	mux.HandleFunc("GET /api/apps/{name}/git/log", h.AppGitLog)
 	mux.HandleFunc("GET /api/apps/{name}/git/diff/{sha}", h.AppGitDiff)
+	mux.HandleFunc("POST /api/apps/{name}/git/revert/{sha}", h.AppGitRevert)
 	mux.HandleFunc("POST /api/apps/{name}/cancel", h.CancelBuild)
 	mux.HandleFunc("POST /api/apps/{name}/rebuild", h.RebuildApp)
 	mux.HandleFunc("POST /api/apps/{name}/fix", h.FixApp)

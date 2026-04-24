@@ -606,6 +606,30 @@ func (h *Handler) AppGitDiff(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// POST /api/apps/{name}/git/revert/{sha}
+func (h *Handler) AppGitRevert(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	sha := r.PathValue("sha")
+	if _, ok := h.apps.Get(name); !ok {
+		writeJSON(w, http.StatusNotFound, errorResp{Error: "app not found"})
+		return
+	}
+	if sha == "" {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "sha required"})
+		return
+	}
+	newSha, err := h.pipeline.GitRevert(name, sha)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResp{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":    name,
+		"sha":     sha,
+		"new_sha": newSha,
+	})
+}
+
 // POST /api/apps/{name}/cancel — cancel an active build/rebuild/fix
 func (h *Handler) CancelBuild(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
