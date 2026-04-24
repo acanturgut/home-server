@@ -34,6 +34,7 @@ func NewRouter(h *Handler) http.Handler {
 	mux.HandleFunc("POST /api/apps/clarify", h.ClarifyApp)
 	mux.HandleFunc("DELETE /api/apps/{name}", h.DeleteApp)
 	mux.HandleFunc("POST /api/apps/{name}/stop", h.StopApp)
+	mux.HandleFunc("POST /api/apps/{name}/restart", h.RestartApp)
 	mux.HandleFunc("POST /api/apps/{name}/cancel", h.CancelBuild)
 	mux.HandleFunc("POST /api/apps/{name}/rebuild", h.RebuildApp)
 	mux.HandleFunc("POST /api/apps/{name}/fix", h.FixApp)

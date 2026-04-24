@@ -549,6 +549,22 @@ func (h *Handler) StopApp(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
 }
 
+// POST /api/apps/{name}/restart — quick restart from existing image (no rebuild)
+func (h *Handler) RestartApp(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if _, ok := h.apps.Get(name); !ok {
+		writeJSON(w, http.StatusNotFound, errorResp{Error: "app not found"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	if err := h.pipeline.Restart(ctx, name); err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResp{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "running"})
+}
+
 // POST /api/apps/{name}/cancel — cancel an active build/rebuild/fix
 func (h *Handler) CancelBuild(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")

@@ -2608,6 +2608,18 @@ function AppsPanel() {
     await fetch(`${API_BASE}/api/apps/${name}/stop`, { method: 'POST' });
     refresh();
   };
+  const restartApp = async (name: string) => {
+    try {
+      const r = await fetch(`${API_BASE}/api/apps/${name}/restart`, { method: 'POST' });
+      if (!r.ok) {
+        // Fall back to a full deploy if quick restart fails (e.g. image missing).
+        await fetch(`${API_BASE}/api/apps/${name}/deploy`, { method: 'POST' });
+      }
+    } catch {
+      /* ignore */
+    }
+    refresh();
+  };
 
   const saveFile = async () => {
     if (!selectedApp || !selectedFile) return;
@@ -3157,6 +3169,14 @@ function AppsPanel() {
                           onClick={() => stopApp(app.name)}
                           className="py-1.5 px-3 text-[10px] text-muted-foreground/50 hover:bg-white/[0.03] rounded transition-colors">
                           Stop
+                        </button>
+                      )}
+                      {(app.status === 'running' || app.status === 'failed' || app.status === 'stopped') && (
+                        <button
+                          onClick={() => restartApp(app.name)}
+                          title="Restart container (no rebuild)"
+                          className="py-1.5 px-3 text-[10px] text-sky-400/70 hover:text-sky-300 bg-sky-500/5 hover:bg-sky-500/10 rounded transition-colors">
+                          <RefreshCw size={10} className="inline mr-0.5" /> Restart
                         </button>
                       )}
                       <button

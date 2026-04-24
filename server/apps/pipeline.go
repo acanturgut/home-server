@@ -696,6 +696,43 @@ func (p *Pipeline) Stop(ctx context.Context, name string) error {
 	return nil
 }
 
+// Restart restarts the app container from its existing Docker image without
+// rebuilding. Faster than Deploy. If the image is missing, returns an error
+// so the caller can fall back to a full Deploy.
+func (p *Pipeline) Restart(ctx context.Context, name string) error {
+	app, ok := p.store.Get(name)
+	if !ok {
+		return fmt.Errorf("app '%s' not found", name)
+	}
+	app.Status = StatusBuilding
+	p.store.Set(app)
+
+	// Always remove any lingering container with the same name first.
+	runCmd(ctx, ".", "docker", "rm", "-f", name)
+
+	out, err := runCmd(ctx, ".", "docker", "run", "-d",
+		"--name", name, "--network", "host",
+		"-e", fmt.Sprintf("PORT=%d", app.Port), name)
+	if err != nil {
+		app.Status = StatusFailed
+		app.Error = fmt.Sprintf("Restart failed: %v\n%s", err, truncate(out, 1000))
+		p.store.Set(app)
+		return fmt.Errorf("docker run: %v: %s", err, truncate(out, 500))
+	}
+
+	if err := p.healthCheck(ctx, name, app.Port, p.store.ProjectDir(name), func(PipelineEvent) {}); err != nil {
+		app.Status = StatusFailed
+		app.Error = err.Error()
+		p.store.Set(app)
+		return err
+	}
+
+	app.Status = StatusRunning
+	app.Error = ""
+	p.store.Set(app)
+	return nil
+}
+
 // Remove stops and deletes an app completely.
 func (p *Pipeline) Remove(ctx context.Context, name string) error {
 	p.Stop(ctx, name)
