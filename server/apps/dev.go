@@ -105,7 +105,7 @@ EXPOSE %d
 #  2. one synchronous vite build so dist/index.html exists before the server starts
 #  3. concurrently: vite build --watch (rebuilds dist/ on every change)
 #                   node --watch server.js (restarts on server.js changes)
-CMD ["sh","-c","set -e; npm install --no-audit --no-fund --prefer-offline 2>&1 | tail -5; if [ -f vite.config.js ] || [ -f vite.config.ts ]; then echo '[dev] initial vite build...'; npx vite build --mode development; npx --yes concurrently --kill-others-on-fail --names vite,node -c yellow,cyan \"npx vite build --watch --mode development\" \"node --watch server.js\"; else node --watch server.js; fi"]
+CMD ["sh","-c","set -e; npm install --no-audit --no-fund --prefer-offline 2>&1 | tail -5; if [ -f components.json ] && [ ! -d src/components/ui ]; then echo '[dev] adding shadcn components...'; npx shadcn@latest add button card input label badge separator textarea switch scroll-area -y --overwrite 2>&1 | tail -5 || true; fi; if [ -f vite.config.js ] || [ -f vite.config.ts ]; then echo '[dev] initial vite build...'; npx vite build --mode development; npx --yes concurrently --kill-others-on-fail --names vite,node -c yellow,cyan \"npx vite build --watch --mode development\" \"node --watch server.js\"; else node --watch server.js; fi"]
 `, app.Port)
 		if err := os.WriteFile(devDockerfile, []byte(content), 0644); err != nil {
 			return fmt.Errorf("write Dockerfile.dev: %v", err)
