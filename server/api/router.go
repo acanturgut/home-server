@@ -69,6 +69,13 @@ func NewRouter(h *Handler) http.Handler {
 	mux.HandleFunc("GET /api/tools", h.ListTools)
 	mux.HandleFunc("POST /api/tools/run/{name}", h.RunTool)
 
+	// Multi-node compare & scheduler
+	mux.HandleFunc("POST /api/chat/compare", h.ChatCompare)
+	mux.HandleFunc("GET /api/schedules", h.ListSchedules)
+	mux.HandleFunc("POST /api/schedules", h.UpsertSchedule)
+	mux.HandleFunc("DELETE /api/schedules/{id}", h.DeleteSchedule)
+	mux.HandleFunc("POST /api/schedules/{id}/run", h.RunScheduleNow)
+
 	// Serve web UI at root
 	webFS := webHandler()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

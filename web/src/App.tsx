@@ -3980,6 +3980,8 @@ const SLASH_COMMANDS: SlashCmd[] = [
   { cmd: '/web', hint: 'Fetch a URL and use it as context for the next message', example: '/web https://example.com' },
   { cmd: '/rag', hint: 'Search indexed app source code and attach top results', example: '/rag docker healthcheck' },
   { cmd: '/tools', hint: 'Enable tool-calling for the next reply (assistant may call listApps, appLogs, ragSearch, ...)', example: '/tools on' },
+  { cmd: '/compare', hint: 'Send the next message to two or more routes and show replies side-by-side', example: '/compare light,heavy' },
+  { cmd: '/schedule', hint: 'Create a recurring prompt (cron or @every)', example: '/schedule @every 1h What is new?' },
   { cmd: '/export', hint: 'Download this chat as Markdown', example: '/export' },
   { cmd: '/help', hint: 'Show all slash commands', example: '/help' },
 ];
@@ -4206,6 +4208,44 @@ function ToolCallBlock({ payload }: { payload: string }) {
   );
 }
 
+// CompareBlock renders the side-by-side results of /api/chat/compare.
+function CompareBlock({ payload }: { payload: string }) {
+  let data: { pending?: boolean; routes?: string[]; runs?: Array<{ route: string; node: string; text?: string; ms: number; error?: string }> } = {};
+  try {
+    data = JSON.parse(payload);
+  } catch {
+    return <div className="text-xs text-red-400">Invalid compare payload.</div>;
+  }
+  if (data.pending) {
+    return (
+      <div className="text-[11px] text-violet-300/80 italic">
+        Fanning out to {(data.routes || []).join(', ')}…
+      </div>
+    );
+  }
+  const runs = data.runs || [];
+  if (runs.length === 0) return <div className="text-xs text-muted-foreground">No compare results.</div>;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      {runs.map((r, i) => (
+        <div key={i} className="rounded-md border border-violet-400/20 bg-violet-500/5 overflow-hidden flex flex-col">
+          <div className="flex items-center justify-between px-2 py-1 border-b border-violet-400/20 bg-violet-500/10 text-[10px]">
+            <span className="font-mono text-violet-200">{r.route} · {r.node || '—'}</span>
+            <span className="text-muted-foreground/60 tabular-nums">{r.ms} ms</span>
+          </div>
+          <div className="p-2 text-[12px] overflow-auto max-h-96">
+            {r.error ? (
+              <div className="text-red-300">{r.error}</div>
+            ) : (
+              <MarkdownView text={r.text || ''} />
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Voice input + TTS helpers ──
 function useSpeechRecognition(onResult: (text: string) => void) {
   const recRef = useRef<any>(null);
@@ -4294,6 +4334,7 @@ function ChatPanel() {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [pendingModel, setPendingModel] = useState<string>(''); // one-shot override
   const [toolsEnabled, setToolsEnabled] = useState<boolean>(false); // one-shot tool-call hint
+  const [compareRoutes, setCompareRoutes] = useState<string[] | null>(null); // one-shot compare mode
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -4539,6 +4580,44 @@ function ChatPanel() {
           setInput('');
           return true;
         }
+        case '/compare': {
+          const routes = (arg || 'light,heavy').split(/[,\s]+/).filter(Boolean);
+          if (routes.length < 2) {
+            setStatusMsg('Usage: /compare light,heavy  (or: /compare light,heavy,<node-name>)');
+            setInput('');
+            return true;
+          }
+          setCompareRoutes(routes);
+          setStatusMsg(`Compare mode: next message will fan out to [${routes.join(', ')}].`);
+          setInput('');
+          return true;
+        }
+        case '/schedule': {
+          if (!arg) {
+            setStatusMsg('Usage: /schedule <cron> <prompt>  e.g. /schedule @every 1h What is new?');
+            setInput('');
+            return true;
+          }
+          // Split first token as cron if it starts with @ OR is 5 fields; fall back to @every 1h
+          let cron = '@every 1h';
+          let prompt = arg;
+          if (arg.startsWith('@every ')) {
+            const space = arg.indexOf(' ', 7);
+            if (space > 0) {
+              cron = arg.slice(0, space);
+              prompt = arg.slice(space + 1).trim();
+            }
+          } else {
+            const parts = arg.split(/\s+/);
+            if (parts.length >= 6) {
+              cron = parts.slice(0, 5).join(' ');
+              prompt = parts.slice(5).join(' ');
+            }
+          }
+          createSchedule(cron, prompt);
+          setInput('');
+          return true;
+        }
         case '/export':
           exportSession();
           setInput('');
@@ -4663,6 +4742,91 @@ function ChatPanel() {
       setStatusMsg(`Attached ${hits.length} codebase snippet${hits.length === 1 ? '' : 's'}.`);
     } catch (e) {
       setStatusMsg(`RAG failed: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+  }
+
+  // ── Create a scheduled prompt ──
+  async function createSchedule(cron: string, prompt: string) {
+    if (!prompt.trim()) {
+      setStatusMsg('Prompt required.');
+      return;
+    }
+    try {
+      const r = await fetch(`${API_BASE}/api/schedules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cron, prompt, enabled: true }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error || 'failed');
+      setStatusMsg(`Scheduled "${data.title}" — cron: ${data.cron}`);
+    } catch (e) {
+      setStatusMsg(`Schedule failed: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+  }
+
+  // ── Fan-out send to multiple routes (compare mode) ──
+  async function sendCompare(userText: string, routes: string[]) {
+    if (!active) return;
+    const uid = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+    const pid = (Date.now() + 1).toString() + Math.random().toString(36).slice(2, 6);
+    const userMsg: ChatMsg = { id: uid, role: 'user', content: userText };
+    const placeholder: ChatMsg = {
+      id: pid,
+      role: 'assistant',
+      content: `__COMPARE__\n${JSON.stringify({ routes, pending: true })}`,
+      node: 'compare',
+    };
+    const nextMsgs = [...active.messages, userMsg, placeholder];
+    const sid = active.id;
+    persist(sessions.map((s) => (s.id === sid ? { ...s, messages: nextMsgs, updatedAt: Date.now() } : s)));
+    setLoading(true);
+    try {
+      const sysMsg = active.system?.trim()
+        ? [{ role: 'system' as const, content: active.system.trim() }]
+        : [];
+      const apiMsgs = [
+        ...sysMsg,
+        ...nextMsgs
+          .filter((m) => m.role !== 'system' && m.id !== placeholder.id)
+          .map(({ role, content }) => ({ role, content })),
+      ];
+      const r = await fetch(`${API_BASE}/api/chat/compare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: apiMsgs,
+          routes,
+          temperature: active.temperature,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error || 'compare failed');
+      persist(
+        sessions.map((s) => {
+          if (s.id !== sid) return s;
+          return {
+            ...s,
+            updatedAt: Date.now(),
+            messages: [
+              ...s.messages.filter((m) => m.id !== placeholder.id && m.id !== userMsg.id),
+              userMsg,
+              {
+                id: placeholder.id,
+                role: 'assistant' as const,
+                content: `__COMPARE__\n${JSON.stringify({ runs: data.runs })}`,
+                node: 'compare',
+              },
+            ],
+          };
+        }),
+      );
+    } catch (e) {
+      setStatusMsg(`Compare failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      persist(sessions.map((s) => s.id === sid ? { ...s, messages: s.messages.filter((m) => m.id !== placeholder.id) } : s));
+    } finally {
+      setLoading(false);
+      setCompareRoutes(null);
     }
   }
 
@@ -4860,6 +5024,12 @@ function ChatPanel() {
     if (text.startsWith('/')) {
       if (runSlash(text)) return;
     }
+    // Compare mode: fan out to multiple routes instead of normal send
+    if (compareRoutes && compareRoutes.length >= 2) {
+      setInput('');
+      await sendCompare(text, compareRoutes);
+      return;
+    }
     const userMsg: ChatMsg = {
       id: Date.now().toString(),
       role: 'user',
@@ -4881,7 +5051,7 @@ function ChatPanel() {
     const oneShot = pendingModel;
     setPendingModel('');
     await sendWithMessages(newMessages, { titleSeed, modelOverride: oneShot || undefined });
-  }, [input, loading, active, attachments, pendingModel, runSlash, sendWithMessages]);
+  }, [input, loading, active, attachments, pendingModel, runSlash, sendWithMessages, compareRoutes]);
 
   // ── Edit user message + resend ──
   const startEdit = (m: ChatMsg) => {
@@ -5404,7 +5574,11 @@ function ChatPanel() {
                           )}
                         </div>
                       )}
-                      <MarkdownView text={m.content} />
+                      {m.content.startsWith('__COMPARE__') ? (
+                        <CompareBlock payload={m.content.slice('__COMPARE__'.length).trim()} />
+                      ) : (
+                        <MarkdownView text={m.content} />
+                      )}
                       {/* Trace strip */}
                       {(m.node || m.latency) && (
                         <div className="flex flex-wrap gap-2 pt-1 items-center text-[10px] text-muted-foreground/60">
@@ -5519,6 +5693,18 @@ function ChatPanel() {
                   tools: on
                 </span>
                 <button onClick={() => setToolsEnabled(false)} className="text-muted-foreground/60 hover:text-foreground">
+                  <X size={10} />
+                </button>
+              </div>
+            )}
+
+            {/* Compare-mode pill */}
+            {compareRoutes && (
+              <div className="flex items-center gap-1 text-[10px]">
+                <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-400/30 text-amber-200">
+                  compare: {compareRoutes.join(' vs ')}
+                </span>
+                <button onClick={() => setCompareRoutes(null)} className="text-muted-foreground/60 hover:text-foreground">
                   <X size={10} />
                 </button>
               </div>

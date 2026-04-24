@@ -35,30 +35,34 @@ type Handler struct {
 	sysHist  *sysHistory
 	prompts  *apps.PromptStore
 	settings *apps.SettingsStore
-	chats    *apps.ChatStore
-	snippets *apps.SnippetStore
-	rag      *apps.RAGIndex
-	version  string
-	started  time.Time
+	chats     *apps.ChatStore
+	snippets  *apps.SnippetStore
+	rag       *apps.RAGIndex
+	schedules *apps.ScheduleStore
+	version   string
+	started   time.Time
 }
 
 func NewHandler(router *ai.Router, cfg *config.Config, nodes *config.NodeStore, ns *nodestate.Store, appStore *apps.Store, pipeline *apps.Pipeline, aiClient *ai.Client, prompts *apps.PromptStore, settings *apps.SettingsStore, version string) *Handler {
-	return &Handler{
-		router:   router,
-		cfg:      cfg,
-		nodes:    nodes,
-		ns:       ns,
-		apps:     appStore,
-		pipeline: pipeline,
-		aiClient: aiClient,
-		prompts:  prompts,
-		settings: settings,
-		chats:    apps.NewChatStore(cfg.DataDir),
-		snippets: apps.NewSnippetStore(cfg.DataDir),
-		rag:      apps.NewRAGIndex(appStore.AppsDir()),
-		version:  version,
-		started:  time.Now(),
+	h := &Handler{
+		router:    router,
+		cfg:       cfg,
+		nodes:     nodes,
+		ns:        ns,
+		apps:      appStore,
+		pipeline:  pipeline,
+		aiClient:  aiClient,
+		prompts:   prompts,
+		settings:  settings,
+		chats:     apps.NewChatStore(cfg.DataDir),
+		snippets:  apps.NewSnippetStore(cfg.DataDir),
+		rag:       apps.NewRAGIndex(appStore.AppsDir()),
+		schedules: apps.NewScheduleStore(cfg.DataDir),
+		version:   version,
+		started:   time.Now(),
 	}
+	h.startScheduler()
+	return h
 }
 
 // parseAppFilePath extracts app name and file path from URL like /api/apps/{name}/files/{path...}

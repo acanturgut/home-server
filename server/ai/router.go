@@ -300,6 +300,12 @@ func (r *Router) chatNode(ctx context.Context, nodeID string, messages []Message
 	return r.chatNodeOpts(ctx, nodeID, messages, nil)
 }
 
+// ChatOnNode is a public wrapper around chatNodeOpts so callers outside the
+// ai package (e.g. multi-node compare, scheduler) can target a specific node.
+func (r *Router) ChatOnNode(ctx context.Context, nodeID string, messages []Message, temperature *float64) (*ChatResponse, error) {
+	return r.chatNodeOpts(ctx, nodeID, messages, temperature)
+}
+
 func (r *Router) chatNodeOpts(ctx context.Context, nodeID string, messages []Message, temperature *float64) (*ChatResponse, error) {
 	node, ok := r.nodes.Get(nodeID)
 	if !ok {
@@ -466,6 +472,16 @@ func (r *Router) resolveRouteOverride(ctx context.Context, route string) (RouteD
 		}
 	}
 	return RouteDecision{}, false
+}
+
+// ResolveRoute is a public wrapper around resolveRouteOverride. If route is
+// empty/auto, returns ("", false); otherwise returns the resolved node ID.
+func (r *Router) ResolveRoute(ctx context.Context, route string) (string, string, bool) {
+	d, ok := r.resolveRouteOverride(ctx, route)
+	if !ok {
+		return "", "", false
+	}
+	return d.Route, d.NodeName, true
 }
 
 func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Message, opts ChatStreamOpts, emit func(StreamEvent)) {
