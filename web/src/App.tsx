@@ -62,6 +62,7 @@ import {
   Trash2,
   Send,
   Plus,
+  Clock,
 } from 'lucide-react';
 import {
   EditorView,
@@ -3961,6 +3962,16 @@ function copyToClipboard(text: string) {
   }
 }
 
+function relTime(ts: number | undefined): string {
+  if (!ts) return '';
+  const d = Date.now() - ts;
+  if (d < 60_000) return 'just now';
+  if (d < 3_600_000) return Math.floor(d / 60_000) + 'm';
+  if (d < 86_400_000) return Math.floor(d / 3_600_000) + 'h';
+  if (d < 30 * 86_400_000) return Math.floor(d / 86_400_000) + 'd';
+  return new Date(ts).toLocaleDateString();
+}
+
 // ── Slash commands ──
 interface SlashCmd {
   cmd: string;
@@ -4325,6 +4336,9 @@ function ChatPanel() {
   const [systemEditOpen, setSystemEditOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQ, setSearchQ] = useState('');
+  const [schedulesOpen, setSchedulesOpen] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [showSlash, setShowSlash] = useState(false);
@@ -5238,6 +5252,68 @@ function ChatPanel() {
     setShowSlash(input.startsWith('/') && input.split(/\s+/).length === 1);
   }, [input]);
 
+  // Auto-dismiss transient status messages after 5s
+  useEffect(() => {
+    if (!statusMsg) return;
+    const t = window.setTimeout(() => setStatusMsg(null), 5000);
+    return () => window.clearTimeout(t);
+  }, [statusMsg]);
+
+  // Keyboard shortcuts (scoped to this panel via `data-chat`)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
+      if (meta && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        newSession();
+      } else if (meta && e.key === '/') {
+        e.preventDefault();
+        inputRef.current?.focus();
+      } else if (meta && e.key.toLowerCase() === 'e' && !e.shiftKey) {
+        e.preventDefault();
+        exportSession();
+      } else if (e.key === 'Escape') {
+        if (loading) {
+          e.preventDefault();
+          stop();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // Scroll-to-bottom detection
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const d = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setAtBottom(d < 40);
+    };
+    el.addEventListener('scroll', onScroll);
+    onScroll();
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [activeId]);
+
+  // Auto-scroll when new content arrives, but only if user is already at bottom
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    if (atBottom) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [displayMessages, atBottom]);
+
+  // Smoother textarea autosize
+  useEffect(() => {
+    const ta = inputRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(240, ta.scrollHeight) + 'px';
+  }, [input]);
+
   const filteredSessions = useMemo(() => {
     let arr = sessions.slice();
     if (showFilter === 'pinned') arr = arr.filter((s) => s.pinned);
@@ -5286,6 +5362,12 @@ function ChatPanel() {
             <Search size={11} />
             Search… <span className="ml-auto text-[9px] opacity-50">⌘K</span>
           </button>
+          <button
+            onClick={() => setSchedulesOpen(true)}
+            className="w-full flex items-center gap-2 px-2 py-1.5 text-[11px] text-muted-foreground/60 border border-border/20 rounded hover:bg-white/5 transition-colors">
+            <Clock size={11} />
+            Schedules…
+          </button>
           <div className="flex-1 overflow-auto -mx-2 px-2 mt-1 space-y-0.5">
             {filteredSessions.map((s) => (
               <div
@@ -5297,7 +5379,14 @@ function ChatPanel() {
                 }}>
                 {s.pinned && <Pin size={9} className="text-violet-400 shrink-0" />}
                 {s.starred && <Star size={9} className="text-amber-400 shrink-0" />}
-                <span className="truncate flex-1">{s.title || 'Untitled'}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="truncate">{s.title || 'Untitled'}</div>
+                  <div className="flex items-center gap-1 text-[9px] text-muted-foreground/40 mt-0.5">
+                    <span>{relTime(s.updatedAt)}</span>
+                    <span>·</span>
+                    <span>{s.messages.filter((m) => m.role !== 'system' && !m.stepType).length} msg</span>
+                  </div>
+                </div>
                 <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5">
                   <button
                     title={s.pinned ? 'Unpin' : 'Pin'}
@@ -5432,22 +5521,50 @@ function ChatPanel() {
         )}
 
         {/* Messages — centered column */}
-        <div ref={messagesScrollRef} className="flex-1 overflow-auto">
+        <div
+          ref={messagesScrollRef}
+          className={`flex-1 overflow-auto relative ${dragOver ? 'ring-2 ring-inset ring-violet-400/40 bg-violet-500/5' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            if (e.dataTransfer?.files?.length) onFiles(e.dataTransfer.files);
+          }}>
+          {dragOver && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-20 text-violet-200 text-sm">
+              Drop to attach files
+            </div>
+          )}
           <div className="max-w-3xl mx-auto px-4 py-4 space-y-4">
             {displayMessages.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-[60vh] gap-3">
+              <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
+                <div className="text-2xl opacity-20">◇</div>
                 <p className="text-sm text-muted-foreground/50">
-                  Send a message to start chatting
+                  {active?.system ? 'Persona active — send a message to begin' : 'Send a message to start chatting'}
                 </p>
-                <div className="flex flex-wrap gap-1.5 justify-center max-w-md">
-                  {SLASH_COMMANDS.slice(0, 6).map((c) => (
+                {active?.system && (
+                  <div className="text-[10px] text-violet-300/60 max-w-md truncate font-mono px-4 py-1 border border-violet-400/20 rounded-full">
+                    system: {active.system.slice(0, 80)}{active.system.length > 80 ? '…' : ''}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-1.5 justify-center max-w-lg">
+                  {SLASH_COMMANDS.slice(0, 10).map((c) => (
                     <button
                       key={c.cmd}
                       onClick={() => { setInput(c.cmd + ' '); setTimeout(() => inputRef.current?.focus(), 0); }}
+                      title={c.hint}
                       className="text-[10px] px-2 py-1 rounded border border-border/30 text-muted-foreground/60 hover:text-foreground hover:bg-white/5 font-mono">
                       {c.cmd}
                     </button>
                   ))}
+                </div>
+                <div className="text-[10px] text-muted-foreground/30 flex flex-wrap gap-x-3 gap-y-1 justify-center max-w-md">
+                  <span>⌘N new</span>
+                  <span>⌘K search</span>
+                  <span>⌘/ focus</span>
+                  <span>⌘↵ send</span>
+                  <span>Esc stop</span>
                 </div>
               </div>
             )}
@@ -5646,6 +5763,19 @@ function ChatPanel() {
           </div>
         </div>
 
+        {/* Scroll-to-bottom floating button */}
+        {!atBottom && displayMessages.length > 3 && (
+          <button
+            onClick={() => {
+              const el = messagesScrollRef.current;
+              if (el) el.scrollTop = el.scrollHeight;
+            }}
+            title="Jump to latest"
+            className="absolute bottom-28 right-6 p-2 rounded-full bg-violet-500/20 border border-violet-400/30 text-violet-200 hover:bg-violet-500/30 shadow-lg z-10 transition-colors">
+            <ChevronDown size={14} />
+          </button>
+        )}
+
         {/* Status / slash menu / mention menu */}
         {statusMsg && (
           <div className="px-4 py-1 text-[11px] text-muted-foreground/70 border-t border-border/10 bg-white/[0.02] flex items-start gap-2 max-w-3xl mx-auto w-full">
@@ -5758,8 +5888,8 @@ function ChatPanel() {
                   }
                 }}
                 placeholder={loading ? 'Generating… press Esc to stop' : 'Message…   /  for commands,  @  to mention,  ⌘↵ to send'}
-                rows={Math.min(6, Math.max(1, input.split('\n').length))}
-                className="flex-1 bg-muted/30 border border-border/40 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                rows={1}
+                className="flex-1 bg-muted/30 border border-border/40 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none overflow-hidden"
               />
               {loading ? (
                 <Button onClick={stop} size="sm" variant="destructive" className="px-3" title="Stop (Esc)">
@@ -5820,6 +5950,9 @@ function ChatPanel() {
           onClose={() => setSearchOpen(false)}
         />
       )}
+
+      {/* Schedules modal */}
+      {schedulesOpen && <SchedulesModal onClose={() => setSchedulesOpen(false)} />}
 
       {/* Persona library trigger (subtle) */}
       <PersonaQuickAdd personas={personas} onSave={persistPersonas} />
@@ -5894,6 +6027,138 @@ function SearchPalette(props: {
               )}
               <div className="text-[9px] text-muted-foreground/40 font-mono">{new Date(s.updatedAt).toLocaleString()}</div>
             </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Schedules modal (list, toggle, run now, delete) ────────────────────
+type ScheduleRec = {
+  id: string;
+  title: string;
+  prompt: string;
+  cron: string;
+  route?: string;
+  enabled: boolean;
+  lastRun?: number;
+  nextRun?: number;
+  lastResult?: string;
+  lastError?: string;
+};
+
+function SchedulesModal({ onClose }: { onClose: () => void }) {
+  const [items, setItems] = useState<ScheduleRec[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_BASE}/api/schedules`);
+      const arr = await r.json();
+      setItems(Array.isArray(arr) ? arr : []);
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); }, []);
+
+  const toggle = async (sc: ScheduleRec) => {
+    setBusy(sc.id);
+    try {
+      await fetch(`${API_BASE}/api/schedules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...sc, enabled: !sc.enabled }),
+      });
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  };
+  const runNow = async (sc: ScheduleRec) => {
+    setBusy(sc.id);
+    try {
+      await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(sc.id)}/run`, { method: 'POST' });
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  };
+  const del = async (sc: ScheduleRec) => {
+    if (!confirm(`Delete schedule "${sc.title}"?`)) return;
+    setBusy(sc.id);
+    try {
+      await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(sc.id)}`, { method: 'DELETE' });
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm pt-20" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="w-[720px] max-w-[94vw] bg-[#0a0a0a] border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-white/5">
+          <Clock size={12} className="text-muted-foreground/60" />
+          <span className="text-sm text-foreground flex-1">Scheduled prompts</span>
+          <button onClick={onClose} className="text-muted-foreground/50 hover:text-foreground">
+            <X size={12} />
+          </button>
+        </div>
+        <div className="overflow-auto divide-y divide-white/5">
+          {loading && <div className="px-3 py-8 text-center text-[11px] text-muted-foreground/50">Loading…</div>}
+          {!loading && items.length === 0 && (
+            <div className="px-3 py-10 text-center text-[12px] text-muted-foreground/40 space-y-2">
+              <div>No schedules yet.</div>
+              <div className="font-mono text-[10px] text-muted-foreground/30">
+                /schedule @every 1h What is new?
+              </div>
+            </div>
+          )}
+          {items.map((sc) => (
+            <div key={sc.id} className="px-3 py-2 space-y-1">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => toggle(sc)}
+                  disabled={busy === sc.id}
+                  title={sc.enabled ? 'Disable' : 'Enable'}
+                  className={`w-2 h-2 rounded-full shrink-0 ${sc.enabled ? 'bg-emerald-400' : 'bg-muted-foreground/30'}`}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] text-foreground/90 truncate">{sc.title}</div>
+                  <div className="text-[10px] text-muted-foreground/60 font-mono">
+                    {sc.cron}
+                    {sc.route && ` · ${sc.route}`}
+                    {sc.nextRun && ` · next ${new Date(sc.nextRun).toLocaleString()}`}
+                  </div>
+                </div>
+                <button
+                  onClick={() => runNow(sc)}
+                  disabled={busy === sc.id}
+                  title="Run now"
+                  className="p-1 rounded text-muted-foreground/60 hover:text-foreground hover:bg-white/5 disabled:opacity-40">
+                  <Play size={11} />
+                </button>
+                <button
+                  onClick={() => del(sc)}
+                  disabled={busy === sc.id}
+                  title="Delete"
+                  className="p-1 rounded text-red-400/70 hover:text-red-300 hover:bg-white/5 disabled:opacity-40">
+                  <Trash2 size={11} />
+                </button>
+              </div>
+              {sc.lastError && (
+                <div className="text-[10px] text-red-300/80 font-mono truncate">✗ {sc.lastError}</div>
+              )}
+              {sc.lastResult && !sc.lastError && (
+                <div className="text-[10px] text-muted-foreground/50 truncate italic">↳ {sc.lastResult.slice(0, 120)}</div>
+              )}
+            </div>
           ))}
         </div>
       </div>
