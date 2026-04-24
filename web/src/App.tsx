@@ -3536,12 +3536,21 @@ function AppsPanel() {
                   <button
                     onClick={toggleDev}
                     disabled={building}
-                    title={app?.dev_mode ? 'Hot reload ON — file changes apply instantly. Click to disable.' : 'Enable hot reload — AI changes apply without rebuilding the Docker image.'}
+                    title={app?.dev_mode ? '⚡ Hot reload ON (default) — file changes apply instantly. Click to switch to a persistent static container.' : '📦 Persistent mode — production-style container. Click to switch back to ⚡ Hot reload.'}
                     className={`px-2 py-0.5 transition-colors disabled:opacity-30 flex items-center gap-1 ${
-                      app?.dev_mode ? 'text-amber-300' : 'text-muted-foreground/50 hover:text-amber-300'
+                      app?.dev_mode ? 'text-amber-300' : 'text-muted-foreground/60 hover:text-foreground'
                     }`}>
-                    <Zap size={10} className={app?.dev_mode ? 'animate-pulse' : ''} fill={app?.dev_mode ? 'currentColor' : 'none'} />
-                    {app?.dev_mode ? 'Hot' : 'Dev'}
+                    {app?.dev_mode ? (
+                      <>
+                        <Zap size={10} className="animate-pulse" fill="currentColor" />
+                        Hot
+                      </>
+                    ) : (
+                      <>
+                        <Package size={10} />
+                        Persist
+                      </>
+                    )}
                   </button>
                   <span className="text-border/20">│</span>
                   <button

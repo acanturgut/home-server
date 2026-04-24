@@ -145,7 +145,10 @@ RULES:
   - Do NOT add any "Built with", "Made with", "Powered by", or credits/attribution section.
   - ALL fetch/API calls in the frontend MUST use relative URLs WITHOUT a leading slash
     (e.g. fetch('api/todos'), NOT fetch('/api/todos') or fetch('http://localhost:4001/api/todos')).
-    The app is served behind a reverse proxy at a sub-path and absolute URLs will break.`,
+    The app is served behind a reverse proxy at a sub-path and absolute URLs will break.
+  - DO NOT TOUCH the "HOME-SERVER HOT RELOAD" block in server.js (the /__hot__ route)
+    or the inline <script> tag in index.html marked "HOME-SERVER HOT RELOAD". They power
+    automatic page reload on file changes. Removing them breaks the dev experience.`,
 
 		Rebuild: `Add this new feature/change to the existing app: {{change}}
 

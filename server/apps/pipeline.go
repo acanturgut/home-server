@@ -156,6 +156,7 @@ func scaffoldProject(projectDir, appName string, port int, route string) {
 	// server.js
 	writeIfMissing(projectDir+"/server.js", fmt.Sprintf(`const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || %d;
 
@@ -163,6 +164,17 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'dist')));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+// ─── HOME-SERVER HOT RELOAD — DO NOT EDIT ─────────────────────────────
+// Returns the mtime of dist/index.html. The page polls this and reloads
+// when it changes (vite --watch in dev mode rebuilds dist on every save).
+app.get('/__hot__', (req, res) => {
+  try {
+    const t = fs.statSync(path.join(__dirname, 'dist', 'index.html')).mtimeMs;
+    res.type('text/plain').send(String(t));
+  } catch (_) { res.type('text/plain').send('0'); }
+});
+// ──────────────────────────────────────────────────────────────────────
 
 // Add your API routes here
 
@@ -258,6 +270,8 @@ module.exports = {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>`+appName+`</title>
+  <!-- HOME-SERVER HOT RELOAD — DO NOT EDIT (polls /__hot__, reloads on change) -->
+  <script>(function(){var t=null;function p(){fetch('/__hot__',{cache:'no-store'}).then(function(r){return r.text();}).then(function(v){if(t===null){t=v;}else if(v!==t){location.reload();}}).catch(function(){}).then(function(){setTimeout(p,1500);});}p();})();</script>
 </head>
 <body>
   <div id="root"></div>
@@ -692,6 +706,14 @@ Add API routes to server.js if needed. The app listens on port %d.`, p.prompts.G
 	p.addBuild(app, "build", prompt, heavy.Name, "success", time.Since(start))
 	p.store.Set(app)
 	emit(newEventLatency("done", fmt.Sprintf("App '%s' deployed at port %d", appName, port), route, time.Since(start).String()))
+
+	// New apps default to ⚡ Hot reload mode — swap the just-built production
+	// container for a dev container with bind mount + vite --watch. Failure is
+	// non-fatal; the production container stays in place.
+	emit(newEvent("hot-reload", "⚡ Enabling hot reload by default (use 📦 Persist to switch to a static build)"))
+	if err := p.StartDev(ctx, appName, emit); err != nil {
+		emit(newEvent("deploying", fmt.Sprintf("Hot reload could not start (%v) — staying on persistent container", err)))
+	}
 }
 
 // Stop stops a running app container.
