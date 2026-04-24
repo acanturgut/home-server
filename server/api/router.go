@@ -56,6 +56,14 @@ func NewRouter(h *Handler) http.Handler {
 	mux.HandleFunc("PUT /api/settings", h.UpdateSettings)
 	mux.HandleFunc("POST /api/settings/reset", h.ResetSettings)
 
+	// Chat utilities
+	mux.HandleFunc("POST /api/fetch-url", h.FetchURL)
+	mux.HandleFunc("GET /api/chats", h.ListChats)
+	mux.HandleFunc("PUT /api/chats", h.SaveChats)
+	mux.HandleFunc("GET /api/snippets", h.ListSnippets)
+	mux.HandleFunc("POST /api/snippets", h.CreateSnippet)
+	mux.HandleFunc("DELETE /api/snippets/{id}", h.DeleteSnippet)
+
 	// Serve web UI at root
 	webFS := webHandler()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

@@ -35,12 +35,28 @@ type Handler struct {
 	sysHist  *sysHistory
 	prompts  *apps.PromptStore
 	settings *apps.SettingsStore
+	chats    *apps.ChatStore
+	snippets *apps.SnippetStore
 	version  string
 	started  time.Time
 }
 
 func NewHandler(router *ai.Router, cfg *config.Config, nodes *config.NodeStore, ns *nodestate.Store, appStore *apps.Store, pipeline *apps.Pipeline, aiClient *ai.Client, prompts *apps.PromptStore, settings *apps.SettingsStore, version string) *Handler {
-	return &Handler{router: router, cfg: cfg, nodes: nodes, ns: ns, apps: appStore, pipeline: pipeline, aiClient: aiClient, prompts: prompts, settings: settings, version: version, started: time.Now()}
+	return &Handler{
+		router:   router,
+		cfg:      cfg,
+		nodes:    nodes,
+		ns:       ns,
+		apps:     appStore,
+		pipeline: pipeline,
+		aiClient: aiClient,
+		prompts:  prompts,
+		settings: settings,
+		chats:    apps.NewChatStore(cfg.DataDir),
+		snippets: apps.NewSnippetStore(cfg.DataDir),
+		version:  version,
+		started:  time.Now(),
+	}
 }
 
 // parseAppFilePath extracts app name and file path from URL like /api/apps/{name}/files/{path...}

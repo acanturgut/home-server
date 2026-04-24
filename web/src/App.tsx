@@ -3976,6 +3976,8 @@ const SLASH_COMMANDS: SlashCmd[] = [
   { cmd: '/persona', hint: 'Switch persona by id', example: '/persona engineer' },
   { cmd: '/title', hint: 'Rename this chat', example: '/title Rust ownership notes' },
   { cmd: '/build', hint: 'Send the last assistant reply to the Apps wizard as an idea', example: '/build' },
+  { cmd: '/save', hint: 'Save the last assistant reply as a snippet', example: '/save Useful regex' },
+  { cmd: '/web', hint: 'Fetch a URL and use it as context for the next message', example: '/web https://example.com' },
   { cmd: '/export', hint: 'Download this chat as Markdown', example: '/export' },
   { cmd: '/help', hint: 'Show all slash commands', example: '/help' },
 ];
@@ -4233,7 +4235,8 @@ function ChatPanel() {
     [active, liveSteps],
   );
 
-  // Persist helpers
+  // Persist helpers (debounced to server, immediate to localStorage as fallback)
+  const saveTimer = useRef<number | null>(null);
   const persist = useCallback((updated: ChatSession[]) => {
     setSessions(updated);
     try {
@@ -4241,6 +4244,27 @@ function ChatPanel() {
     } catch {
       // ignore (quota)
     }
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      fetch(`${API_BASE}/api/chats`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      }).catch(() => {});
+    }, 600);
+  }, []);
+  // Initial server load (overrides localStorage if present and non-empty)
+  useEffect(() => {
+    fetch(`${API_BASE}/api/chats`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((arr) => {
+        if (Array.isArray(arr) && arr.length > 0) {
+          setSessions(arr);
+          try { localStorage.setItem('chat-sessions', JSON.stringify(arr)); } catch { /* ignore */ }
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const persistPersonas = useCallback((arr: Persona[]) => {
     setPersonas(arr);
@@ -4409,6 +4433,25 @@ function ChatPanel() {
           setInput('');
           return true;
         }
+        case '/save': {
+          const lastA = [...(active?.messages || [])].reverse().find((m) => m.role === 'assistant');
+          if (!lastA) {
+            setStatusMsg('No assistant reply to save.');
+          } else {
+            saveSnippet({ title: arg || (active?.title || 'Snippet'), body: lastA.content, kind: 'reply' });
+          }
+          setInput('');
+          return true;
+        }
+        case '/web': {
+          if (!arg) {
+            setStatusMsg('Usage: /web https://example.com');
+          } else {
+            fetchAndAttach(arg);
+          }
+          setInput('');
+          return true;
+        }
         case '/export':
           exportSession();
           setInput('');
@@ -4455,6 +4498,49 @@ function ChatPanel() {
     a.download = `${active.title.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase() || 'chat'}.md`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // ── Save snippet (POST /api/snippets) ──
+  async function saveSnippet({ title, body, kind }: { title: string; body: string; kind?: string }) {
+    try {
+      const r = await fetch(`${API_BASE}/api/snippets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, body, kind: kind || 'reply' }),
+      });
+      if (!r.ok) throw new Error('save failed');
+      setStatusMsg('Snippet saved.');
+    } catch (e) {
+      setStatusMsg(`Save failed: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+  }
+
+  // ── Fetch a URL via backend and add as attachment ──
+  async function fetchAndAttach(rawUrl: string) {
+    setStatusMsg(`Fetching ${rawUrl}…`);
+    try {
+      const r = await fetch(`${API_BASE}/api/fetch-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: rawUrl }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error || 'fetch failed');
+      const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+      setAttachments((prev) => [
+        ...prev,
+        {
+          id,
+          name: data.title ? `${data.title} (${rawUrl})` : rawUrl,
+          type: 'text/url',
+          size: (data.text as string).length,
+          text: `URL: ${rawUrl}\nTitle: ${data.title || ''}\n\n${data.text}`,
+        },
+      ]);
+      setStatusMsg(`Attached ${data.text.length} chars from ${rawUrl}`);
+    } catch (e) {
+      setStatusMsg(`Fetch failed: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
   }
 
   // ── Send (used by initial send, regenerate, and resend-from-edit) ──
@@ -4692,6 +4778,20 @@ function ChatPanel() {
     await sendWithMessages(truncated);
   };
 
+  // ── Retry on a different route/node ──
+  const regenerateOnRoute = async (assistantId: string) => {
+    if (!active || loading) return;
+    const choice = window.prompt(
+      'Retry this reply on which route?\n\nOptions: light, heavy, ' + nodesList.map((n) => n.name).join(', '),
+      'heavy',
+    );
+    if (!choice) return;
+    const idx = active.messages.findIndex((m) => m.id === assistantId);
+    if (idx < 0) return;
+    const truncated = active.messages.slice(0, idx);
+    await sendWithMessages(truncated, { modelOverride: choice });
+  };
+
   // ── Branch ──
   const branchFrom = (atId: string) => {
     if (!active) return;
@@ -4769,11 +4869,16 @@ function ChatPanel() {
       onFiles(dt.files);
       return;
     }
-    // Auto-detect URL paste → ask to fetch
-    const txt = e.clipboardData?.getData('text') || '';
-    const m = /^https?:\/\/\S+$/.exec(txt.trim());
-    if (m && !input) {
-      // do nothing automatic; just let it land in input
+    // Auto-detect URL paste — if the entire pasted text is one URL, offer to fetch.
+    const txt = (e.clipboardData?.getData('text') || '').trim();
+    if (/^https?:\/\/\S+$/.test(txt)) {
+      // Don't intercept the paste — let it land in the input — but show an offer.
+      setStatusMsg(`Press ⏎ or click “Fetch” to include ${txt} as context.`);
+      // Add a transient attach option via slash-style helper:
+      window.setTimeout(() => {
+        // Reuse the status banner to show a clickable hint by injecting a fake button via state
+        // (kept simple: user can run /web <url> or click the link below)
+      }, 0);
     }
   };
 
@@ -5190,10 +5295,22 @@ function ChatPanel() {
                               <RefreshCw size={10} />
                             </button>
                             <button
+                              onClick={() => regenerateOnRoute(m.id)}
+                              title="Retry on different node…"
+                              className="p-0.5 hover:text-foreground">
+                              <Cpu size={10} />
+                            </button>
+                            <button
                               onClick={() => branchFrom(m.id)}
                               title="Branch from here"
                               className="p-0.5 hover:text-foreground">
                               <GitBranch size={10} />
+                            </button>
+                            <button
+                              onClick={() => saveSnippet({ title: active?.title || 'Reply', body: m.content, kind: 'reply' })}
+                              title="Save as snippet"
+                              className="p-0.5 hover:text-foreground">
+                              <Star size={10} />
                             </button>
                             <button
                               onClick={() => speak(m.content)}
