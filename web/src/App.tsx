@@ -2337,6 +2337,7 @@ function BottomPanel(props: {
 
 function ClarifyWizard(props: {
   prompt: string;
+  setPrompt: (v: string) => void;
   loading: boolean;
   error: string | null;
   summary: string;
@@ -2361,6 +2362,7 @@ function ClarifyWizard(props: {
 }) {
   const {
     prompt,
+    setPrompt,
     loading,
     error,
     summary,
@@ -2413,14 +2415,35 @@ function ClarifyWizard(props: {
           </button>
         </div>
 
-        {/* Original prompt */}
+        {/* Original prompt — editable */}
         <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
-          <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 mb-1">
-            Your idea
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40">
+              Your idea
+            </div>
+            <button
+              onClick={onRegenerate}
+              disabled={loading || !prompt.trim()}
+              title="Re-run AI clarification on the current idea"
+              className="text-[9px] text-violet-400/70 hover:text-violet-300 disabled:opacity-30 transition-colors flex items-center gap-1">
+              <Sparkles size={9} className={loading ? 'animate-pulse' : ''} />
+              {loading ? 'Refining…' : questions.length ? 'Re-refine' : 'Refine with AI'}
+            </button>
           </div>
-          <p className="text-[12px] text-foreground/80 leading-relaxed italic">
-            "{prompt}"
-          </p>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                if (prompt.trim()) onRegenerate();
+              }
+            }}
+            placeholder="Describe what you want to build… e.g. a kanban board with drag-and-drop, dark theme"
+            rows={3}
+            autoFocus
+            className="w-full bg-transparent border border-white/5 rounded p-2 text-[12px] text-foreground/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-500/30 resize-none"
+          />
           {summary && (
             <div className="mt-2 pt-2 border-t border-white/5">
               <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 mb-1">
@@ -2556,7 +2579,7 @@ function ClarifyWizard(props: {
           <div className="flex items-center gap-2">
             <button
               onClick={onRegenerate}
-              disabled={loading}
+              disabled={loading || !prompt.trim()}
               className="text-[10px] flex items-center gap-1 px-2 py-1 text-muted-foreground/50 hover:text-foreground/80 disabled:opacity-30 transition-colors">
               <RefreshCw size={10} className={loading ? 'animate-spin' : ''} />
               Regenerate
@@ -2570,12 +2593,13 @@ function ClarifyWizard(props: {
           <div className="flex items-center gap-2">
             <button
               onClick={onSkip}
-              className="text-[10px] px-3 py-1.5 text-muted-foreground/60 hover:text-foreground transition-colors">
+              disabled={!prompt.trim()}
+              className="text-[10px] px-3 py-1.5 text-muted-foreground/60 hover:text-foreground disabled:opacity-30 transition-colors">
               Skip & build
             </button>
             <button
               onClick={onBuild}
-              disabled={loading || requiredMissing}
+              disabled={loading || requiredMissing || !prompt.trim()}
               className="text-[11px] px-3 py-1.5 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-400/30 rounded text-violet-100 disabled:opacity-30 transition-colors flex items-center gap-1.5">
               <Sparkles size={11} />
               Build app
@@ -2759,6 +2783,11 @@ function AppsPanel() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  // @-mention autocomplete state for chat
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const chatInputRef = useRef<HTMLInputElement>(null);
   const [changeInput, setChangeInput] = useState('');
   const [actionType, setActionType] = useState<'feature' | 'fix' | 'bug'>(
     'feature',
@@ -3098,15 +3127,18 @@ function AppsPanel() {
 
   // ── AI Clarify wizard ──
   const openClarify = async () => {
-    if (!prompt.trim() || building || clarifyLoading) return;
+    if (building || clarifyLoading) return;
+    // Always open the wizard. If we already have a prompt, auto-run clarify;
+    // otherwise the wizard shows an editable prompt textarea + Refine button.
     setClarifyOpen(true);
-    setClarifyLoading(true);
     setClarifyError(null);
     setClarifyQuestions([]);
     setClarifyAnswers({});
     setClaritySummary('');
     setClarifyName('');
     setClarifyNotes('');
+    if (!prompt.trim()) return;
+    setClarifyLoading(true);
     try {
       const r = await fetch(`${API_BASE}/api/apps/clarify`, {
         method: 'POST',
@@ -3392,61 +3424,25 @@ function AppsPanel() {
         className={`flex min-h-0 overflow-hidden ${bottomState === 'expanded' ? 'flex-none h-0' : 'flex-1'}`}>
         {/* ── Left: App sidebar ── */}
         <div className="w-52 shrink-0 border-r border-border/10 flex flex-col">
-          {/* Build input — flat modern */}
+          {/* Build entry — single button opens the wizard */}
           <div className="p-2.5 border-b border-border/10">
-            <div className="relative">
-              <input
-                type="text"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    if (e.shiftKey) startBuild();
-                    else openClarify();
-                  }
-                }}
-                placeholder="What do you want to build?"
-                disabled={building}
-                className="w-full bg-transparent border-0 border-b border-border/20 text-xs py-2 pr-14 focus:outline-none focus:border-blue-500/40 placeholder:text-muted-foreground/30 transition-colors"
-              />
-              {/* AI refine (Sparkles) — opens clarify wizard */}
+            <button
+              onClick={() => {
+                setPrompt('');
+                openClarify();
+              }}
+              disabled={building}
+              className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-violet-300 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 rounded-md transition-colors disabled:opacity-30">
+              <Sparkles size={12} className={building ? 'animate-pulse' : ''} />
+              {building ? 'Building…' : 'New App'}
+            </button>
+            {building && (
               <button
-                onClick={openClarify}
-                disabled={building || !prompt.trim() || clarifyLoading}
-                title="Refine with AI (Enter)"
-                className="absolute right-6 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center text-muted-foreground/50 hover:text-violet-400 disabled:opacity-20 transition-colors">
-                <Sparkles
-                  size={11}
-                  className={clarifyLoading ? 'animate-pulse' : ''}
-                />
+                onClick={cancelBuild}
+                className="mt-1.5 w-full py-1 text-[9px] text-red-400/70 hover:text-red-400 transition-colors">
+                ✕ Cancel build
               </button>
-              {/* Direct build (arrow) — Shift+Enter */}
-              <button
-                onClick={startBuild}
-                disabled={building || !prompt.trim()}
-                title="Build directly (Shift+Enter)"
-                className="absolute right-0 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center text-[10px] text-muted-foreground/50 hover:text-blue-400 disabled:opacity-20 transition-colors">
-                {building ? '◌' : '→'}
-              </button>
-              {building && (
-                <button
-                  onClick={cancelBuild}
-                  className="absolute -right-6 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center text-[9px] text-red-400/50 hover:text-red-400 transition-colors"
-                  title="Cancel build">
-                  ✕
-                </button>
-              )}
-            </div>
-            <p className="mt-1 text-[9px] text-muted-foreground/30">
-              <kbd className="px-1 py-px bg-white/[0.04] rounded text-[8px]">
-                Enter
-              </kbd>{' '}
-              refine ·
-              <kbd className="ml-1 px-1 py-px bg-white/[0.04] rounded text-[8px]">
-                ⇧Enter
-              </kbd>{' '}
-              build
-            </p>
+            )}
           </div>
 
           {/* App list */}
@@ -3764,8 +3760,9 @@ function AppsPanel() {
             {rightTab === 'info' && (
               <div className="flex-1 overflow-auto">
                 {selectedApp && app ? (
-                  <div className="p-4 space-y-4">
-                    <div className="flex items-center gap-3">
+                  <div className="p-3 space-y-3">
+                    {/* ─── Identity ─── */}
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-white/[0.02] border border-border/10">
                       <span className="text-2xl">
                         {app.icon || guessIcon(app.name)}
                       </span>
@@ -3793,19 +3790,27 @@ function AppsPanel() {
                       </div>
                     </div>
 
-                    <p className="text-[11px] text-muted-foreground/50 leading-relaxed">
+                    <p className="text-[11px] text-muted-foreground/50 leading-relaxed px-1">
                       {app.prompt}
                     </p>
 
                     {app.error && (
-                      <div className="p-2.5 bg-red-500/5 rounded">
+                      <div className="p-2.5 bg-red-500/5 border border-red-500/15 rounded-lg">
+                        <div className="text-[9px] uppercase tracking-wider text-red-400/60 mb-1 flex items-center gap-1.5">
+                          <Bug size={9} /> Error
+                        </div>
                         <p className="text-[10px] text-red-400/70 font-mono whitespace-pre-wrap">
                           {app.error}
                         </p>
                       </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-2">
+                    {/* ─── Resources ─── */}
+                    <div className="space-y-1.5">
+                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 flex items-center gap-1.5 px-1">
+                        <Activity size={9} /> Resources
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
                       <div className="p-2 bg-white/[0.02] rounded text-[10px]">
                         <span className="text-muted-foreground/40">Files</span>
                         <p className="text-foreground/60 mt-0.5">
@@ -3854,9 +3859,15 @@ function AppsPanel() {
                           </div>
                         </>
                       )}
+                      </div>
                     </div>
 
-                    <div className="flex gap-1.5 pt-3 border-t border-border/10">
+                    {/* ─── Quick Actions ─── */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 flex items-center gap-1.5 px-1">
+                        <Play size={9} /> Quick Actions
+                      </div>
+                      <div className="flex gap-1.5">
                       {app.status === 'running' && (
                         <button
                           onClick={() =>
@@ -3895,10 +3906,15 @@ function AppsPanel() {
                         className="py-1.5 px-3 text-[10px] text-red-400/50 hover:text-red-400 hover:bg-red-500/5 rounded transition-colors">
                         Delete
                       </button>
+                      </div>
                     </div>
 
-                    {/* Action type selector */}
-                    <div className="pt-3 border-t border-border/10 space-y-2">
+                    {/* ─── Make Changes (AI) ─── */}
+                    <div className="pt-1 space-y-1.5">
+                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 flex items-center gap-1.5 px-1">
+                        <Sparkles size={9} /> Make Changes
+                      </div>
+                      <div className="space-y-2 p-2 rounded-lg bg-white/[0.02] border border-border/10">
                       <div className="flex gap-1">
                         <button
                           onClick={() => setActionType('feature')}
@@ -3985,11 +4001,12 @@ function AppsPanel() {
                           Auto-fix from Logs (no description)
                         </button>
                       )}
+                      </div>
                     </div>
 
                     {/* Build History */}
                     {app.builds && app.builds.length > 0 && (
-                      <div className="pt-3 border-t border-border/10 space-y-1.5">
+                      <div className="pt-1 space-y-1.5">
                         <button
                           onClick={() => setSettingsOpen((v) => !v)}
                           className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-muted-foreground/60 w-full">
@@ -4413,6 +4430,10 @@ function AppsPanel() {
                         Has access to all {files.length} files in{' '}
                         {selectedApp || 'app'}
                       </p>
+                      <p className="text-[9px] text-muted-foreground/30 mt-2">
+                        Type <span className="text-blue-400/70 font-mono">@</span> to mention a file ·{' '}
+                        <span className="text-amber-400/70 font-mono">@app</span> = all files
+                      </p>
                     </div>
                   )}
                   {chatMessages.map((msg, i) => {
@@ -4488,15 +4509,114 @@ function AppsPanel() {
                   )}
                   <div className="flex gap-1.5">
                     <div className="relative flex-1">
-                      <input
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && sendChat()}
-                        placeholder="Ask about the code..."
-                        disabled={chatLoading}
-                        className="w-full bg-transparent border-0 border-b border-border/15 text-xs py-1.5 pr-6 focus:outline-none focus:border-blue-500/30 placeholder:text-muted-foreground/25 transition-colors"
-                      />
+                      {(() => {
+                        // Compute the matching mention list (files + @app)
+                        const opts: { value: string; desc: string }[] = mentionOpen
+                          ? [
+                              { value: 'app', desc: `all ${files.length} files` },
+                              ...files
+                                .map((f) => f.path)
+                                .filter((p) =>
+                                  p.toLowerCase().includes(mentionQuery.toLowerCase()),
+                                )
+                                .slice(0, 12)
+                                .map((p) => ({ value: p, desc: '' })),
+                            ].filter((o) =>
+                              mentionQuery
+                                ? o.value.toLowerCase().includes(mentionQuery.toLowerCase()) ||
+                                  o.value === 'app'
+                                : true,
+                            )
+                          : [];
+                        const insertMention = (val: string) => {
+                          // Replace the last "@<query>" with "@val "
+                          const re = /@[\w./-]*$/;
+                          const next = chatInput.replace(re, '@' + val + ' ');
+                          setChatInput(next);
+                          setMentionOpen(false);
+                          setMentionQuery('');
+                          setMentionIndex(0);
+                          // Refocus input
+                          requestAnimationFrame(() => chatInputRef.current?.focus());
+                        };
+                        return (
+                          <>
+                            <input
+                              ref={chatInputRef}
+                              type="text"
+                              value={chatInput}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setChatInput(v);
+                                // Detect "@..." at the end (or before a space)
+                                const m = v.slice(0, e.target.selectionStart || v.length).match(/@([\w./-]*)$/);
+                                if (m) {
+                                  setMentionQuery(m[1]);
+                                  setMentionOpen(true);
+                                  setMentionIndex(0);
+                                } else {
+                                  setMentionOpen(false);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (mentionOpen && opts.length > 0) {
+                                  if (e.key === 'ArrowDown') {
+                                    e.preventDefault();
+                                    setMentionIndex((i) => (i + 1) % opts.length);
+                                    return;
+                                  }
+                                  if (e.key === 'ArrowUp') {
+                                    e.preventDefault();
+                                    setMentionIndex((i) => (i - 1 + opts.length) % opts.length);
+                                    return;
+                                  }
+                                  if (e.key === 'Tab' || (e.key === 'Enter' && mentionOpen)) {
+                                    e.preventDefault();
+                                    insertMention(opts[mentionIndex].value);
+                                    return;
+                                  }
+                                  if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    setMentionOpen(false);
+                                    return;
+                                  }
+                                }
+                                if (e.key === 'Enter') sendChat();
+                              }}
+                              placeholder="Ask about the code… type @ to mention files"
+                              disabled={chatLoading}
+                              className="w-full bg-transparent border-0 border-b border-border/15 text-xs py-1.5 pr-6 focus:outline-none focus:border-blue-500/30 placeholder:text-muted-foreground/25 transition-colors"
+                            />
+                            {mentionOpen && opts.length > 0 && (
+                              <div className="absolute bottom-full left-0 mb-1 w-64 max-h-48 overflow-auto bg-[#0a0a0a] border border-white/10 rounded-lg shadow-xl z-30">
+                                {opts.map((o, i) => (
+                                  <button
+                                    key={o.value + i}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      insertMention(o.value);
+                                    }}
+                                    onMouseEnter={() => setMentionIndex(i)}
+                                    className={`w-full text-left px-2 py-1 text-[11px] flex items-center gap-2 ${
+                                      i === mentionIndex
+                                        ? 'bg-blue-500/15 text-foreground'
+                                        : 'text-foreground/70 hover:bg-white/[0.04]'
+                                    }`}>
+                                    <span className={o.value === 'app' ? 'text-amber-400' : 'text-blue-400/70'}>
+                                      @{o.value}
+                                    </span>
+                                    {o.desc && (
+                                      <span className="text-[9px] text-muted-foreground/40 ml-auto">
+                                        {o.desc}
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                     <button
                       onClick={sendChat}
@@ -4558,6 +4678,7 @@ function AppsPanel() {
       {clarifyOpen && (
         <ClarifyWizard
           prompt={prompt}
+          setPrompt={setPrompt}
           loading={clarifyLoading}
           error={clarifyError}
           summary={claritySummary}
