@@ -1257,8 +1257,8 @@ function parseUnifiedDiff(diff: string): DiffFile[] {
 
 function FileBlock({ f, mode }: { f: DiffFile; mode: 'split' | 'unified' }) {
   return (
-    <div className="rounded border border-white/10 overflow-hidden">
-      <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-[#0a0a0a] border-b border-white/10 text-[11px]">
+    <div className="rounded border border-white/10">
+      <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-[#0a0a0a] border-b border-white/10 text-[11px] rounded-t">
         <FileCode2 size={11} className="text-violet-400/70 shrink-0" />
         <span className="font-mono text-foreground/80 truncate flex-1">{f.path}</span>
         {f.isNew && <span className="text-[9px] uppercase text-emerald-400/80">new</span>}
@@ -1376,8 +1376,8 @@ function DiffView({
   };
   return (
     <div className="flex gap-3 h-full min-h-0">
-      <div className="w-56 shrink-0 overflow-auto border-r border-white/10 pr-2 -mr-1">
-        <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 px-2 py-1">
+      <div className="w-56 shrink-0 h-full overflow-y-auto overflow-x-hidden border-r border-white/10 pr-2 -mr-1">
+        <div className="sticky top-0 bg-[#0a0a0a] z-10 text-[9px] uppercase tracking-wider text-muted-foreground/40 px-2 py-1">
           {files.length} file{files.length === 1 ? '' : 's'} changed
         </div>
         {files.map((f, fi) => (
@@ -1395,7 +1395,7 @@ function DiffView({
           </button>
         ))}
       </div>
-      <div className="flex-1 overflow-auto min-w-0">
+      <div className="flex-1 h-full overflow-y-auto overflow-x-hidden min-w-0">
         {layout === 'all' ? (
           <div className="space-y-4">
             {files.map((f, fi) => (
@@ -3734,7 +3734,7 @@ function AppsPanel() {
                         onClick={() => setDiffSha(null)}>
                         <div
                           onClick={(e) => e.stopPropagation()}
-                          className="w-full max-w-6xl max-h-[90vh] bg-[#0a0a0a] border border-white/10 rounded-lg shadow-2xl flex flex-col">
+                          className="w-full max-w-6xl h-[85vh] bg-[#0a0a0a] border border-white/10 rounded-lg shadow-2xl flex flex-col">
                           <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10">
                             <GitBranch size={12} className="text-violet-400/70" />
                             <span className="text-[11px] font-mono text-foreground/80">{diffSha.slice(0, 12)}</span>
