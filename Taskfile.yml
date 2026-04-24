@@ -48,7 +48,7 @@ tasks:
   web:build:
     desc: Build web UI and copy to server embed
     cmds:
-      - cd web && npm run build
+      - cd web && yarn build
       - rm -rf server/api/web && mkdir -p server/api/web
       - cp -r web/dist/* server/api/web/
 
