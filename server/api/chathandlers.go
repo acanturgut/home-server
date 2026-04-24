@@ -95,7 +95,7 @@ func isBlockedHost(host string) bool {
 }
 
 var (
-	tagRe     = regexp.MustCompile(`(?is)<(script|style|noscript)[^>]*>.*?</\1>`)
+    tagRe     = regexp.MustCompile(`(?is)<(script|style|noscript)[^>]*>.*?</(script|style|noscript)>`)
 	stripTag  = regexp.MustCompile(`<[^>]+>`)
 	wsRe      = regexp.MustCompile(`[ \t]+`)
 	lineRe    = regexp.MustCompile(`\n[ \t]*\n[ \t]*`)
