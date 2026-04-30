@@ -1,8 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-export interface IconButtonProps
-  extends ButtonHTMLAttributes<HTMLButtonElement> {
+export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** Icon node — typically a lucide-react icon. */
   icon: ReactNode;
   /** Accessible/tooltip label. Required. */
@@ -16,12 +15,9 @@ export interface IconButtonProps
 }
 
 const VARIANTS: Record<NonNullable<IconButtonProps['variant']>, string> = {
-  ghost:
-    'text-muted-foreground hover:text-foreground hover:bg-muted/30',
-  solid:
-    'bg-foreground/10 text-foreground hover:bg-foreground/15',
-  subtle:
-    'text-muted-foreground/70 hover:text-foreground hover:bg-muted/20',
+  ghost: 'text-muted-foreground hover:text-foreground hover:bg-muted/30',
+  solid: 'bg-foreground/10 text-foreground hover:bg-foreground/15',
+  subtle: 'text-muted-foreground/70 hover:text-foreground hover:bg-muted/20',
 };
 
 /**

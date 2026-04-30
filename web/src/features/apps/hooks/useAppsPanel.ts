@@ -39,6 +39,7 @@ export function useAppsPanel() {
     id: string;
     question: string;
     hint?: string;
+    type?: 'single' | 'multi' | 'text' | 'scale';
     suggestions?: string[];
     required?: boolean;
     default?: string;
@@ -53,9 +54,12 @@ export function useAppsPanel() {
   );
   const [clarifyName, setClarifyName] = useState('');
   const [clarifyNotes, setClarifyNotes] = useState('');
-  const [building, setBuilding] = useState(() =>
-    JSON.parse(localStorage.getItem('building') || 'false'),
-  );
+  // `building` is intentionally not persisted: a stream can't be resumed
+  // across a remount or page refresh, so the previous "recover from
+  // localStorage + show 'Connection lost'" logic just produced false errors
+  // any time the Apps panel was unmounted/remounted mid-build (mode toggle,
+  // route nav, etc). Server keeps streaming — reload to see the result.
+  const [building, setBuilding] = useState(false);
   const [events, setEvents] = useState<BuildEvent[]>(() =>
     (() => {
       try {
@@ -67,35 +71,10 @@ export function useAppsPanel() {
     })(),
   );
 
-  // Clear stale building state on mount — if we think we're building but have no active stream,
-  // the previous SSE connection was lost (e.g. container restart / page refresh)
+  // Clear stale building state on mount — nothing to do now, since `building`
+  // is no longer persisted. (Kept as a no-op for diff stability; safe to drop.)
   useEffect(() => {
-    const wasBuilding = JSON.parse(localStorage.getItem('building') || 'false');
-    if (wasBuilding && !abortRef.current) {
-      // Check if the last event is already terminal
-      try {
-        const evts = JSON.parse(localStorage.getItem('buildEvents') || '[]');
-        const last =
-          Array.isArray(evts) && evts.length > 0 ? evts[evts.length - 1] : null;
-        if (last && (last.step === 'done' || last.step === 'error')) {
-          setBuilding(false);
-        } else {
-          // Add a "connection lost" event and stop building
-          setEvents((prev) => [
-            ...prev,
-            {
-              step: 'error',
-              message:
-                'Connection lost — build may have completed. Check app status.',
-            },
-          ]);
-          setBuilding(false);
-        }
-      } catch {
-        setBuilding(false);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // intentionally empty
   }, []);
 
   // Code editor state
@@ -251,7 +230,9 @@ export function useAppsPanel() {
     appsApi
       .getCommits(selectedApp, 50)
       .then((d) =>
-        setCommits(Array.isArray(d?.commits) ? (d!.commits as GitCommit[]) : []),
+        setCommits(
+          Array.isArray(d?.commits) ? (d!.commits as GitCommit[]) : [],
+        ),
       );
   }, [selectedApp]);
   useEffect(() => {
@@ -274,9 +255,37 @@ export function useAppsPanel() {
   useEffect(() => {
     localStorage.setItem('buildEvents', JSON.stringify(events));
   }, [events]);
+
+  // Server-side build/rebuild/fix events (re-attach after tab switch /
+  // page refresh). On selectedApp change we fetch the buffered log; while
+  // pipeline reports `active` we poll every 2s so the UI mirrors the
+  // ongoing build even though the original NDJSON stream is dead.
   useEffect(() => {
-    localStorage.setItem('building', JSON.stringify(building));
-  }, [building]);
+    if (!selectedApp) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = async () => {
+      try {
+        const r = await appsApi.getEvents(selectedApp);
+        if (cancelled) return;
+        const evts = Array.isArray(r?.events) ? r.events : [];
+        if (evts.length) setEvents(evts as BuildEvent[]);
+        const isActive = !!r?.active;
+        // Only flip `building` based on server truth — never override a
+        // local in-flight stream owned by the current tab.
+        if (isActive && !abortRef.current) setBuilding(true);
+        if (!isActive && !abortRef.current) setBuilding(false);
+        if (isActive) timer = setTimeout(tick, 2000);
+      } catch {
+        // ignore — endpoint can 404 briefly during pipeline transitions
+      }
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [selectedApp]);
 
   useEffect(() => {
     refresh();
@@ -551,6 +560,19 @@ export function useAppsPanel() {
     });
   };
 
+  // Used by the multi-step BuildWizard, which assembles its own final prompt
+  // (refine → questions → preview) and hands the fully-baked text + name back.
+  const runBuildWith = (assembledPrompt: string, name: string) => {
+    const p = assembledPrompt.trim();
+    if (!p || building) return;
+    setPrompt(p);
+    streamNDJSON(`${API_BASE}/api/apps/build`, {
+      prompt: p,
+      ...(name.trim() ? { name: name.trim() } : {}),
+      ...(selectedBuildNode ? { node: selectedBuildNode } : {}),
+    });
+  };
+
   // ── AI Clarify wizard ──
   const openClarify = async () => {
     if (building || clarifyLoading) return;
@@ -584,6 +606,10 @@ export function useAppsPanel() {
           id: String(q.id || `q${i}`),
           question: String(q.question || ''),
           hint: q.hint ? String(q.hint) : undefined,
+          type:
+            q.type === 'multi' || q.type === 'text' || q.type === 'scale'
+              ? q.type
+              : 'single',
           suggestions: Array.isArray(q.suggestions)
             ? q.suggestions.map(String)
             : undefined,
@@ -605,8 +631,22 @@ export function useAppsPanel() {
       const defaults: Record<string, string> = {};
       for (const q of parsed) if (q.default) defaults[q.id] = q.default;
       setClarifyAnswers(defaults);
-      if (!qs.length)
-        setClarifyError('AI returned no questions. You can build directly.');
+      if (!qs.length) {
+        // Surface server-side parse failure so the user knows _why_ no
+        // questions came back (e.g. LM Studio returned non-JSON / reasoning).
+        if (data.parse_err) {
+          const preview = (data.raw || '').trim().slice(0, 240);
+          setClarifyError(
+            `AI returned a response we couldn't parse as JSON (${data.parse_err}). ` +
+              (preview
+                ? `Got: "${preview}${preview.length >= 240 ? '…' : ''}"`
+                : '') +
+              ' You can still build directly.',
+          );
+        } else {
+          setClarifyError('AI returned no questions. You can build directly.');
+        }
+      }
     } catch (e) {
       setClarifyError(e instanceof Error ? e.message : 'Clarify failed');
     } finally {
@@ -678,13 +718,7 @@ export function useAppsPanel() {
   };
 
   const toggleDev = async () => {
-    if (!selectedApp || !app) return;
-    if (app.dev_mode) {
-      await appsApi.stopDev(selectedApp);
-      refresh();
-    } else {
-      streamNDJSON(`${API_BASE}/api/apps/${selectedApp}/dev/start`, {});
-    }
+    /* hot-reload removed; kept as a no-op so AppsPanel keeps compiling */
   };
 
   const saveFile = async () => {
@@ -693,12 +727,7 @@ export function useAppsPanel() {
     try {
       await appsApi.saveFile(selectedApp, selectedFile, fileContent);
       setFileDirty(false);
-      // Visible feedback (esp. important since hot reload happens silently).
-      setSaveToast(
-        app?.dev_mode
-          ? `Saved ${selectedFile} · vite watch will rebuild & reload the page`
-          : `Saved ${selectedFile}`,
-      );
+      setSaveToast(`Saved ${selectedFile} · click Deploy to rebuild`);
       setTimeout(() => setSaveToast(null), 3500);
     } catch {
       setSaveToast(`Save failed`);
@@ -922,6 +951,7 @@ export function useAppsPanel() {
     restartApp,
     rightTab,
     runTermCmd,
+    runBuildWith,
     saveFile,
     saveSettings,
     saveToast,

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Circle } from 'lucide-react';
 import { settingsApi } from '@/features/settings/api';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 /** Persisted compute-node configuration row. */
 export interface NodeConfig {
@@ -86,14 +88,14 @@ export function NodeFormInline({
             <label className="text-[10px] text-muted-foreground/60">
               {f.label}
             </label>
-            <input
+            <Input
+              inputSize="sm"
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               value={(form as any)[f.key]}
               onChange={(e) =>
                 setForm((prev) => ({ ...prev, [f.key]: e.target.value }))
               }
               placeholder={f.placeholder}
-              className="h-7 text-xs w-full rounded-md border border-border/30 bg-transparent px-2 focus:outline-none focus:ring-1 focus:ring-ring/30"
             />
           </div>
         ))}
@@ -104,7 +106,7 @@ export function NodeFormInline({
             onChange={(e) =>
               setForm((prev) => ({ ...prev, tier: e.target.value }))
             }
-            className="h-7 text-xs w-full rounded-md border border-border/30 bg-transparent px-2">
+            className="h-7 text-[0.8rem] w-full rounded-[min(var(--radius-md),12px)] border border-input bg-transparent px-2.5 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50">
             <option value="high-end">High-end</option>
             <option value="low-end">Low-end</option>
           </select>
@@ -117,7 +119,7 @@ export function NodeFormInline({
               onChange={(e) =>
                 setForm((prev) => ({ ...prev, model: e.target.value }))
               }
-              className="h-7 text-xs w-full rounded-md border border-border/30 bg-transparent px-2">
+              className="h-7 text-[0.8rem] w-full rounded-[min(var(--radius-md),12px)] border border-input bg-transparent px-2.5 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50">
               <option value="">Select...</option>
               {localModels.map((m) => (
                 <option key={m} value={m}>
@@ -126,13 +128,13 @@ export function NodeFormInline({
               ))}
             </select>
           ) : (
-            <input
+            <Input
+              inputSize="sm"
               value={form.model}
               onChange={(e) =>
                 setForm((prev) => ({ ...prev, model: e.target.value }))
               }
               placeholder="model-name"
-              className="h-7 text-xs w-full rounded-md border border-border/30 bg-transparent px-2 focus:outline-none focus:ring-1 focus:ring-ring/30"
             />
           )}
         </div>
@@ -211,12 +213,15 @@ export function NodeFormInline({
             Load Model
           </label>
           <div className="flex gap-1.5">
-            <input
+            <Input
+              inputSize="sm"
               id={`load-model-${nodeId}`}
               placeholder="model-identifier"
-              className="h-7 text-xs flex-1 rounded-md border border-border/30 bg-transparent px-2 focus:outline-none focus:ring-1 focus:ring-ring/30 font-mono"
+              className="flex-1 font-mono"
             />
-            <button
+            <Button
+              size="sm"
+              variant="secondary"
               onClick={() => {
                 const el = document.getElementById(
                   `load-model-${nodeId}`,
@@ -226,10 +231,9 @@ export function NodeFormInline({
                   el.value = '';
                 }
               }}
-              disabled={loadingModel !== null}
-              className="h-7 px-2.5 rounded-md text-[11px] font-medium bg-foreground/10 hover:bg-foreground/15 disabled:opacity-50 transition-colors">
+              disabled={loadingModel !== null}>
               {loadingModel ? '...' : 'Load'}
-            </button>
+            </Button>
           </div>
         </div>
       )}

@@ -45,8 +45,7 @@ export const appsApi = {
   // logs / stats / search
   getLogs: (app: string, tail = 200) =>
     apiJsonSafe<{ logs?: string }>(`/api/apps/${app}/logs?tail=${tail}`),
-  getStats: (app: string) =>
-    apiJsonSafe<unknown>(`/api/apps/${app}/stats`),
+  getStats: (app: string) => apiJsonSafe<unknown>(`/api/apps/${app}/stats`),
   search: (app: string, q: string) =>
     apiJsonSafe<unknown[]>(
       `/api/apps/${app}/search?q=${encodeURIComponent(q)}`,
@@ -72,7 +71,50 @@ export const appsApi = {
       summary?: string;
       suggestedName?: string;
       questions?: unknown[];
+      raw?: string;
+      parse_err?: string;
     }>('/api/apps/clarify', {
+      method: 'POST',
+      body: JSON.stringify({ prompt }),
+    }),
+  /** Rewrite a raw idea into a clearer app brief. */
+  refinePrompt: (prompt: string) =>
+    apiJson<{
+      refined?: string;
+      summary?: string;
+      raw?: string;
+      parse_err?: string;
+    }>('/api/apps/refine', {
+      method: 'POST',
+      body: JSON.stringify({ prompt }),
+    }),
+  /** Break the brief into 3–6 ordered build chunks. */
+  planApp: (prompt: string) =>
+    apiJson<{
+      summary?: string;
+      chunks?: Array<{
+        title: string;
+        description: string;
+        files?: string[];
+      }>;
+      raw?: string;
+      parse_err?: string;
+    }>('/api/apps/plan', {
+      method: 'POST',
+      body: JSON.stringify({ prompt }),
+    }),
+  /** High-level architecture sketch (stack, models, endpoints, components). */
+  architectApp: (prompt: string) =>
+    apiJson<{
+      summary?: string;
+      stack?: string;
+      models?: Array<{ name: string; fields: string }>;
+      endpoints?: Array<{ method: string; path: string; purpose: string }>;
+      components?: Array<{ name: string; purpose: string }>;
+      notes?: string;
+      raw?: string;
+      parse_err?: string;
+    }>('/api/apps/architect', {
       method: 'POST',
       body: JSON.stringify({ prompt }),
     }),
@@ -85,6 +127,19 @@ export const appsApi = {
     }),
   cancelBuild: (app: string) =>
     apiFetch(`/api/apps/${app}/cancel`, { method: 'POST' }),
+  /** Server-side buffered build/rebuild/fix events for re-attaching after
+   * a tab switch / page refresh. `active` mirrors `pipeline.IsActive`. */
+  getEvents: (app: string) =>
+    apiJsonSafe<{
+      active?: boolean;
+      events?: Array<{
+        step: string;
+        message: string;
+        detail?: string;
+        latency?: string;
+        timestamp?: string;
+      }>;
+    }>(`/api/apps/${app}/events`),
 
   // lifecycle
   deleteApp: (name: string) =>
@@ -95,8 +150,18 @@ export const appsApi = {
     apiFetch(`/api/apps/${name}/restart`, { method: 'POST' }),
   deployApp: (name: string) =>
     apiFetch(`/api/apps/${name}/deploy`, { method: 'POST' }),
-  stopDev: (app: string) =>
-    apiFetch(`/api/apps/${app}/dev/stop`, { method: 'POST' }),
+  /** Trigger an LLM-driven auto-fix; description is optional. Streaming. */
+  fixApp: (name: string, description = '') =>
+    apiFetch(`/api/apps/${name}/fix`, {
+      method: 'POST',
+      body: JSON.stringify({ description }),
+    }),
+  /** Apply a feature/change request via the LLM rebuild path. Streaming. */
+  rebuildApp: (name: string, changes: string) =>
+    apiFetch(`/api/apps/${name}/rebuild`, {
+      method: 'POST',
+      body: JSON.stringify({ changes }),
+    }),
 
   // chat assistant per-app
   chatWithApp: (

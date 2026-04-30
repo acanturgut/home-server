@@ -10,9 +10,9 @@ export function LogsPanel() {
   const [levelFilter, setLevelFilter] = useState<string>('ALL');
 
   const fetchLogs = useCallback(() => {
-    logsApi.list(500).then((data) =>
-      setLogs(Array.isArray(data) ? [...data].reverse() : []),
-    );
+    logsApi
+      .list(500)
+      .then((data) => setLogs(Array.isArray(data) ? [...data].reverse() : []));
   }, []);
 
   useEffect(() => {

@@ -46,7 +46,12 @@ export const chatApi = {
     }),
   ragSearch: (q: string, k = 5) =>
     apiJson<{
-      hits?: Array<{ path: string; app: string; score: number; snippet: string }>;
+      hits?: Array<{
+        path: string;
+        app: string;
+        score: number;
+        snippet: string;
+      }>;
     }>('/api/rag/search', {
       method: 'POST',
       body: JSON.stringify({ q, k }),

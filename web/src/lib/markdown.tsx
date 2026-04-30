@@ -10,20 +10,46 @@ import { copyToClipboard } from './format';
  * `tool` produces an interactive {@link ToolCallBlock}; everything else
  * routes through {@link CodeBlock}.
  */
+function stripThink(text: string): string {
+  let out = text;
+  // 1. Drop closed `<think>...</think>` blocks.
+  out = out.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  // 2. Some reasoning models stream the chain-of-thought *without* the opening
+  //    `<think>` tag and only emit a closing `</think>` before the answer.
+  //    Treat everything before the first stray `</think>` as thinking and
+  //    discard it.
+  const closeIdx = out.search(/<\/think>/i);
+  if (closeIdx !== -1) {
+    out = out.slice(closeIdx).replace(/^<\/think>/i, '');
+  }
+  // 3. Drop an unclosed trailing `<think>...` so partial streams don't show
+  //    chain-of-thought. If a stream later closes the tag rule (1) catches it
+  //    on the next render.
+  const openIdx = out.search(/<think>/i);
+  if (openIdx !== -1) out = out.slice(0, openIdx);
+  return out.trim();
+}
+
 export function MarkdownView({ text }: { text: string }) {
   const segments = useMemo(() => {
+    // Strip reasoning-model `<think>...</think>` scaffolding that some local
+    // LLMs (Qwen3-thinking, DeepSeek-R1) leak into the visible response. We
+    // also drop an unclosed trailing `<think>...` so partial streams don't
+    // dump the chain-of-thought onto the user.
+    const cleaned = stripThink(text);
     const out: Array<{ kind: 'text' | 'code'; lang?: string; body: string }> =
       [];
     const re = /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g;
     let last = 0;
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
+    while ((m = re.exec(cleaned)) !== null) {
       if (m.index > last)
-        out.push({ kind: 'text', body: text.slice(last, m.index) });
+        out.push({ kind: 'text', body: cleaned.slice(last, m.index) });
       out.push({ kind: 'code', lang: m[1] || '', body: m[2] });
       last = m.index + m[0].length;
     }
-    if (last < text.length) out.push({ kind: 'text', body: text.slice(last) });
+    if (last < cleaned.length)
+      out.push({ kind: 'text', body: cleaned.slice(last) });
     return out;
   }, [text]);
 

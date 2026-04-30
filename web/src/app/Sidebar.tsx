@@ -28,9 +28,9 @@ interface SidebarProps {
 
 export function Sidebar({ page, onNavigate, items = NAV_ITEMS }: SidebarProps) {
   return (
-    <aside className="w-14 shrink-0 bg-muted/20 border-r border-border/30 flex flex-col items-center py-4 gap-1">
+    <aside className="w-12 sm:w-14 shrink-0 bg-muted/20 border-r border-border/30 flex flex-col items-center py-3 sm:py-4 gap-1">
       {/* Logo */}
-      <div className="mb-4 text-lg font-bold text-foreground/60 select-none">
+      <div className="mb-2 sm:mb-4 text-lg font-bold text-foreground/60 select-none">
         <Hexagon size={20} />
       </div>
       {items.map((n) => (
@@ -38,7 +38,7 @@ export function Sidebar({ page, onNavigate, items = NAV_ITEMS }: SidebarProps) {
           key={n.id}
           icon={n.icon}
           label={n.label}
-          size={40}
+          size={36}
           active={page === n.id}
           onClick={() => onNavigate(n.id)}
         />

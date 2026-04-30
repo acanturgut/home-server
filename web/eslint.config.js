@@ -1,9 +1,9 @@
-import js from '@eslint/js'
-import globals from 'globals'
-import reactHooks from 'eslint-plugin-react-hooks'
-import reactRefresh from 'eslint-plugin-react-refresh'
-import tseslint from 'typescript-eslint'
-import { defineConfig, globalIgnores } from 'eslint/config'
+import js from '@eslint/js';
+import globals from 'globals';
+import reactHooks from 'eslint-plugin-react-hooks';
+import reactRefresh from 'eslint-plugin-react-refresh';
+import tseslint from 'typescript-eslint';
+import { defineConfig, globalIgnores } from 'eslint/config';
 
 // ── Cross-feature import boundary ──────────────────────────────────────────
 // Inside any `src/features/<x>/` file, deep imports into a *different*
@@ -12,13 +12,13 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 // (`@/features/<other>` → `index.ts`) — that's the only public surface.
 // Same-feature deep imports (`@/features/<self>/components/...`) remain
 // allowed, since they're internal to the feature and don't break boundaries.
-const FEATURES = ['apps', 'chat', 'dashboard', 'homekit', 'logs', 'settings']
+const FEATURES = ['apps', 'chat', 'dashboard', 'homekit', 'logs', 'settings'];
 const featureBoundaryConfigs = FEATURES.map((self) => {
-  const others = FEATURES.filter((f) => f !== self)
+  const others = FEATURES.filter((f) => f !== self);
   const groups = others.flatMap((other) => [
     `@/features/${other}/*`,
     `@/features/${other}/*/**`,
-  ])
+  ]);
   return {
     files: [`src/features/${self}/**/*.{ts,tsx}`],
     rules: {
@@ -35,8 +35,8 @@ const featureBoundaryConfigs = FEATURES.map((self) => {
         },
       ],
     },
-  }
-})
+  };
+});
 
 export default defineConfig([
   globalIgnores(['dist']),
@@ -54,4 +54,4 @@ export default defineConfig([
     },
   },
   ...featureBoundaryConfigs,
-])
+]);

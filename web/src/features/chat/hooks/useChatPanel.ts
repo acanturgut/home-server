@@ -3,7 +3,14 @@ import { chatApi } from '@/features/chat/api';
 import { gotoPage } from '@/lib/format';
 import { speak, useSpeechRecognition } from '@/lib/voice';
 import { SLASH_COMMANDS } from '@/lib/slash';
-import { BUILTIN_PERSONAS, DEFAULT_SYSTEM_PROMPT, type ChatAttachment, type ChatMsg, type ChatSession, type Persona } from '@/features/chat/types';
+import {
+  BUILTIN_PERSONAS,
+  DEFAULT_SYSTEM_PROMPT,
+  type ChatAttachment,
+  type ChatMsg,
+  type ChatSession,
+  type Persona,
+} from '@/features/chat/types';
 import type { AppInfo } from '@/lib/types';
 import type { NodeConfig } from '@/features/settings';
 
@@ -61,6 +68,29 @@ export function useChatPanel() {
   const [toolsEnabled, setToolsEnabled] = useState<boolean>(false); // one-shot tool-call hint
   const [webEnabled, setWebEnabled] = useState<boolean>(false); // one-shot web search hint
   const [compareRoutes, setCompareRoutes] = useState<string[] | null>(null); // one-shot compare mode
+  // Quick mode: when ON, every turn is forced to the on-device ollama
+  // backend ("local") and all heavy features (tools, web, compare) are
+  // suppressed. Persists across composer turns until the user toggles off.
+  const [quickMode, setQuickModeState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('chat-quick') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setQuickMode = useCallback((v: boolean) => {
+    setQuickModeState(v);
+    try {
+      localStorage.setItem('chat-quick', v ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    if (v) {
+      setToolsEnabled(false);
+      setWebEnabled(false);
+      setCompareRoutes(null);
+    }
+  }, []);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -89,18 +119,16 @@ export function useChatPanel() {
   }, []);
   // Initial server load (overrides localStorage if present and non-empty)
   useEffect(() => {
-    chatApi
-      .loadSessions()
-      .then((arr) => {
-        if (Array.isArray(arr) && arr.length > 0) {
-          setSessions(arr);
-          try {
-            localStorage.setItem('chat-sessions', JSON.stringify(arr));
-          } catch {
-            /* ignore */
-          }
+    chatApi.loadSessions().then((arr) => {
+      if (Array.isArray(arr) && arr.length > 0) {
+        setSessions(arr);
+        try {
+          localStorage.setItem('chat-sessions', JSON.stringify(arr));
+        } catch {
+          /* ignore */
         }
-      });
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const persistPersonas = useCallback((arr: Persona[]) => {
@@ -470,7 +498,11 @@ export function useChatPanel() {
     kind?: string;
   }) {
     try {
-      const r = await chatApi.saveSnippet({ title, body, kind: kind || 'reply' });
+      const r = await chatApi.saveSnippet({
+        title,
+        body,
+        kind: kind || 'reply',
+      });
       if (!r.ok) throw new Error('save failed');
       setStatusMsg('Snippet saved.');
     } catch (e) {
@@ -551,7 +583,11 @@ export function useChatPanel() {
       return;
     }
     try {
-      const data = await chatApi.createSchedule({ cron, prompt, enabled: true });
+      const data = await chatApi.createSchedule({
+        cron,
+        prompt,
+        enabled: true,
+      });
       setStatusMsg(`Scheduled "${data.title}" — cron: ${data.cron}`);
     } catch (e) {
       setStatusMsg(
@@ -677,19 +713,22 @@ export function useChatPanel() {
         const sysMsg = active.system?.trim()
           ? [{ role: 'system' as const, content: active.system.trim() }]
           : [{ role: 'system' as const, content: DEFAULT_SYSTEM_PROMPT }];
-        const toolSys = toolsEnabled
-          ? [
-              {
-                role: 'system' as const,
-                content:
-                  'You may call tools by emitting a fenced code block with language `tool` ' +
-                  'containing a JSON object: {"name":"<tool>","args":{...}}. ' +
-                  'Available tools: ragSearch(q,k), listApps(), appStatus(name), appLogs(name,tail), httpGet(url). ' +
-                  'After the user runs the tool, its JSON result will appear in the next user message; use it to answer. ' +
-                  'Emit at most one tool call per turn.',
-              },
-            ]
-          : [];
+        // Quick mode = simple chat on the on-device ollama; skip the
+        // tool-calling system prompt entirely.
+        const toolSys =
+          toolsEnabled && !quickMode
+            ? [
+                {
+                  role: 'system' as const,
+                  content:
+                    'You may call tools by emitting a fenced code block with language `tool` ' +
+                    'containing a JSON object: {"name":"<tool>","args":{...}}. ' +
+                    'Available tools: ragSearch(q,k), listApps(), appStatus(name), appLogs(name,tail), httpGet(url). ' +
+                    'After the user runs the tool, its JSON result will appear in the next user message; use it to answer. ' +
+                    'Emit at most one tool call per turn.',
+                },
+              ]
+            : [];
         const apiMsgs = [
           ...sysMsg,
           ...toolSys,
@@ -698,7 +737,11 @@ export function useChatPanel() {
             .map(({ role, content }) => ({ role, content })),
         ];
         const body: Record<string, unknown> = { messages: apiMsgs };
-        const override = opts?.modelOverride || active.modelOverride;
+        // Quick mode forces "local" (on-device ollama) and overrides any
+        // session-level or per-turn route the user had set.
+        const override = quickMode
+          ? 'local'
+          : opts?.modelOverride || active.modelOverride;
         if (override && override !== 'auto') body.route = override;
         if (active.temperature != null) body.temperature = active.temperature;
 
@@ -890,7 +933,7 @@ export function useChatPanel() {
         }
       }
     },
-    [active, sessions, persist, autoTitle, toolsEnabled],
+    [active, sessions, persist, autoTitle, toolsEnabled, quickMode],
   );
 
   // ── Composer send ──
@@ -1191,13 +1234,15 @@ export function useChatPanel() {
   >([]);
   useEffect(() => {
     chatApi.listApps().then((d) => Array.isArray(d) && setAppsList(d));
-    chatApi.listNodes().then(
-      (d) =>
-        Array.isArray(d) &&
-        setNodesList(
-          (d as NodeConfig[]).map((n) => ({ name: n.name, tier: n.tier })),
-        ),
-    );
+    chatApi
+      .listNodes()
+      .then(
+        (d) =>
+          Array.isArray(d) &&
+          setNodesList(
+            (d as NodeConfig[]).map((n) => ({ name: n.name, tier: n.tier })),
+          ),
+      );
   }, []);
   const mentionState = useMemo(() => {
     const m = /(^|\s)@([a-zA-Z0-9_-]*)$/.exec(input);
@@ -1376,6 +1421,7 @@ export function useChatPanel() {
     pendingModel,
     persistPersonas,
     personas,
+    quickMode,
     regenerate,
     regenerateOnRoute,
     resumeBanner,
@@ -1394,6 +1440,7 @@ export function useChatPanel() {
     setEditingText,
     setInput,
     setPendingModel,
+    setQuickMode,
     setResumeBanner,
     setSchedulesOpen,
     setSearchOpen,

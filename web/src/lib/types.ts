@@ -29,6 +29,9 @@ export interface LogEntry {
   node?: string;
   tier?: string;
   latency?: string;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
 }
 
 export interface NodeStats {
@@ -121,6 +124,8 @@ export interface Endpoint {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   path: string;
   summary: string;
+  /** Optional grouping label rendered as a section header in the API panel. */
+  group?: string;
   body?: string;
   pathParams?: string[];
   queryParams?: { name: string; default?: string }[];

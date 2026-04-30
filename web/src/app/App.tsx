@@ -19,6 +19,9 @@ function App() {
   useNavGoto(useCallback((p: string) => setPage(p), []));
 
   const title = NAV_ITEMS.find((n) => n.id === page)?.label ?? 'Home Server';
+  // Pages with their own internal sidebar/dock fill the frame; padded pages
+  // (Dashboard, Settings) keep PageLayout's default content padding.
+  const fullBleed = page === 'apps' || page === 'chat';
 
   return (
     <div className="dark h-screen bg-background text-foreground flex flex-col overflow-hidden">
@@ -35,7 +38,7 @@ function App() {
 
         {page !== 'apps' && (
           <div className="flex-1 overflow-hidden">
-            <PageLayout title={title}>
+            <PageLayout title={title} fullBleed={fullBleed}>
               {page === 'dashboard' && <DashboardPage />}
               {page === 'chat' && <ChatPanel />}
               {page === 'settings' && <SettingsPanel />}

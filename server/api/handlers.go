@@ -17,6 +17,7 @@ import (
 	"github.com/acanturgut/home-server/ai"
 	"github.com/acanturgut/home-server/apps"
 	"github.com/acanturgut/home-server/config"
+	"github.com/acanturgut/home-server/homedevices"
 	"github.com/acanturgut/home-server/homekit"
 	"github.com/acanturgut/home-server/logger"
 	"github.com/acanturgut/home-server/nodestate"
@@ -39,6 +40,7 @@ type Handler struct {
 	snippets  *apps.SnippetStore
 	rag       *apps.RAGIndex
 	schedules *apps.ScheduleStore
+	homedev   *homedevices.Manager
 	version   string
 	started   time.Time
 }
@@ -310,6 +312,23 @@ func (h *Handler) ListNodeModels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"models": models})
 }
 
+// GET /api/nodes/{id}/models/status — returns every model on the node along
+// with whether it is currently loaded. Used by the dashboard to show a model
+// picker + Load button per node.
+func (h *Handler) NodeModelsStatus(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "node id required"})
+		return
+	}
+	models, err := h.router.ListAllNodeModels(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"models": models})
+}
+
 // POST /api/nodes/{id}/models/load
 func (h *Handler) LoadNodeModel(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -453,14 +472,15 @@ func (h *Handler) BuildApp(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Prompt string `json:"prompt"`
 		Name   string `json:"name"`
+		Node   string `json:"node"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Prompt == "" {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "prompt required"})
 		return
 	}
 
-	// Find available heavy + light nodes
-	heavy, light, err := h.findWorkerNodes(r.Context())
+	// Find available heavy + light nodes (Node may force a specific worker)
+	heavy, light, err := h.pickWorkerNodes(r.Context(), req.Node)
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: err.Error()})
 		return
@@ -565,45 +585,6 @@ func (h *Handler) RestartApp(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "running"})
 }
 
-// POST /api/apps/{name}/dev/start  (NDJSON stream of pipeline events)
-func (h *Handler) DevStart(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if _, ok := h.apps.Get(name); !ok {
-		writeJSON(w, http.StatusNotFound, errorResp{Error: "app not found"})
-		return
-	}
-	w.Header().Set("Content-Type", "application/x-ndjson")
-	w.Header().Set("Cache-Control", "no-cache")
-	flusher, _ := w.(http.Flusher)
-	emit := func(ev apps.PipelineEvent) {
-		_ = json.NewEncoder(w).Encode(ev)
-		if flusher != nil {
-			flusher.Flush()
-		}
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
-	defer cancel()
-	if err := h.pipeline.StartDev(ctx, name, emit); err != nil {
-		emit(apps.PipelineEvent{Step: "error", Message: err.Error(), Timestamp: time.Now().Format(time.RFC3339)})
-	}
-}
-
-// POST /api/apps/{name}/dev/stop
-func (h *Handler) DevStop(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if _, ok := h.apps.Get(name); !ok {
-		writeJSON(w, http.StatusNotFound, errorResp{Error: "app not found"})
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-	if err := h.pipeline.StopDev(ctx, name); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResp{Error: err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"dev_mode": false})
-}
-
 // GET /api/apps/{name}/git/log?limit=50
 func (h *Handler) AppGitLog(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
@@ -669,6 +650,25 @@ func (h *Handler) AppGitRevert(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// POST /api/apps/{name}/git/commit — manual commit of current working tree.
+func (h *Handler) AppGitCommit(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if _, ok := h.apps.Get(name); !ok {
+		writeJSON(w, http.StatusNotFound, errorResp{Error: "app not found"})
+		return
+	}
+	var req struct {
+		Message string `json:"message"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 1<<14)).Decode(&req)
+	sha := h.pipeline.GitCommit(name, req.Message)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":    name,
+		"sha":     sha,
+		"message": req.Message,
+	})
+}
+
 // POST /api/apps/{name}/cancel — cancel an active build/rebuild/fix
 func (h *Handler) CancelBuild(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
@@ -695,13 +695,14 @@ func (h *Handler) RebuildApp(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Changes string `json:"changes"`
+		Node    string `json:"node"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Changes == "" {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "changes required"})
 		return
 	}
 
-	heavy, light, err := h.findWorkerNodes(r.Context())
+	heavy, light, err := h.pickWorkerNodes(r.Context(), req.Node)
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: err.Error()})
 		return
@@ -773,10 +774,11 @@ func (h *Handler) FixApp(w http.ResponseWriter, r *http.Request) {
 	// Parse optional description from body
 	var req struct {
 		Description string `json:"description"`
+		Node        string `json:"node"`
 	}
 	json.NewDecoder(r.Body).Decode(&req) // ignore errors — description is optional
 
-	heavy, light, err := h.findWorkerNodes(r.Context())
+	heavy, light, err := h.pickWorkerNodes(r.Context(), req.Node)
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: err.Error()})
 		return
@@ -883,14 +885,43 @@ func (h *Handler) CrashMonitorDeps() apps.CrashMonitorDeps {
 }
 
 func (h *Handler) findWorkerNodes(ctx context.Context) (apps.NodeInfo, apps.NodeInfo, error) {
+	return h.pickWorkerNodes(ctx, "")
+}
+
+// pickWorkerNodes selects the worker nodes for a build/rebuild/fix run.
+// If preferred is non-empty (matches a node ID or Name, case-insensitive,
+// other than "", "auto"), that node is forced as the heavy worker — provided
+// it is online. Otherwise the first online high-end node is used.
+func (h *Handler) pickWorkerNodes(ctx context.Context, preferred string) (apps.NodeInfo, apps.NodeInfo, error) {
 	var heavy, light apps.NodeInfo
-	for _, n := range h.nodes.All() {
-		if n.Tier == config.TierHighEnd && heavy.Host == "" {
+	all := h.nodes.All()
+
+	pref := strings.TrimSpace(strings.ToLower(preferred))
+	if pref != "" && pref != "auto" {
+		var match *config.Node
+		for i := range all {
+			n := &all[i]
+			if strings.EqualFold(n.ID, preferred) || strings.EqualFold(n.Name, preferred) {
+				match = n
+				break
+			}
+		}
+		if match == nil {
+			return heavy, light, fmt.Errorf("selected node %q not found", preferred)
+		}
+		if !h.aiClient.Ping(ctx, match.Host, "lmstudio") {
+			return heavy, light, fmt.Errorf("selected node %q is offline (LM Studio not reachable at %s)", match.Name, match.Host)
+		}
+		heavy = apps.NodeInfo{Name: match.Name, Host: match.Host, Model: match.Model, Tier: string(match.Tier)}
+	}
+
+	for _, n := range all {
+		if heavy.Host == "" && n.Tier == config.TierHighEnd {
 			if h.aiClient.Ping(ctx, n.Host, "lmstudio") {
 				heavy = apps.NodeInfo{Name: n.Name, Host: n.Host, Model: n.Model, Tier: "high-end"}
 			}
 		}
-		if n.Tier == config.TierLowEnd && light.Host == "" {
+		if light.Host == "" && n.Tier == config.TierLowEnd {
 			if h.aiClient.Ping(ctx, n.Host, "lmstudio") {
 				light = apps.NodeInfo{Name: n.Name, Host: n.Host, Model: n.Model, Tier: "low-end"}
 			}

@@ -41,7 +41,6 @@ type App struct {
 	CreatedAt   time.Time     `json:"created_at"`
 	UpdatedAt   time.Time     `json:"updated_at"`
 	Builds      []BuildRecord `json:"builds,omitempty"`
-	DevMode     bool          `json:"dev_mode,omitempty"`
 }
 
 // AppConfig is the app.json format from generated projects.

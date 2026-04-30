@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -212,29 +213,48 @@ func (c *Client) ListModels(ctx context.Context, host string) ([]string, error) 
 	return models, nil
 }
 
-// LoadModel loads a model in LM Studio using the /v1/models/load endpoint.
-// Falls back to /lmstudio/v1/models/load if the first fails.
+// LoadModel loads a model in LM Studio. LM Studio's public REST API does
+// not expose an explicit load endpoint — instead, with JIT loading enabled
+// (the default) any request that names a model causes the server to load it.
+// We trigger a minimal chat-completion request and treat success (or any
+// 2xx/4xx response that isn't "model not found") as a load. A short,
+// generous timeout covers cold-load latency on large models.
 func (c *Client) LoadModel(ctx context.Context, host, model string) error {
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
-	payload, _ := json.Marshal(map[string]string{"model": model})
+	payload, _ := json.Marshal(map[string]any{
+		"model":      model,
+		"messages":   []map[string]string{{"role": "user", "content": "."}},
+		"max_tokens": 1,
+		"stream":     false,
+	})
 
-	// Try the lmstudio-specific endpoint first
-	for _, path := range []string{"/lmstudio/v1/models/load", "/v1/models/load"} {
+	// Try the LM Studio v0 path first (richer error reporting), then OpenAI-compat.
+	var lastErr error
+	for _, path := range []string{"/api/v0/chat/completions", "/v1/chat/completions"} {
 		req, err := http.NewRequestWithContext(ctx, "POST", host+path, bytes.NewReader(payload))
 		if err != nil {
+			lastErr = err
 			continue
 		}
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := c.http.Do(req)
 		if err != nil {
+			lastErr = err
 			continue
 		}
+		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			return nil
 		}
+		// Surface the host's own error message — usually "model not found"
+		// or "JIT loading is disabled".
+		lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	if lastErr != nil {
+		return fmt.Errorf("failed to load model %s on %s: %w", model, host, lastErr)
 	}
 	return fmt.Errorf("failed to load model %s on %s", model, host)
 }
@@ -297,6 +317,63 @@ type ModelInfo struct {
 	ID      string `json:"id"`
 	Object  string `json:"object"`
 	OwnedBy string `json:"owned_by"`
+}
+
+// ModelStatus describes a model's load state on an LM Studio host.
+type ModelStatus struct {
+	ID     string `json:"id"`
+	State  string `json:"state"` // "loaded" or "not-loaded"
+	Type   string `json:"type,omitempty"`
+	Loaded bool   `json:"loaded"`
+}
+
+// ListAllModels returns every model on the LM Studio host along with whether
+// it is currently loaded. Uses LM Studio's REST API at /api/v0/models which
+// includes a `state` field. Falls back to the OpenAI-compatible /v1/models
+// endpoint (which only lists loaded models) if /api/v0/models is unavailable.
+func (c *Client) ListAllModels(ctx context.Context, host string) ([]ModelStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", host+"/api/v0/models", nil)
+	if err == nil {
+		resp, err := c.http.Do(req)
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				var result struct {
+					Data []struct {
+						ID    string `json:"id"`
+						State string `json:"state"`
+						Type  string `json:"type"`
+					} `json:"data"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&result); err == nil {
+					out := make([]ModelStatus, 0, len(result.Data))
+					for _, m := range result.Data {
+						out = append(out, ModelStatus{
+							ID:     m.ID,
+							State:  m.State,
+							Type:   m.Type,
+							Loaded: m.State == "loaded",
+						})
+					}
+					return out, nil
+				}
+			}
+		}
+	}
+
+	// Fallback: /v1/models only lists loaded models.
+	loaded, err := c.ListModels(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ModelStatus, 0, len(loaded))
+	for _, id := range loaded {
+		out = append(out, ModelStatus{ID: id, State: "loaded", Loaded: true})
+	}
+	return out, nil
 }
 
 // ── Claude (Anthropic) ──────────────────────────────────

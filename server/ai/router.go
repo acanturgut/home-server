@@ -108,6 +108,24 @@ func (r *Router) Classify(ctx context.Context, userMessage string) RouteDecision
 		return RouteDecision{Route: "local", Tier: "local", Reason: "no external nodes available", ClassifierOutput: "skipped", ClassifierLatency: time.Since(start).String()}
 	}
 
+	// Classification is only useful when there is a real choice to make.
+	// With ≤ 2 nodes online, just pick the best available and skip the
+	// (latency-adding) classifier call entirely.
+	if len(highEnd)+len(lowEnd) <= 2 {
+		latency := time.Since(start).String()
+		d := r.pickBestAvailable(highEnd, lowEnd, "classifier skipped (≤2 nodes online)")
+		d.ClassifierOutput = "skipped"
+		d.ClassifierLatency = latency
+		logger.Log(logger.Entry{
+			Level:   "INFO",
+			Route:   d.Route,
+			Tier:    d.Tier,
+			Message: "classifier skipped: ≤2 nodes online",
+			Latency: latency,
+		})
+		return d
+	}
+
 	resp, err := r.client.CallOllama(ctx, r.cfg.OllamaHost, ChatRequest{
 		Model: r.cfg.RouterModel,
 		Messages: []Message{
@@ -283,14 +301,17 @@ func (r *Router) Chat(ctx context.Context, requestID string, messages []Message)
 	response.ClassifierLatency = decision.ClassifierLatency
 
 	logger.Log(logger.Entry{
-		Level:     "INFO",
-		RequestID: requestID,
-		Route:     decision.Route,
-		Tier:      decision.Tier,
-		Model:     response.Model,
-		Node:      decision.NodeName,
-		Message:   fmt.Sprintf("chat completed via %s (%s)", decision.NodeName, decision.Tier),
-		Latency:   latency,
+		Level:            "INFO",
+		RequestID:        requestID,
+		Route:            decision.Route,
+		Tier:             decision.Tier,
+		Model:            response.Model,
+		Node:             decision.NodeName,
+		Message:          fmt.Sprintf("chat completed via %s (%s)", decision.NodeName, decision.Tier),
+		Latency:          latency,
+		PromptTokens:     response.PromptTokens,
+		CompletionTokens: response.CompletionTokens,
+		TotalTokens:      response.TotalTokens,
 	})
 
 	return response, nil
@@ -438,9 +459,14 @@ func (r *Router) resolveRouteOverride(ctx context.Context, route string) (RouteD
 	if route == "" || strings.EqualFold(route, "auto") {
 		return RouteDecision{}, false
 	}
+	lc := strings.ToLower(route)
+	// "local" / "ollama" / "pi" → force the on-device ollama backend. Used
+	// by the chat panel's "Quick" mode for low-latency simple replies.
+	if lc == "local" || lc == "ollama" || lc == "pi" {
+		return RouteDecision{Route: "local", Tier: "local", Reason: "forced local ollama by user"}, true
+	}
 	highEnd := r.availableByTier(ctx, config.TierHighEnd)
 	lowEnd := r.availableByTier(ctx, config.TierLowEnd)
-	lc := strings.ToLower(route)
 	if lc == "heavy" || lc == "high" || lc == "high-end" {
 		if len(highEnd) > 0 {
 			n := highEnd[0]
@@ -493,13 +519,91 @@ func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Me
 	lastMsg := messages[len(messages)-1].Content
 
 	var decision RouteDecision
+	userForcedLocal := false
 	if d, ok := r.resolveRouteOverride(ctx, opts.Route); ok {
 		decision = d
+		if d.Route == "local" {
+			userForcedLocal = true
+		}
 		emit(StreamEvent{Step: "classifying", Message: "Using user-selected route…"})
 	} else {
-		// Step 1: Classifying
-		emit(StreamEvent{Step: "classifying", Message: "Analyzing your request with gemma3:1b..."})
+		// Only emit the "classifying" step when an actual classifier call
+		// will be made. Classify() short-circuits when ≤2 nodes are online
+		// (sets ClassifierOutput="skipped"), so don't show a misleading
+		// "Analyzing your request..." flash in those cases.
+		highEnd := r.availableByTier(ctx, config.TierHighEnd)
+		lowEnd := r.availableByTier(ctx, config.TierLowEnd)
+		willClassify := len(highEnd)+len(lowEnd) > 2
+		if willClassify {
+			emit(StreamEvent{Step: "classifying", Message: "Analyzing your request with gemma3:1b..."})
+		}
 		decision = r.Classify(ctx, lastMsg)
+	}
+
+	// Route == "local" can mean two things:
+	//   1) User explicitly forced Quick mode → run on the on-device ollama.
+	//   2) Classifier had no external nodes → return friendly error.
+	if decision.Route == "local" && userForcedLocal {
+		emit(StreamEvent{
+			Step:   "classified",
+			Node:   "ollama (on-device)",
+			Tier:   "local",
+			Reason: decision.Reason,
+		})
+
+		// Quick mode: bare system prompt, skip web search & tools.
+		withSystem := append([]Message{{Role: "system", Content: chatSystemPrompt()}}, messages...)
+
+		emit(StreamEvent{Step: "generating", Node: "ollama (on-device)", Tier: "local"})
+
+		start := time.Now()
+		resp, err := r.client.CallOllama(ctx, r.cfg.OllamaHost, ChatRequest{
+			Model:       r.cfg.RouterModel,
+			Messages:    withSystem,
+			Temperature: opts.Temperature,
+		})
+		latency := time.Since(start).String()
+
+		if err != nil {
+			logger.Log(logger.Entry{
+				Level:     "ERROR",
+				RequestID: requestID,
+				Route:     "local",
+				Tier:      "local",
+				Message:   fmt.Sprintf("quick chat (ollama) failed: %v", err),
+				Latency:   latency,
+			})
+			emit(StreamEvent{
+				Step:    "error",
+				Message: fmt.Sprintf("On-device ollama failed: %v", err),
+				Node:    "ollama (on-device)",
+				Tier:    "local",
+			})
+			return
+		}
+
+		logger.Log(logger.Entry{
+			Level:     "INFO",
+			RequestID: requestID,
+			Route:     "local",
+			Tier:      "local",
+			Model:     resp.Model,
+			Node:      "ollama (on-device)",
+			Message:   "quick chat completed via on-device ollama",
+			Latency:   latency,
+		})
+
+		emit(StreamEvent{
+			Step:    "done",
+			Content: resp.Message.Content,
+			Model:   resp.Model,
+			Node:    "ollama (on-device)",
+			Tier:    "local",
+			Route:   "local",
+			Reason:  decision.Reason,
+			Latency: latency,
+		})
+		return
 	}
 
 	// No nodes available
@@ -560,14 +664,17 @@ func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Me
 	}
 
 	logger.Log(logger.Entry{
-		Level:     "INFO",
-		RequestID: requestID,
-		Route:     decision.Route,
-		Tier:      decision.Tier,
-		Model:     response.Model,
-		Node:      decision.NodeName,
-		Message:   fmt.Sprintf("chat completed via %s (%s)", decision.NodeName, decision.Tier),
-		Latency:   latency,
+		Level:            "INFO",
+		RequestID:        requestID,
+		Route:            decision.Route,
+		Tier:             decision.Tier,
+		Model:            response.Model,
+		Node:             decision.NodeName,
+		Message:          fmt.Sprintf("chat completed via %s (%s)", decision.NodeName, decision.Tier),
+		Latency:          latency,
+		PromptTokens:     response.PromptTokens,
+		CompletionTokens: response.CompletionTokens,
+		TotalTokens:      response.TotalTokens,
 	})
 
 	// Step 4: Done
@@ -655,4 +762,13 @@ func (r *Router) GetNodeModelInfo(ctx context.Context, nodeID string) ([]ModelIn
 		return nil, fmt.Errorf("node %s not found", nodeID)
 	}
 	return r.client.GetModelInfo(ctx, node.Host)
+}
+
+// ListAllNodeModels returns every model on the node with its load state.
+func (r *Router) ListAllNodeModels(ctx context.Context, nodeID string) ([]ModelStatus, error) {
+	node, ok := r.nodes.Get(nodeID)
+	if !ok {
+		return nil, fmt.Errorf("node %s not found", nodeID)
+	}
+	return r.client.ListAllModels(ctx, node.Host)
 }

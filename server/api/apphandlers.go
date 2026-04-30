@@ -253,6 +253,21 @@ func (h *Handler) ResetSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.settings.Get())
 }
 
+// GET /api/apps/{name}/events — return the buffered build/rebuild/fix events
+// for an app so the wizard can re-attach after a tab switch / page refresh.
+// Response: {"active": bool, "events": [PipelineEvent...]}.
+func (h *Handler) AppEvents(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "name required"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"active": h.pipeline.IsActive(name),
+		"events": h.pipeline.Events(name),
+	})
+}
+
 // POST /api/apps/clarify — generate AI clarifying questions for a build prompt.
 // Request:  {"prompt": "..."}
 // Response: {"summary": "...", "questions": [{id, question, hint, suggestions, required}]}
@@ -269,7 +284,9 @@ func (h *Handler) ClarifyApp(w http.ResponseWriter, r *http.Request) {
 	system := strings.ReplaceAll(tmpl, "{{prompt}}", req.Prompt)
 	userMsg := "Generate the clarifying questions now. Output JSON only."
 
-	ctx, cancel := contextWithTimeout(r.Context(), 60)
+	// 4 minutes — LM Studio cold-load + 6–9 typed JSON questions easily exceeds
+	// 60s on slower workers. The wizard streams a spinner so it's fine to wait.
+	ctx, cancel := contextWithTimeout(r.Context(), 240)
 	defer cancel()
 
 	raw, err := h.runClarifyLLM(ctx, system, userMsg)
@@ -291,6 +308,127 @@ func (h *Handler) ClarifyApp(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, parsed)
 }
 
+// POST /api/apps/refine — rewrite a raw user prompt into a clearer app brief.
+// Request:  {"prompt": "..."}
+// Response: {"refined": "...", "summary": "..."}
+func (h *Handler) RefinePrompt(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Prompt string `json:"prompt"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16384)).Decode(&req); err != nil || strings.TrimSpace(req.Prompt) == "" {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "prompt required"})
+		return
+	}
+
+	tmpl := h.prompts.Get().Refine
+	if strings.TrimSpace(tmpl) == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"refined": req.Prompt, "summary": ""})
+		return
+	}
+	system := strings.ReplaceAll(tmpl, "{{prompt}}", req.Prompt)
+	userMsg := "Rewrite the prompt now. Output JSON only."
+
+	// 4 minutes — same reasoning as ClarifyApp; cold-load can swallow most of
+	// the budget before the first token is emitted.
+	ctx, cancel := contextWithTimeout(r.Context(), 240)
+	defer cancel()
+
+	raw, err := h.runClarifyLLM(ctx, system, userMsg)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, errorResp{Error: "refine failed: " + err.Error()})
+		return
+	}
+	parsed, perr := parseClarifyJSON(raw)
+	if perr != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"refined":   strings.TrimSpace(req.Prompt),
+			"summary":   "",
+			"raw":       raw,
+			"parse_err": perr.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, parsed)
+}
+
+// POST /api/apps/plan — break a project brief into ordered, shippable chunks.
+// Request:  {"prompt": "..."}
+// Response: {"summary": "...", "chunks": [{title, description, files?}]}
+func (h *Handler) PlanApp(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Prompt string `json:"prompt"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16384)).Decode(&req); err != nil || strings.TrimSpace(req.Prompt) == "" {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "prompt required"})
+		return
+	}
+	tmpl := h.prompts.Get().Plan
+	if strings.TrimSpace(tmpl) == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"summary": "", "chunks": []any{}})
+		return
+	}
+	system := strings.ReplaceAll(tmpl, "{{prompt}}", req.Prompt)
+	userMsg := "Generate the project plan now. Output JSON only."
+
+	ctx, cancel := contextWithTimeout(r.Context(), 240)
+	defer cancel()
+
+	raw, err := h.runClarifyLLM(ctx, system, userMsg)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, errorResp{Error: "plan failed: " + err.Error()})
+		return
+	}
+	parsed, perr := parseClarifyJSON(raw)
+	if perr != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"summary":   "",
+			"chunks":    []any{},
+			"raw":       raw,
+			"parse_err": perr.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, parsed)
+}
+
+// POST /api/apps/architect — produce a high-level architecture sketch
+// (stack, models, endpoints, components, notes) for a brief.
+func (h *Handler) ArchitectApp(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Prompt string `json:"prompt"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16384)).Decode(&req); err != nil || strings.TrimSpace(req.Prompt) == "" {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "prompt required"})
+		return
+	}
+	tmpl := h.prompts.Get().Architect
+	if strings.TrimSpace(tmpl) == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"summary": "", "stack": "", "models": []any{}, "endpoints": []any{}, "components": []any{}, "notes": ""})
+		return
+	}
+	system := strings.ReplaceAll(tmpl, "{{prompt}}", req.Prompt)
+	userMsg := "Generate the architecture now. Output JSON only."
+
+	ctx, cancel := contextWithTimeout(r.Context(), 240)
+	defer cancel()
+
+	raw, err := h.runClarifyLLM(ctx, system, userMsg)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, errorResp{Error: "architect failed: " + err.Error()})
+		return
+	}
+	parsed, perr := parseClarifyJSON(raw)
+	if perr != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"summary":   "",
+			"raw":       raw,
+			"parse_err": perr.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, parsed)
+}
+
 // runClarifyLLM uses the heavy LM Studio worker node to produce the JSON
 // response for the clarify wizard.
 func (h *Handler) runClarifyLLM(ctx context.Context, system, user string) (string, error) {
@@ -302,8 +440,18 @@ func (h *Handler) runClarifyLLM(ctx context.Context, system, user string) (strin
 	if host == "" {
 		return "", fmt.Errorf("no LM Studio host available")
 	}
+	model := heavy.Model
+	if strings.TrimSpace(model) == "" {
+		// Node config doesn't pin a model — discover whatever is loaded so
+		// LM Studio doesn't 400 with "Multiple models are loaded …".
+		discovered, derr := apps.DiscoverModel(host)
+		if derr != nil {
+			return "", fmt.Errorf("no model available on %s: %v", host, derr)
+		}
+		model = discovered
+	}
 	resp, err := h.aiClient.CallLMStudio(ctx, host, ai.ChatRequest{
-		Model: heavy.Model,
+		Model: model,
 		Messages: []ai.Message{
 			{Role: "system", Content: system},
 			{Role: "user", Content: user},
@@ -319,10 +467,35 @@ func (h *Handler) runClarifyLLM(ctx context.Context, system, user string) (strin
 }
 
 // parseClarifyJSON extracts the JSON object from the LLM response (tolerates
-// stray prose or ```json fences).
+// stray prose, ```json fences, and reasoning-model <think>...</think> blocks).
 func parseClarifyJSON(raw string) (map[string]any, error) {
 	s := strings.TrimSpace(raw)
-	// Strip code fences
+
+	// Strip <think>...</think> blocks emitted by reasoning models (Qwen3-thinking,
+	// DeepSeek-R1, etc.). Some models forget to close the tag — drop everything
+	// up to the closing tag if it exists, otherwise drop everything up to the
+	// first `{` later.
+	for {
+		open := strings.Index(s, "<think>")
+		if open < 0 {
+			break
+		}
+		close := strings.Index(s[open:], "</think>")
+		if close < 0 {
+			s = s[:open]
+			break
+		}
+		s = s[:open] + s[open+close+len("</think>"):]
+	}
+	// Some models stream the chain-of-thought as plain text and only emit a
+	// closing </think> before the real answer. Drop everything up to and
+	// including the first stray closing tag.
+	if idx := strings.Index(s, "</think>"); idx >= 0 {
+		s = s[idx+len("</think>"):]
+	}
+	s = strings.TrimSpace(s)
+
+	// Strip code fences ```json ... ```
 	if strings.HasPrefix(s, "```") {
 		if i := strings.Index(s, "\n"); i >= 0 {
 			s = s[i+1:]
@@ -332,18 +505,73 @@ func parseClarifyJSON(raw string) (map[string]any, error) {
 		}
 		s = strings.TrimSpace(s)
 	}
-	// Find first { and last }
-	start := strings.Index(s, "{")
-	end := strings.LastIndex(s, "}")
-	if start < 0 || end <= start {
+
+	// Find the first balanced top-level JSON object — handles models that emit
+	// prose before/after, or include a small example object inside their
+	// reasoning that should be skipped in favour of the final answer.
+	jsonStr := extractBalancedJSON(s)
+	if jsonStr == "" {
 		return nil, fmt.Errorf("no json object found")
 	}
-	s = s[start : end+1]
 	var out map[string]any
-	if err := json.Unmarshal([]byte(s), &out); err != nil {
+	if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 		return nil, err
 	}
+
+	// Some models nest the questions under a different key; normalize.
+	if _, ok := out["questions"]; !ok {
+		for _, k := range []string{"clarifying_questions", "clarifyingQuestions", "qs"} {
+			if v, ok := out[k]; ok {
+				out["questions"] = v
+				break
+			}
+		}
+	}
 	return out, nil
+}
+
+// extractBalancedJSON returns the largest balanced {…} substring in s, or
+// empty string if none found. Tracks string literals so braces inside strings
+// don't break the scan.
+func extractBalancedJSON(s string) string {
+	best := ""
+	for i := 0; i < len(s); i++ {
+		if s[i] != '{' {
+			continue
+		}
+		depth, inStr, esc := 0, false, false
+		for j := i; j < len(s); j++ {
+			c := s[j]
+			if esc {
+				esc = false
+				continue
+			}
+			if c == '\\' {
+				esc = true
+				continue
+			}
+			if c == '"' {
+				inStr = !inStr
+				continue
+			}
+			if inStr {
+				continue
+			}
+			if c == '{' {
+				depth++
+			} else if c == '}' {
+				depth--
+				if depth == 0 {
+					cand := s[i : j+1]
+					if len(cand) > len(best) {
+						best = cand
+					}
+					break
+				}
+			}
+		}
+	}
+	return best
 }
 
 func contextWithTimeout(parent context.Context, seconds int) (context.Context, context.CancelFunc) {

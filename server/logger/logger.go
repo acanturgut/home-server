@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,15 +11,18 @@ import (
 )
 
 type Entry struct {
-	Timestamp string `json:"timestamp"`
-	Level     string `json:"level"`
-	RequestID string `json:"request_id,omitempty"`
-	Route     string `json:"route,omitempty"`
-	Model     string `json:"model,omitempty"`
-	Node      string `json:"node,omitempty"`
-	Tier      string `json:"tier,omitempty"`
-	Latency   string `json:"latency,omitempty"`
-	Message   string `json:"message"`
+	Timestamp        string `json:"timestamp"`
+	Level            string `json:"level"`
+	RequestID        string `json:"request_id,omitempty"`
+	Route            string `json:"route,omitempty"`
+	Model            string `json:"model,omitempty"`
+	Node             string `json:"node,omitempty"`
+	Tier             string `json:"tier,omitempty"`
+	Latency          string `json:"latency,omitempty"`
+	PromptTokens     int    `json:"prompt_tokens,omitempty"`
+	CompletionTokens int    `json:"completion_tokens,omitempty"`
+	TotalTokens      int    `json:"total_tokens,omitempty"`
+	Message          string `json:"message"`
 }
 
 type Logger struct {
@@ -29,14 +33,37 @@ type Logger struct {
 
 var instance *Logger
 
+// maxBuffered caps the in-memory ring buffer used by /api/logs. The on-disk
+// JSONL file is the source of truth; this just bounds RAM/response size.
+const maxBuffered = 10000
+
 func Init(logDir string) error {
 	os.MkdirAll(logDir, 0755)
 	path := filepath.Join(logDir, time.Now().Format("2006-01-02")+".jsonl")
+	// Hydrate today's entries from disk so the dashboard's "AI Activity"
+	// (token usage, latency timeline, model leaderboard, errors) survives a
+	// container restart / redeploy. Without this, every redeploy wipes the
+	// in-memory buffer and the panels go empty until new traffic flows.
+	var preloaded []Entry
+	if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
+		for _, line := range bytes.Split(data, []byte("\n")) {
+			if len(line) == 0 {
+				continue
+			}
+			var e Entry
+			if json.Unmarshal(line, &e) == nil {
+				preloaded = append(preloaded, e)
+			}
+		}
+		if len(preloaded) > maxBuffered {
+			preloaded = preloaded[len(preloaded)-maxBuffered:]
+		}
+	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
-	instance = &Logger{file: f}
+	instance = &Logger{file: f, entries: preloaded}
 	return nil
 }
 
@@ -50,7 +77,7 @@ func Log(e Entry) {
 	defer instance.mu.Unlock()
 
 	instance.entries = append(instance.entries, e)
-	if len(instance.entries) > 10000 {
+	if len(instance.entries) > maxBuffered {
 		instance.entries = instance.entries[1:]
 	}
 

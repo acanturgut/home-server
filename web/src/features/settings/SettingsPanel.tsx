@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Activity,
   Blocks,
@@ -13,7 +13,8 @@ import { API_BASE } from '@/lib/api';
 import { formatUptime } from '@/lib/format';
 import { ENDPOINTS } from '@/lib/endpoints';
 import { EndpointCard } from '@/features/settings/components/EndpointCard';
-import { HomeKitPanel } from '@/features/homekit';
+import { SmartHomeSettings } from '@/features/home';
+import { NetworkPanel } from '@/features/network';
 import {
   SettingsCard,
   SkeletonRows,
@@ -24,29 +25,82 @@ import {
 import { PromptsEditor } from '@/features/settings/components/PromptsEditor';
 import { NodeFormInline } from '@/features/settings/components/NodeFormInline';
 import { useSettings } from '@/features/settings/hooks/useSettings';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 /* ── Settings Panel (Config + Node CRUD) ── */
 export function SettingsPanel() {
   const [tab, setTab] = useState<
-    'general' | 'nodes' | 'homekit' | 'api' | 'prompts'
+    'general' | 'nodes' | 'home' | 'network' | 'api' | 'prompts'
   >('general');
 
+  // Allow other panels (e.g. dashboard "Manage" button) to deep-link a tab.
+  useEffect(() => {
+    const onSetTab = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { tab?: string } | undefined;
+      if (
+        detail?.tab === 'general' ||
+        detail?.tab === 'nodes' ||
+        detail?.tab === 'home' ||
+        detail?.tab === 'network' ||
+        detail?.tab === 'api' ||
+        detail?.tab === 'prompts'
+      ) {
+        setTab(detail.tab);
+      }
+    };
+    window.addEventListener('settings:set-tab', onSetTab as EventListener);
+    return () =>
+      window.removeEventListener('settings:set-tab', onSetTab as EventListener);
+  }, []);
+
   const {
-    sysCfg, routerModel, setRouterModel, ollamaHost, ollamaOnline,
-    saving, loading, loadError, refresh, saveConfig,
-    settings, settingsDirty, settingsSaving, settingsLoading,
-    updateSetting, saveSettings, resetSettings, refreshSettings,
-    prompts, promptsDirty, promptsSaving,
-    refreshPrompts, savePrompts, resetPrompts, updatePrompt,
-    nodes, editId, setEditId, showAdd, setShowAdd, form, setForm, models,
-    startEdit, saveNode, removeNode, addNode, wakeNode,
+    sysCfg,
+    routerModel,
+    setRouterModel,
+    ollamaHost,
+    ollamaOnline,
+    saving,
+    loading,
+    loadError,
+    refresh,
+    saveConfig,
+    settings,
+    settingsDirty,
+    settingsSaving,
+    settingsLoading,
+    updateSetting,
+    saveSettings,
+    resetSettings,
+    refreshSettings,
+    prompts,
+    promptsDirty,
+    promptsSaving,
+    refreshPrompts,
+    savePrompts,
+    resetPrompts,
+    updatePrompt,
+    nodes,
+    editId,
+    setEditId,
+    showAdd,
+    setShowAdd,
+    form,
+    setForm,
+    models,
+    startEdit,
+    saveNode,
+    removeNode,
+    addNode,
+    wakeNode,
   } = useSettings();
 
   const tabs = [
     { id: 'general' as const, label: 'General' },
     { id: 'nodes' as const, label: `Nodes (${nodes.length})` },
     { id: 'prompts' as const, label: 'Prompts' },
-    { id: 'homekit' as const, label: 'HomeKit' },
+    { id: 'home' as const, label: 'Smart Home' },
+    { id: 'network' as const, label: 'Network' },
     { id: 'api' as const, label: 'API' },
   ];
 
@@ -158,18 +212,20 @@ export function SettingsPanel() {
                     Router Model (Ollama classifier)
                   </label>
                   <div className="flex gap-2">
-                    <input
+                    <Input
+                      inputSize="sm"
                       value={routerModel}
                       onChange={(e) => setRouterModel(e.target.value)}
                       placeholder="gemma3:1b"
-                      className="h-7 text-xs flex-1 rounded-md border border-border/30 bg-transparent px-2 focus:outline-none focus:ring-1 focus:ring-ring/30"
+                      className="flex-1"
                     />
-                    <button
+                    <Button
+                      size="sm"
+                      variant="secondary"
                       onClick={saveConfig}
-                      disabled={saving}
-                      className="h-7 px-3 rounded-md text-[11px] font-medium bg-foreground/10 hover:bg-foreground/15 disabled:opacity-50 transition-colors">
+                      disabled={saving}>
                       {saving ? '...' : 'Save'}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </>
@@ -429,8 +485,9 @@ export function SettingsPanel() {
         </div>
       )}
 
-      {/* ── HomeKit Tab ── */}
-      {tab === 'homekit' && <HomeKitPanel />}
+      {/* ── Smart Home Tab (HomeKit + bridges) ── */}
+      {tab === 'home' && <SmartHomeSettings />}
+      {tab === 'network' && <NetworkPanel />}
 
       {/* ── Prompts Tab ── */}
       {tab === 'prompts' && (
@@ -447,9 +504,32 @@ export function SettingsPanel() {
 
       {/* ── API Tab ── */}
       {tab === 'api' && (
-        <div className="space-y-3">
-          {ENDPOINTS.map((ep) => (
-            <EndpointCard key={`${ep.method}-${ep.path}`} ep={ep} />
+        <div className="space-y-6">
+          {Array.from(
+            ENDPOINTS.reduce((acc, ep) => {
+              const key = ep.group ?? 'Other';
+              const list = acc.get(key) ?? [];
+              list.push(ep);
+              acc.set(key, list);
+              return acc;
+            }, new Map<string, typeof ENDPOINTS>()).entries(),
+          ).map(([group, eps]) => (
+            <section key={group} className="space-y-3">
+              <div className="flex items-center gap-2 px-1">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {group}
+                </h3>
+                <span className="text-xs text-muted-foreground/60">
+                  {eps.length}
+                </span>
+                <div className="ml-2 h-px flex-1 bg-border/40" />
+              </div>
+              <div className="space-y-3">
+                {eps.map((ep) => (
+                  <EndpointCard key={`${ep.method}-${ep.path}`} ep={ep} />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}

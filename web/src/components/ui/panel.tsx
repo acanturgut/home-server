@@ -1,7 +1,10 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-export interface PanelProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
+export interface PanelProps extends Omit<
+  HTMLAttributes<HTMLDivElement>,
+  'title'
+> {
   /** Optional header title. Hidden when omitted. */
   title?: ReactNode;
   /** Optional toolbar rendered at the right of the header. */
@@ -49,9 +52,7 @@ export function Panel({
           ) : (
             <span />
           )}
-          {toolbar && (
-            <div className="flex items-center gap-1">{toolbar}</div>
-          )}
+          {toolbar && <div className="flex items-center gap-1">{toolbar}</div>}
         </div>
       )}
       <div className={cn(PADDING[padding], showHeader && 'space-y-2')}>

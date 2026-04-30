@@ -1,5 +1,29 @@
 import { Button } from '@/components/ui/button';
-import { Archive, Blocks, ChevronDown, ChevronRight, Clock, Copy, Cpu, Download, GitBranch, Globe, Mic, Pencil, Pin, Plus, RefreshCw, Search, Send, Square, Star, Trash2, Volume2, X } from 'lucide-react';
+import {
+  Archive,
+  Blocks,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Copy,
+  Cpu,
+  Download,
+  GitBranch,
+  Globe,
+  Mic,
+  Pencil,
+  Pin,
+  Plus,
+  RefreshCw,
+  Search,
+  Send,
+  Square,
+  Star,
+  Trash2,
+  Volume2,
+  X,
+  Zap,
+} from 'lucide-react';
 import { copyToClipboard, gotoPage, relTime } from '@/lib/format';
 import { speak, stopSpeaking } from '@/lib/voice';
 import { SLASH_COMMANDS } from '@/lib/slash';
@@ -49,6 +73,7 @@ export function ChatPanel() {
     pendingModel,
     persistPersonas,
     personas,
+    quickMode,
     regenerate,
     regenerateOnRoute,
     resumeBanner,
@@ -67,6 +92,7 @@ export function ChatPanel() {
     setEditingText,
     setInput,
     setPendingModel,
+    setQuickMode,
     setResumeBanner,
     setSchedulesOpen,
     setSearchOpen,
@@ -96,7 +122,7 @@ export function ChatPanel() {
   } = useChatPanel();
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] -m-6 -mt-0 relative">
+    <div className="flex h-full relative">
       <input
         ref={fileInputRef}
         type="file"
@@ -105,9 +131,15 @@ export function ChatPanel() {
         onChange={(e) => onFiles(e.target.files)}
       />
 
-      {/* Sessions sidebar */}
+      {/* Sessions sidebar — inline ≥sm, overlay drawer on mobile */}
+      {sideOpen && (
+        <div
+          className="sm:hidden fixed inset-0 z-30 bg-black/50"
+          onClick={() => setSideOpen(false)}
+        />
+      )}
       <div
-        className={`${sideOpen ? 'w-60' : 'w-0'} transition-all overflow-hidden border-r border-border/10 bg-background/40 shrink-0 flex flex-col`}>
+        className={`${sideOpen ? 'w-60 translate-x-0' : 'w-0 -translate-x-full sm:translate-x-0'} fixed sm:relative inset-y-0 left-0 z-40 sm:z-auto transition-all overflow-hidden border-r border-border/10 bg-background sm:bg-background/40 shrink-0 flex flex-col`}>
         <div className="flex flex-col h-full">
           {/* Header */}
           <div className="px-3 pt-2.5 pb-1.5 flex items-center justify-between">
@@ -123,7 +155,7 @@ export function ChatPanel() {
           <div className="px-2.5 pb-2">
             <button
               onClick={() => newSession()}
-              className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-violet-300 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 rounded transition-colors">
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-primary bg-primary/10 hover:bg-primary/15 border border-primary/20 rounded transition-colors">
               <Plus size={11} /> New Chat
             </button>
           </div>
@@ -385,6 +417,7 @@ export function ChatPanel() {
                 }
                 className="bg-black/30 border border-white/10 rounded px-1 py-0.5 text-foreground/80">
                 <option value="auto">auto</option>
+                <option value="local">local (ollama)</option>
                 <option value="light">light</option>
                 <option value="heavy">heavy</option>
                 {nodesList.map((n) => (
@@ -784,7 +817,7 @@ export function ChatPanel() {
             )}
 
             {/* Per-turn model override pill */}
-            {pendingModel && (
+            {pendingModel && !quickMode && (
               <div className="flex items-center gap-1 text-[10px]">
                 <span className="text-muted-foreground/60">Next turn →</span>
                 <span className="px-2 py-0.5 rounded bg-violet-500/15 border border-violet-400/30 text-violet-200">
@@ -792,6 +825,20 @@ export function ChatPanel() {
                 </span>
                 <button
                   onClick={() => setPendingModel('')}
+                  className="text-muted-foreground/60 hover:text-foreground">
+                  <X size={10} />
+                </button>
+              </div>
+            )}
+
+            {/* Quick-mode pill */}
+            {quickMode && (
+              <div className="flex items-center gap-1 text-[10px]">
+                <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-400/30 text-amber-200 flex items-center gap-1">
+                  <Zap size={9} /> Quick: on (on-device ollama, simple chat)
+                </span>
+                <button
+                  onClick={() => setQuickMode(false)}
                   className="text-muted-foreground/60 hover:text-foreground">
                   <X size={10} />
                 </button>
@@ -865,17 +912,31 @@ export function ChatPanel() {
                       ? 'Web search: ON for next message'
                       : 'Enable web search for next message'
                   }
-                  disabled={loading}
+                  disabled={loading || quickMode}
                   className={`flex items-center gap-1 px-2 py-1.5 rounded text-[11px] hover:bg-white/5 disabled:opacity-30 transition-colors ${webEnabled ? 'text-sky-300 bg-sky-500/10 border border-sky-500/30' : 'text-muted-foreground/60 hover:text-foreground border border-transparent'}`}>
                   <Globe size={12} />
                   <span>Web</span>
+                </button>
+                <button
+                  onClick={() => setQuickMode(!quickMode)}
+                  title={
+                    quickMode
+                      ? 'Quick mode: ON — using on-device ollama, no tools/web'
+                      : 'Quick mode — fast, simple replies on the on-device ollama (no tools, no web)'
+                  }
+                  disabled={loading}
+                  className={`flex items-center gap-1 px-2 py-1.5 rounded text-[11px] hover:bg-white/5 disabled:opacity-30 transition-colors ${quickMode ? 'text-amber-300 bg-amber-500/10 border border-amber-500/30' : 'text-muted-foreground/60 hover:text-foreground border border-transparent'}`}>
+                  <Zap size={12} />
+                  <span>Quick</span>
                 </button>
                 <select
                   value={pendingModel}
                   onChange={(e) => setPendingModel(e.target.value)}
                   title="Override route for next turn"
-                  className="text-[10px] bg-black/30 border border-border/30 rounded px-1.5 py-1 text-muted-foreground/70 focus:outline-none focus:text-foreground">
+                  disabled={quickMode}
+                  className="text-[10px] bg-black/30 border border-border/30 rounded px-1.5 py-1 text-muted-foreground/70 focus:outline-none focus:text-foreground disabled:opacity-30">
                   <option value="">auto</option>
+                  <option value="local">local (ollama)</option>
                   <option value="light">light</option>
                   <option value="heavy">heavy</option>
                   {nodesList.map((n) => (
@@ -1029,4 +1090,3 @@ export function ChatPanel() {
 }
 
 /* ── Settings Panel (Config + Node CRUD) ── */
-

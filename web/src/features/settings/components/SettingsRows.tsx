@@ -1,4 +1,6 @@
 import React from 'react';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 
 /** Card container used by the Settings page panels. */
 export function SettingsCard({
@@ -90,30 +92,23 @@ export function ToggleRow({
   disabled?: boolean;
 }) {
   return (
-    <div className={`flex items-start gap-3 ${disabled ? 'opacity-40' : ''}`}>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={value}
-        disabled={disabled}
-        onClick={() => onChange(!value)}
-        className={`mt-0.5 relative w-8 h-4 rounded-full transition-colors shrink-0 ${
-          value ? 'bg-emerald-500/50' : 'bg-white/10'
-        } disabled:cursor-not-allowed`}>
-        <span
-          className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
-            value ? 'translate-x-4' : 'translate-x-0.5'
-          }`}
-        />
-      </button>
+    <div
+      className={`flex items-start gap-3 py-1 ${disabled ? 'opacity-40' : ''}`}>
       <div className="flex-1 min-w-0">
-        <div className="text-[11px] text-foreground/80">{label}</div>
+        <div className="text-[11px] text-foreground/85">{label}</div>
         {hint && (
-          <div className="text-[10px] text-muted-foreground/50 mt-0.5">
+          <div className="text-[10px] text-muted-foreground/55 mt-0.5 leading-snug">
             {hint}
           </div>
         )}
       </div>
+      <Switch
+        size="sm"
+        checked={value}
+        disabled={disabled}
+        onCheckedChange={(v) => onChange(v)}
+        className="mt-0.5"
+      />
     </div>
   );
 }
@@ -139,17 +134,18 @@ export function NumberRow({
   suffix?: string;
 }) {
   return (
-    <div className="flex items-start gap-3">
+    <div className="flex items-start gap-3 py-1">
       <div className="flex-1 min-w-0">
-        <div className="text-[11px] text-foreground/80">{label}</div>
+        <div className="text-[11px] text-foreground/85">{label}</div>
         {hint && (
-          <div className="text-[10px] text-muted-foreground/50 mt-0.5">
+          <div className="text-[10px] text-muted-foreground/55 mt-0.5 leading-snug">
             {hint}
           </div>
         )}
       </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <input
+      <div className="flex items-center gap-1.5 shrink-0">
+        <Input
+          inputSize="sm"
           type="number"
           value={value}
           step={step}
@@ -159,10 +155,12 @@ export function NumberRow({
             const n = Number(e.target.value);
             if (!Number.isNaN(n)) onChange(n);
           }}
-          className="w-16 h-7 text-[11px] tabular-nums text-right rounded-md border border-border/30 bg-transparent px-2 focus:outline-none focus:ring-1 focus:ring-ring/30"
+          className="w-20 tabular-nums text-right"
         />
         {suffix && (
-          <span className="text-[10px] text-muted-foreground/50">{suffix}</span>
+          <span className="text-[10px] text-muted-foreground/55 w-12">
+            {suffix}
+          </span>
         )}
       </div>
     </div>

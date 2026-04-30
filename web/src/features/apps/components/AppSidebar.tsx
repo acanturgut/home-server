@@ -90,7 +90,7 @@ export function AppSidebar({
             openClarify();
           }}
           disabled={building}
-          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-violet-300 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 rounded transition-colors disabled:opacity-30">
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-primary bg-primary/10 hover:bg-primary/15 border border-primary/20 rounded transition-colors disabled:opacity-30">
           <Sparkles size={11} className={building ? 'animate-pulse' : ''} />
           {building ? 'Building…' : 'New App'}
         </button>
@@ -127,7 +127,7 @@ export function AppSidebar({
           <div className="px-3 py-6 text-center">
             <p className="text-[10px] text-muted-foreground/30">
               No apps yet — click{' '}
-              <span className="text-violet-300/70">New App</span> to begin.
+              <span className="text-primary/70">New App</span> to begin.
             </p>
           </div>
         ) : filtered.length === 0 ? (

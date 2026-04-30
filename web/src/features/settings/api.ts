@@ -26,8 +26,7 @@ export interface HealthDTO {
 /** Settings page HTTP calls. */
 export const settingsApi = {
   // prompts
-  getPrompts: () =>
-    apiJsonSafe<Record<string, string>>('/api/prompts'),
+  getPrompts: () => apiJsonSafe<Record<string, string>>('/api/prompts'),
   putPrompts: (prompts: Record<string, string>) =>
     apiJson<Record<string, string>>('/api/prompts', {
       method: 'PUT',
@@ -58,6 +57,10 @@ export const settingsApi = {
   // nodes
   getNodeModels: (id: string) =>
     apiJsonSafe<{ models?: string[] }>(`/api/nodes/${id}/models`),
+  getNodeModelsStatus: (id: string) =>
+    apiJsonSafe<{
+      models?: { id: string; state: string; type?: string; loaded: boolean }[];
+    }>(`/api/nodes/${id}/models/status`),
   loadNodeModel: (nodeId: string, model: string) =>
     apiJson<unknown>(`/api/nodes/${nodeId}/models/load`, {
       method: 'POST',
@@ -76,4 +79,6 @@ export const settingsApi = {
     apiFetch('/api/nodes', { method: 'POST', body: JSON.stringify(body) }),
   wakeNode: (id: string) =>
     apiFetch(`/api/nodes/${id}/wake`, { method: 'POST' }),
+  shutdownNode: (id: string) =>
+    apiFetch(`/api/nodes/${id}/shutdown`, { method: 'POST' }),
 };

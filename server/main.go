@@ -13,8 +13,10 @@ import (
 	"github.com/acanturgut/home-server/api"
 	"github.com/acanturgut/home-server/apps"
 	"github.com/acanturgut/home-server/config"
+	"github.com/acanturgut/home-server/homedevices"
 	"github.com/acanturgut/home-server/homekit"
 	"github.com/acanturgut/home-server/logger"
+	"github.com/acanturgut/home-server/network"
 	"github.com/acanturgut/home-server/nodestate"
 )
 
@@ -45,6 +47,17 @@ func main() {
 	pipeline := apps.NewPipeline(appStore, promptStore, settingsStore)
 	handler := api.NewHandler(router, cfg, nodes, ns, appStore, pipeline, aiClient, promptStore, settingsStore, version)
 	handler.StartSysCollector(5*time.Second, 60) // 5min of 5s samples
+
+	// Smart-home device manager (Hue, Dirigera, webOS, HTTP). Bridges are
+	// configured via the web UI; without any registered bridges this is a
+	// no-op poll loop.
+	hdStore := homedevices.NewStore(cfg.DataDir)
+	hdManager := homedevices.NewManager(hdStore)
+	handler.SetHomeDevices(hdManager)
+
+	// Network device override store (per-MAC custom names).
+	network.AttachStore(network.NewStore(cfg.DataDir))
+
 	mux := api.NewRouter(handler)
 
 	// Start HomeKit bridge
@@ -54,6 +67,9 @@ func main() {
 	// Start crash monitor — auto-fixes deployed apps when their container exits.
 	// Honours the AutoFixOnCrash runtime setting; polls every 30s.
 	pipeline.StartCrashMonitor(ctx, handler.CrashMonitorDeps(), 30*time.Second)
+
+	// Start home devices polling loop.
+	go hdManager.Run(ctx, 15*time.Second)
 
 	hkBridge, err := homekit.NewBridge(nodes, ns, cfg.DataDir, cfg.HomeKitPIN)
 	if err != nil {

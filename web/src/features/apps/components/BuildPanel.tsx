@@ -185,48 +185,89 @@ export function EventLog({
   expanded?: boolean;
 }) {
   const [openDetails, setOpenDetails] = useState<Set<number>>(new Set());
+  const t0 = events[0]?.timestamp
+    ? new Date(events[0].timestamp).getTime()
+    : null;
 
   return (
     <div className={`space-y-0 ${expanded ? '' : 'max-h-64 overflow-auto'}`}>
-      {events.map((ev, i) => (
-        <div key={i} className="group">
-          <div
-            className={`flex items-start gap-2 text-[11px] font-mono px-1 py-0.5 rounded hover:bg-muted/10 transition-colors ${ev.detail ? 'cursor-pointer' : ''}`}
-            onClick={() => {
-              if (!ev.detail) return;
-              setOpenDetails((prev) => {
-                const next = new Set(prev);
-                next.has(i) ? next.delete(i) : next.add(i);
-                return next;
-              });
-            }}>
-            <span className="text-muted-foreground/40 shrink-0 tabular-nums whitespace-nowrap">
-              {fmtTime(ev.timestamp)}
-            </span>
-            <span
-              className={`shrink-0 whitespace-nowrap ${STEP_COLORS[ev.step] || 'text-blue-400/60'}`}>
-              {STEP_LABELS[ev.step] || ev.step}
-            </span>
-            <span className="text-foreground/60 flex-1 break-words whitespace-pre-wrap">
-              {ev.message}
-            </span>
-            {ev.latency && (
-              <span className="text-muted-foreground/30 ml-auto shrink-0 tabular-nums">
-                {ev.latency}
+      {events.map((ev, i) => {
+        const dt =
+          t0 != null && ev.timestamp
+            ? new Date(ev.timestamp).getTime() - t0
+            : null;
+        return (
+          <div key={i} className="group">
+            <div
+              className={`flex items-start gap-2 text-[11px] font-mono px-1 py-0.5 rounded hover:bg-muted/10 transition-colors ${ev.detail ? 'cursor-pointer' : ''}`}
+              onClick={() => {
+                if (!ev.detail) return;
+                setOpenDetails((prev) => {
+                  const next = new Set(prev);
+                  next.has(i) ? next.delete(i) : next.add(i);
+                  return next;
+                });
+              }}>
+              <span className="text-muted-foreground/40 shrink-0 tabular-nums whitespace-nowrap">
+                {fmtTime(ev.timestamp)}
               </span>
+              {dt != null && i > 0 && (
+                <span
+                  className="text-muted-foreground/25 shrink-0 tabular-nums whitespace-nowrap"
+                  title="elapsed since first event">
+                  +{fmtDuration(dt)}
+                </span>
+              )}
+              <span
+                className={`shrink-0 whitespace-nowrap ${STEP_COLORS[ev.step] || 'text-blue-400/60'}`}>
+                {STEP_LABELS[ev.step] || ev.step}
+              </span>
+              <span className="text-foreground/60 flex-1 break-words whitespace-pre-wrap">
+                {ev.message}
+              </span>
+              {ev.latency && (
+                <span className="text-muted-foreground/30 ml-auto shrink-0 tabular-nums">
+                  {ev.latency}
+                </span>
+              )}
+            </div>
+            {ev.detail && openDetails.has(i) && (
+              <div className="ml-[60px] mr-2 mb-1 p-2 rounded bg-muted/20 border border-border/10">
+                <pre className="text-[10px] font-mono text-muted-foreground/60 whitespace-pre-wrap break-words max-h-48 overflow-auto">
+                  {ev.detail}
+                </pre>
+              </div>
             )}
           </div>
-          {ev.detail && openDetails.has(i) && (
-            <div className="ml-[60px] mr-2 mb-1 p-2 rounded bg-muted/20 border border-border/10">
-              <pre className="text-[10px] font-mono text-muted-foreground/60 whitespace-pre-wrap break-words max-h-48 overflow-auto">
-                {ev.detail}
-              </pre>
-            </div>
-          )}
+        );
+      })}
+      {events.length > 1 && t0 != null && (
+        <div className="px-1 pt-1 mt-1 border-t border-border/10 text-[10px] text-muted-foreground/40 tabular-nums flex items-center gap-2">
+          <span>{events.length} events</span>
+          <span>·</span>
+          <span>
+            total{' '}
+            {fmtDuration(
+              new Date(events[events.length - 1].timestamp || '').getTime() -
+                t0,
+            )}
+          </span>
         </div>
-      ))}
+      )}
     </div>
   );
+}
+
+/** Formats milliseconds compactly. */
+function fmtDuration(ms: number): string {
+  if (!isFinite(ms) || ms < 0) return '0s';
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 10) return `${s.toFixed(1)}s`;
+  if (s < 60) return `${Math.round(s)}s`;
+  const m = Math.floor(s / 60);
+  const r = Math.round(s - m * 60);
+  return `${m}m ${String(r).padStart(2, '0')}s`;
 }
 
 /** Per-task progress board: derives status from streamed `task` events. */

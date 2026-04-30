@@ -1,73 +1,97 @@
-# React + TypeScript + Vite
+# web — folder structure
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Bulletproof-React feature-folder layout. Each feature owns its panel,
+components, hooks, types, and `api.ts`. Cross-feature imports must go through
+the feature barrel (`@/features/<name>`); deep imports are blocked by ESLint.
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+src/
+├── main.tsx                  # entry: mounts <App />
+├── app/                      # composition root (shell, routing, global hooks)
+│   ├── App.tsx
+│   ├── PageLayout.tsx        # standard chrome (header + rails + dock)
+│   ├── Sidebar.tsx
+│   ├── StatusBar.tsx
+│   ├── LogsOverlay.tsx
+│   ├── api.ts                # global polling endpoints
+│   └── hooks/
+│       ├── useSystemStatus.ts
+│       └── useNavGoto.ts
+│
+├── features/                 # self-contained domains (one per page)
+│   ├── apps/                 # app builder / deploy / files / logs
+│   │   ├── AppsPanel.tsx
+│   │   ├── api.ts            # all /api/apps/* HTTP calls
+│   │   ├── index.ts          # public barrel (only export: AppsPanel)
+│   │   ├── components/       # AppSidebar, BuildPanel, BottomPanel,
+│   │   │                     # CodeEditor, DiffView, ClarifyWizard, …
+│   │   └── hooks/
+│   │       └── useAppsPanel.ts
+│   │
+│   ├── chat/                 # chat UI, streaming, schedules, personas
+│   │   ├── ChatPanel.tsx
+│   │   ├── api.ts
+│   │   ├── types.ts
+│   │   ├── index.ts
+│   │   ├── components/       # SchedulesModal, SearchPalette, PersonaQuickAdd
+│   │   └── hooks/
+│   │       └── useChatPanel.ts
+│   │
+│   ├── dashboard/            # system overview + node/app grids
+│   │   ├── DashboardPage.tsx
+│   │   ├── api.ts
+│   │   ├── index.ts
+│   │   └── components/       # ServerStats, NodesList
+│   │
+│   ├── homekit/              # HomeKit bridge pairing + WoL
+│   │   ├── HomeKitPanel.tsx
+│   │   ├── api.ts
+│   │   └── index.ts
+│   │
+│   ├── logs/                 # server log viewer
+│   │   ├── LogsPanel.tsx
+│   │   ├── api.ts
+│   │   └── index.ts
+│   │
+│   └── settings/             # config, runtime settings, prompts, nodes CRUD
+│       ├── SettingsPanel.tsx
+│       ├── api.ts
+│       ├── index.ts
+│       ├── components/       # NodeFormInline, EndpointCard, PromptsEditor,
+│       │                     # SettingsRows
+│       └── hooks/
+│           └── useSettings.ts
+│
+├── components/ui/            # cross-feature primitives (button, panel, chart,
+│                             # spinner, status-dot, scroll-area, …)
+├── lib/                      # framework-agnostic utilities
+│   ├── api.ts                # API_BASE + apiFetch / apiJson / apiJsonSafe
+│   ├── format.ts
+│   ├── icons.ts
+│   ├── markdown.tsx
+│   ├── endpoints.ts
+│   └── types.ts              # shared DTOs (SystemInfo, AppInfo, NodeStats…)
+└── assets/
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Conventions
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- **Feature boundary**: outside code may only import `@/features/<name>` (the
+  `index.ts` barrel). Deep imports like `@/features/chat/hooks/useChatPanel`
+  from another feature are blocked by `no-restricted-imports` in
+  [eslint.config.js](eslint.config.js).
+- **Data layer**: every feature has `api.ts` with thin typed wrappers around
+  `lib/api` helpers. Hooks are pure state + glue. Streaming endpoints
+  (`/api/chat/stream`, build NDJSON, deploy stream) intentionally stay inline
+  in their hooks because they consume `Response.body.getReader()` directly.
+- **Path alias**: `@/` → `src/` (configured in `vite.config.ts` and
+  `tsconfig.app.json`).
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Scripts
+
+```sh
+yarn dev      # vite dev server
+yarn build    # tsc -b && vite build
+yarn lint     # eslint src
+yarn preview  # serve built assets
 ```

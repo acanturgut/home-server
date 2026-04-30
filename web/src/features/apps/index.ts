@@ -1,1 +1,1 @@
-export { AppsPanel } from './AppsPanel';
+export { AppsPanelShell as AppsPanel } from './AppsPanelShell';
