@@ -1,56 +1,145 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ArrowRight,
+  Blocks,
+  House,
+  MessageSquare,
+  Network,
+  Send,
+  Server,
+  Sparkles,
+  type LucideIcon,
+} from 'lucide-react';
 import { API_BASE } from '@/lib/api';
 import { guessIcon } from '@/lib/icons';
 import { StatusDot } from '@/components/ui/status-dot';
-import { LatencyTimeline } from '@/features/dashboard/components/LatencyTimeline';
-import { NodeMicroCards } from '@/features/dashboard/components/NodeMicroCards';
-import { TokenUsage } from '@/features/dashboard/components/TokenUsage';
-import { ModelLeaderboard } from '@/features/dashboard/components/ModelLeaderboard';
-import { ErrorsPanel } from '@/features/dashboard/components/ErrorsPanel';
-import { NetworkTopology } from '@/features/dashboard/components/NetworkTopology';
+import { Section } from '@/components/ui/panel';
 import { OverviewBar } from '@/features/dashboard/components/OverviewBar';
-import { HostGraphs } from '@/features/dashboard/components/HostGraphs';
-import { ClientsList } from '@/features/dashboard/components/ClientsList';
-import { HomeDevicesPanel } from '@/features/home';
 import {
   DashboardDataProvider,
   useDashboardData,
 } from '@/features/dashboard/hooks/useDashboardData';
 
-/** App-store grid for dashboard. */
-function AppsQuickView() {
-  const { apps } = useDashboardData();
+/** Flat dashboard. No gradients, no shadows, no blobs. */
 
-  if (apps.length === 0) return null;
+function dispatchNav(page: string) {
+  window.dispatchEvent(new CustomEvent('nav:goto', { detail: { page } }));
+}
 
+function dispatchChatPrompt(prompt: string) {
+  window.dispatchEvent(new CustomEvent('nav:goto', { detail: { page: 'chat' } }));
+  setTimeout(() => {
+    window.dispatchEvent(
+      new CustomEvent('chat:prefill-prompt', { detail: { prompt } }),
+    );
+  }, 50);
+}
+
+function timeOfDayGreeting(d = new Date()) {
+  const h = d.getHours();
+  if (h < 5) return 'Working late';
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  if (h < 22) return 'Good evening';
+  return 'Working late';
+}
+
+interface QuickTile {
+  id: string;
+  label: string;
+  hint: string;
+  Icon: LucideIcon;
+  accent: string;
+}
+
+const QUICK_TILES: QuickTile[] = [
+  { id: 'chat', label: 'Chat', hint: 'Talk to your home', Icon: MessageSquare, accent: 'text-rose-300' },
+  { id: 'network', label: 'Network', hint: 'Devices, block / unblock', Icon: Network, accent: 'text-sky-300' },
+  { id: 'home', label: 'Smart Home', hint: 'Lights, sensors, scenes', Icon: House, accent: 'text-amber-300' },
+  { id: 'cluster', label: 'Cluster', hint: 'Nodes, CPU, GPU', Icon: Server, accent: 'text-emerald-300' },
+  { id: 'ai', label: 'AI', hint: 'Tokens, latency, models', Icon: Sparkles, accent: 'text-violet-300' },
+  { id: 'apps', label: 'Apps', hint: 'Open or build', Icon: Blocks, accent: 'text-cyan-300' },
+];
+
+function QuickTiles() {
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      {QUICK_TILES.map(({ id, label, hint, Icon, accent }) => (
+        <button
+          key={id}
+          onClick={() => dispatchNav(id)}
+          className="group relative flex flex-col items-start gap-3 rounded-xl border border-border/40 bg-card/40 p-4 hover:border-primary/50 hover:bg-card/60 active:scale-[0.98] transition-colors text-left min-h-24">
+          <Icon size={20} className={accent} />
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-foreground">{label}</div>
+            <div className="text-xs text-muted-foreground/80 mt-0.5 leading-snug">
+              {hint}
+            </div>
+          </div>
+          <ArrowRight
+            size={14}
+            className="absolute top-4 right-4 text-muted-foreground/40 group-hover:text-foreground/80 transition-colors"
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AppsQuickGrid() {
+  const { apps, ready } = useDashboardData();
+  if (!ready) {
+    return (
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div
+            key={i}
+            className="rounded-xl border border-border/40 bg-card/40 min-h-24 animate-pulse"
+          />
+        ))}
+      </div>
+    );
+  }
+  if (apps.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-border/40 bg-card/20 p-6 text-center text-sm text-muted-foreground/80">
+        No apps yet —{' '}
+        <button
+          onClick={() => dispatchNav('apps')}
+          className="text-primary hover:underline">
+          build your first app
+        </button>
+        .
+      </div>
+    );
+  }
+  return (
+    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
       {apps.map((app) => {
         const icon = app.icon || guessIcon(app.name);
         const isRunning = app.status === 'running';
         const isFailed = app.status === 'failed';
+        const interactive = isRunning;
         return (
           <button
             key={app.name}
             onClick={() =>
-              isRunning &&
+              interactive &&
               window.open(`${API_BASE}/apps/${app.name}/`, '_blank')
             }
-            className={`group relative flex flex-col items-center gap-1.5 p-2.5 rounded-lg border transition-all ${
-              isRunning
-                ? 'border-border/20 hover:border-primary/30 hover:bg-primary/5 cursor-pointer'
+            disabled={!interactive}
+            className={`group relative flex flex-col items-center justify-center gap-2 p-3 rounded-xl border transition-colors min-h-24 ${
+              interactive
+                ? 'border-border/40 bg-card/40 hover:border-primary/50 hover:bg-card/60 active:scale-[0.97]'
                 : isFailed
-                  ? 'border-red-500/15 opacity-60 cursor-default'
-                  : 'border-border/15 opacity-50 cursor-default'
+                  ? 'border-rose-500/25 bg-card/30 opacity-70 cursor-not-allowed'
+                  : 'border-border/30 bg-card/20 opacity-60 cursor-not-allowed'
             }`}>
-            <span className="text-2xl">{icon}</span>
-            <span className="text-[10.5px] font-medium text-foreground/80 truncate w-full text-center">
+            <span className="text-3xl leading-none">{icon}</span>
+            <span className="text-xs font-medium text-foreground/85 truncate w-full text-center">
               {app.name}
             </span>
-            <StatusDot
-              status={app.status}
-              className="absolute top-1.5 right-1.5"
-            />
+            <StatusDot status={app.status} className="absolute top-2 right-2" />
           </button>
         );
       })}
@@ -58,59 +147,81 @@ function AppsQuickView() {
   );
 }
 
-function LiveIndicator() {
+function HeroGreeting() {
   const { lastTick, ready } = useDashboardData();
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+  const greeting = useMemo(() => timeOfDayGreeting(new Date(now)), [now]);
   const ageMs = lastTick ? now - lastTick : 0;
   const fresh = ready && ageMs < 8000;
-  return (
-    <div className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
-      <span className="relative flex h-1.5 w-1.5">
-        {fresh && (
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-50" />
-        )}
-        <span
-          className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
-            fresh ? 'bg-emerald-400' : 'bg-amber-400'
-          }`}
-        />
-      </span>
-      <span className="tabular-nums">
-        {!ready ? 'connecting…' : `live · ${(ageMs / 1000).toFixed(0)}s`}
-      </span>
-    </div>
-  );
-}
+  const timeStr = new Date(now).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
-/** Section heading with thin divider — groups dashboard areas visually. */
-function Section({
-  title,
-  trailing,
-  children,
-}: {
-  title: string;
-  trailing?: React.ReactNode;
-  children: React.ReactNode;
-}) {
+  const [prompt, setPrompt] = useState('');
+  const submit = () => {
+    const trimmed = prompt.trim();
+    if (!trimmed) {
+      dispatchNav('chat');
+      return;
+    }
+    dispatchChatPrompt(trimmed);
+    setPrompt('');
+  };
+
   return (
-    <section className="space-y-2.5">
-      <div className="flex items-center gap-2">
-        <h3 className="text-[10px] uppercase tracking-[0.08em] font-medium text-muted-foreground/55">
-          {title}
-        </h3>
-        <div className="flex-1 h-px bg-border/15" />
-        {trailing && (
-          <span className="text-[10px] text-muted-foreground/45 tabular-nums">
-            {trailing}
-          </span>
-        )}
+    <div className="rounded-xl border border-border/40 bg-card/40 p-5 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+            {greeting}
+          </h2>
+          <p className="text-sm text-muted-foreground/80 mt-1">
+            {fresh ? (
+              <span className="text-emerald-300/95 font-medium">Online</span>
+            ) : (
+              <span className="text-amber-300/95 font-medium">Connecting</span>
+            )}{' '}
+            · {timeStr}
+          </p>
+        </div>
+        <span className="relative flex h-2 w-2 mt-2 shrink-0">
+          {fresh && (
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+          )}
+          <span
+            className={`relative inline-flex rounded-full h-2 w-2 ${
+              fresh ? 'bg-emerald-400' : 'bg-amber-400'
+            }`}
+          />
+        </span>
       </div>
-      {children}
-    </section>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+        className="flex items-center gap-2 rounded-lg border border-border/40 bg-background/50 px-3 py-2 focus-within:border-primary/50 transition-colors">
+        <Sparkles size={16} className="text-primary/80 shrink-0" />
+        <input
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Ask AI to control your home…"
+          className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/60 focus:outline-none"
+        />
+        <button
+          type="submit"
+          aria-label="Send"
+          className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-md bg-primary/15 hover:bg-primary/25 text-primary transition-colors">
+          <Send size={14} />
+        </button>
+      </form>
+    </div>
   );
 }
 
@@ -118,62 +229,13 @@ export function DashboardPage() {
   return (
     <DashboardDataProvider>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold tracking-tight text-foreground/90">
-              Dashboard
-            </h2>
-            <p className="text-[10px] text-muted-foreground/55">
-              Cluster, apps and smart-home overview
-            </p>
-          </div>
-          <LiveIndicator />
-        </div>
-
-        {/* Row 1: Location · Public IP · LAN · Weather */}
+        <HeroGreeting />
         <OverviewBar />
-
-        {/* Row 2: Pi (home server) — minimalist sparklines */}
-        <Section title="Home Server">
-          <HostGraphs />
+        <Section title="Jump to" description="Dive into a specific area.">
+          <QuickTiles />
         </Section>
-
-        {/* Row 3: Network — topology + who's connected */}
-        <Section title="Network">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <NetworkTopology />
-            <ClientsList />
-          </div>
-        </Section>
-
-        {/* Row 4: Smart-home (rooms) | Cluster nodes */}
-        <Section title="Home & Cluster">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <HomeDevicesPanel />
-            <NodeMicroCards />
-          </div>
-        </Section>
-
-        {/* Apps */}
-        <Section title="Apps">
-          <AppsQuickView />
-        </Section>
-
-        {/* Row 5: AI stats */}
-        <Section title="AI Activity">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            <div className="lg:col-span-2">
-              <TokenUsage />
-            </div>
-            <ErrorsPanel />
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            <div className="lg:col-span-2">
-              <LatencyTimeline />
-            </div>
-            <ModelLeaderboard />
-          </div>
+        <Section title="Apps" description="Tap to open in a new tab.">
+          <AppsQuickGrid />
         </Section>
       </div>
     </DashboardDataProvider>

@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/acanturgut/home-server/search"
 )
 
 // WebResult represents a single search result.
@@ -17,24 +19,12 @@ type WebResult struct {
 	URL     string `json:"url"`
 	Snippet string `json:"snippet"`
 	Text    string `json:"text,omitempty"` // populated when fetching page bodies
+	Source  string `json:"source,omitempty"`
 }
 
-// ── DuckDuckGo HTML scraper ─────────────────────────────────────────────
-//
-// We use html.duckduckgo.com/html/ which has no API key and returns static
-// HTML that's easy to parse.  If DDG blocks us, the call simply returns an
-// empty slice — callers should fall back gracefully.
-
-var (
-	ddgResultRe = regexp.MustCompile(`(?is)<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>.*?<a[^>]+class="result__snippet"[^>]*>(.*?)</a>`)
-	ddgTagStrip = regexp.MustCompile(`<[^>]+>`)
-	ddgEntities = strings.NewReplacer(
-		"&amp;", "&", "&lt;", "<", "&gt;", ">",
-		"&quot;", "\"", "&#39;", "'", "&#x27;", "'", "&nbsp;", " ",
-	)
-)
-
-// SearchDDG queries DuckDuckGo and returns up to k results.
+// SearchDDG queries the web and returns up to k results. It now delegates
+// to the multi-provider backend in package search (DDG Instant Answer →
+// DDG HTML → Wikipedia) so callers get resilient fallback automatically.
 func SearchDDG(ctx context.Context, query string, k int) ([]WebResult, error) {
 	if strings.TrimSpace(query) == "" {
 		return nil, fmt.Errorf("empty query")
@@ -45,70 +35,20 @@ func SearchDDG(ctx context.Context, query string, k int) ([]WebResult, error) {
 	if k > 15 {
 		k = 15
 	}
-	u := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(query)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader("q="+url.QueryEscape(query)))
+	res, err := search.Search(ctx, query, k)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605 (KHTML, like Gecko) Version/17.0 Safari/605")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "text/html")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
-	if err != nil {
-		return nil, err
-	}
-	matches := ddgResultRe.FindAllStringSubmatch(string(body), -1)
-	out := []WebResult{}
-	for _, m := range matches {
-		if len(m) < 4 {
-			continue
-		}
-		href := resolveDDGLink(m[1])
-		title := cleanHTMLFragment(m[2])
-		snippet := cleanHTMLFragment(m[3])
-		if href == "" || title == "" {
-			continue
-		}
-		out = append(out, WebResult{Title: title, URL: href, Snippet: snippet})
-		if len(out) >= k {
-			break
-		}
+	out := make([]WebResult, 0, len(res))
+	for _, r := range res {
+		out = append(out, WebResult{
+			Title:   r.Title,
+			URL:     r.URL,
+			Snippet: r.Snippet,
+			Source:  r.Source,
+		})
 	}
 	return out, nil
-}
-
-func cleanHTMLFragment(s string) string {
-	s = ddgTagStrip.ReplaceAllString(s, "")
-	s = ddgEntities.Replace(s)
-	return strings.TrimSpace(s)
-}
-
-// DDG wraps result links through a redirect like
-//
-//	//duckduckgo.com/l/?uddg=<encoded-url>&rut=...
-//
-// resolveDDGLink undoes that wrapping when present.
-func resolveDDGLink(href string) string {
-	if strings.HasPrefix(href, "//") {
-		href = "https:" + href
-	}
-	u, err := url.Parse(href)
-	if err != nil {
-		return ""
-	}
-	if strings.Contains(u.Host, "duckduckgo.com") && u.Path == "/l/" {
-		if q := u.Query().Get("uddg"); q != "" {
-			if decoded, err := url.QueryUnescape(q); err == nil {
-				return decoded
-			}
-		}
-	}
-	return u.String()
 }
 
 // FetchPageText downloads a URL and returns extracted text (using the same
@@ -151,16 +91,26 @@ var (
 	webTagRe    = regexp.MustCompile(`<[^>]+>`)
 	webWsRe     = regexp.MustCompile(`[ \t]+`)
 	webLineRe   = regexp.MustCompile(`\n[ \t]*\n[ \t]*`)
+	webEntities = strings.NewReplacer(
+		"&amp;", "&", "&lt;", "<", "&gt;", ">",
+		"&quot;", "\"", "&#39;", "'", "&#x27;", "'", "&nbsp;", " ",
+	)
 )
+
+func cleanFragment(s string) string {
+	s = webTagRe.ReplaceAllString(s, "")
+	s = webEntities.Replace(s)
+	return strings.TrimSpace(s)
+}
 
 func WebExtractText(html string) (string, string) {
 	title := ""
 	if m := webTitleRe.FindStringSubmatch(html); len(m) == 2 {
-		title = cleanHTMLFragment(m[1])
+		title = cleanFragment(m[1])
 	}
 	s := webScriptRe.ReplaceAllString(html, "")
 	s = webTagRe.ReplaceAllString(s, "")
-	s = ddgEntities.Replace(s)
+	s = webEntities.Replace(s)
 	s = webWsRe.ReplaceAllString(s, " ")
 	s = webLineRe.ReplaceAllString(s, "\n\n")
 	return title, strings.TrimSpace(s)

@@ -15,7 +15,6 @@ import {
   Settings,
   Sparkles,
   Undo2,
-  Wrench,
   X,
 } from 'lucide-react';
 import { API_BASE } from '@/lib/api';
@@ -66,6 +65,7 @@ export function ExpertAppsPanel({
     commits,
     committing,
     containerStats,
+    deleteApp,
     deployApp,
     deployEvents,
     deploying,
@@ -147,9 +147,9 @@ export function ExpertAppsPanel({
   // Toolbar rendered into the page header (right side). Shows the
   // selected app/file context + Save / Commit / Open actions.
   const toolbar = selectedApp ? (
-    <div className="flex items-center gap-2 text-[11px]">
+    <div className="flex items-center gap-2 text-xs">
       <div className="flex items-center gap-1.5 min-w-0 max-w-[40vw]">
-        <span className="text-muted-foreground/40 shrink-0">{selectedApp}</span>
+        <span className="text-muted-foreground/65 shrink-0">{selectedApp}</span>
         {selectedFile && (
           <>
             <span className="text-muted-foreground/20 shrink-0">/</span>
@@ -164,53 +164,24 @@ export function ExpertAppsPanel({
           </span>
         )}
         {fileLoading && (
-          <span className="text-blue-400/60 text-[9px] animate-pulse shrink-0">
+          <span className="text-blue-400/60 text-xs animate-pulse shrink-0">
             loading
           </span>
         )}
       </div>
-      <div className="flex items-center gap-0.5 text-[10px] shrink-0">
+      <div className="flex items-center gap-0.5 text-xs shrink-0">
         {saveToast && (
-          <span className="px-2 py-0.5 text-[9px] text-emerald-300/80 bg-emerald-500/10 border border-emerald-500/20 rounded mr-1 truncate max-w-[260px]">
+          <span className="px-2 py-0.5 text-xs text-emerald-300/80 bg-emerald-500/10 border border-emerald-500/20 rounded mr-1 truncate max-w-[260px]">
             ✓ {saveToast}
           </span>
         )}
-        {/* ── Quick AI/lifecycle actions ── */}
-        <button
-          onClick={() => deployApp()}
-          disabled={building || deploying}
-          title="Re-deploy: rebuild docker image from current files (no AI)"
-          className="px-2 py-0.5 text-sky-300/80 hover:text-sky-200 disabled:opacity-30 transition-colors flex items-center gap-1">
-          <Rocket size={10} /> Redeploy
-        </button>
-        <span className="text-border/20">│</span>
-        <button
-          onClick={() => {
-            const change = window.prompt(
-              `Describe what to change or add to '${selectedApp}':`,
-              '',
-            );
-            if (change && change.trim()) startRebuild(change.trim());
-          }}
-          disabled={building || deploying}
-          title="Send a feature/change request to the AI"
-          className="px-2 py-0.5 text-violet-300/80 hover:text-violet-200 disabled:opacity-30 transition-colors flex items-center gap-1">
-          <Sparkles size={10} /> Feature
-        </button>
-        <span className="text-border/20">│</span>
-        <button
-          onClick={() => startFix()}
-          disabled={building || deploying}
-          title="Auto-fix: send container logs to the AI and patch the project"
-          className="px-2 py-0.5 text-amber-300/80 hover:text-amber-200 disabled:opacity-30 transition-colors flex items-center gap-1">
-          <Wrench size={10} /> Auto-fix
-        </button>
-        <span className="text-border/20">│</span>
+        {/* Lifecycle/AI actions live in the right-side AppActions rail; this
+            top bar only handles file-level operations. */}
         <button
           onClick={saveFile}
           disabled={!fileDirty || fileSaving}
           title="Save the current file (⌘S). Click Deploy to rebuild the container."
-          className="px-2 py-0.5 text-muted-foreground/50 hover:text-foreground disabled:opacity-20 transition-colors">
+          className="px-2 py-0.5 text-muted-foreground/70 hover:text-foreground disabled:opacity-20 transition-colors">
           {fileSaving ? '...' : 'Save'}
         </button>
         <span className="text-border/20">│</span>
@@ -228,7 +199,7 @@ export function ExpertAppsPanel({
               onClick={() =>
                 window.open(`${API_BASE}/apps/${selectedApp}/`, '_blank')
               }
-              className="px-2 py-0.5 text-muted-foreground/50 hover:text-foreground transition-colors">
+              className="px-2 py-0.5 text-muted-foreground/70 hover:text-foreground transition-colors">
               Open <ExternalLink size={10} className="inline" />
             </button>
           </>
@@ -239,8 +210,98 @@ export function ExpertAppsPanel({
 
   return (
     <PageLayout title="Apps" toolbar={toolbar} headerCenter={headerCenter} fullBleed>
+      {/* Mobile fallback — the IDE-style layout doesn't fit < lg.
+          Beautiful launcher: hero CTA + app cards. */}
+      <div className="lg:hidden flex-1 overflow-y-auto p-4 space-y-5">
+        {/* Hero — build a new app */}
+        <div className="rounded-xl border border-border/40 bg-card/40 p-5 space-y-3">
+          <div className="inline-flex items-center justify-center h-10 w-10 rounded-lg bg-primary/15 text-primary">
+            <Sparkles size={18} />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">
+              Build with AI
+            </h3>
+            <p className="text-sm text-muted-foreground/85 mt-1">
+              Describe an app — the agent scaffolds, writes code, and deploys it for you.
+            </p>
+          </div>
+          <button
+            onClick={() => setWizardOpen(true)}
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 active:scale-[0.98] transition-colors">
+            <Rocket size={15} /> New app
+          </button>
+        </div>
+
+        {/* App list */}
+        <div className="space-y-3">
+          <div className="flex items-end justify-between px-1">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/85">
+              Your apps
+            </h3>
+            <span className="text-xs text-muted-foreground/70 tabular-nums">
+              {apps.length}
+            </span>
+          </div>
+          {apps.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/40 bg-card/20 p-8 text-center">
+              <Blocks size={28} className="mx-auto text-muted-foreground/50 mb-2" />
+              <p className="text-sm text-muted-foreground/85">
+                No apps yet. Tap "New app" to get started.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {apps.map((a) => {
+                const isRunning = a.status === 'running';
+                const isFailed = a.status === 'failed';
+                const statusColor = isRunning
+                  ? 'text-emerald-300 bg-emerald-500/15 border-emerald-500/25'
+                  : isFailed
+                    ? 'text-rose-300 bg-rose-500/15 border-rose-500/25'
+                    : 'text-amber-300 bg-amber-500/15 border-amber-500/25';
+                return (
+                  <div
+                    key={a.name}
+                    className="group rounded-2xl border border-border/40 bg-card/40 p-4 flex items-center gap-3 hover:border-primary/40 hover:bg-card/60 transition-colors">
+                    <div className="shrink-0 inline-flex items-center justify-center h-12 w-12 rounded-xl bg-white/5 text-3xl leading-none">
+                      {a.icon || guessIcon(a.name)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-foreground truncate">
+                        {a.name}
+                      </div>
+                      <div className="mt-1 inline-flex items-center gap-1.5">
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full border ${statusColor} capitalize`}>
+                          {a.status}
+                        </span>
+                      </div>
+                    </div>
+                    {isRunning && (
+                      <button
+                        onClick={() =>
+                          window.open(`${API_BASE}/apps/${a.name}/`, '_blank')
+                        }
+                        aria-label={`Open ${a.name}`}
+                        className="shrink-0 inline-flex items-center justify-center h-10 w-10 rounded-xl bg-primary/15 text-primary hover:bg-primary/25 active:scale-95 transition-all">
+                        <ExternalLink size={16} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground/65 px-1 pt-2">
+            Tip: open this dashboard on a desktop browser for the full code editor & terminal.
+          </p>
+        </div>
+      </div>
+
+      {/* Desktop IDE layout */}
       <div
-        className={`flex min-h-0 overflow-hidden ${bottomState === 'expanded' ? 'flex-none h-0' : 'flex-1'}`}>
+        className={`hidden lg:flex min-h-0 overflow-hidden ${bottomState === 'expanded' ? 'flex-none h-0' : 'flex-1'}`}>
         {/* ── Left: App sidebar ── */}
         <AppSidebar
           apps={apps}
@@ -271,7 +332,7 @@ export function ExpertAppsPanel({
                         onChange={(e) => setFileSearch(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && doSearch()}
                         placeholder="Search files..."
-                        className="w-full h-5 text-[9px] bg-transparent border border-border/10 rounded pl-5 pr-1 focus:outline-none focus:border-border/30 placeholder:text-muted-foreground/20"
+                        className="w-full h-5 text-xs bg-transparent border border-border/10 rounded pl-5 pr-1 focus:outline-none focus:border-border/30 placeholder:text-muted-foreground/20"
                       />
                     </div>
                   </div>
@@ -284,7 +345,7 @@ export function ExpertAppsPanel({
                             setSearchResults([]);
                             setFileSearch('');
                           }}
-                          className="w-full text-[8px] text-muted-foreground/30 hover:text-muted-foreground/60 px-2 py-0.5 text-left">
+                          className="w-full text-xs text-muted-foreground/30 hover:text-muted-foreground/60 px-2 py-0.5 text-left">
                           <X size={8} className="inline mr-0.5" /> Clear results
                           ({searchResults.length})
                         </button>
@@ -293,17 +354,17 @@ export function ExpertAppsPanel({
                             key={i}
                             onClick={() => setSelectedFile(r.file)}
                             className={`w-full text-left px-2 py-0.5 hover:bg-white/[0.03] transition-colors ${selectedFile === r.file ? 'bg-white/[0.04]' : ''}`}>
-                            <div className="text-[9px] text-foreground/60 font-mono truncate">
+                            <div className="text-xs text-foreground/60 font-mono truncate">
                               {r.file}
                             </div>
-                            <div className="text-[8px] text-muted-foreground/30 truncate">
+                            <div className="text-xs text-muted-foreground/30 truncate">
                               L{r.line}: {r.text}
                             </div>
                           </button>
                         ))}
                       </div>
                     ) : searching ? (
-                      <p className="text-[9px] text-muted-foreground/30 text-center py-2 animate-pulse">
+                      <p className="text-xs text-muted-foreground/30 text-center py-2 animate-pulse">
                         Searching...
                       </p>
                     ) : (
@@ -327,7 +388,7 @@ export function ExpertAppsPanel({
                         ))}
                         {files.length === 0 && (
                           <div className="p-4 text-center">
-                            <p className="text-[10px] text-muted-foreground/30">
+                            <p className="text-xs text-muted-foreground/30">
                               {building ? 'Generating...' : 'No files'}
                             </p>
                           </div>
@@ -369,7 +430,7 @@ export function ExpertAppsPanel({
         {/* ── Right: App info / settings panel ── */}
         <div className="w-72 shrink-0 border-l border-border/10 flex flex-col overflow-hidden">
           {/* Header */}
-          <div className="flex items-center gap-1.5 h-8 px-3 border-b border-border/10 shrink-0 text-[9px] uppercase tracking-wider text-muted-foreground/40">
+          <div className="flex items-center gap-1.5 h-8 px-3 border-b border-border/10 shrink-0 text-xs uppercase tracking-wider text-muted-foreground/65">
             <Blocks size={11} />
             App
             {(building || deploying) && (
@@ -385,7 +446,7 @@ export function ExpertAppsPanel({
                     {/* ─── Live build/deploy events (right-panel, replaces bottom log) ─── */}
                     {(deploying || building || deployEvents.length > 0) && (
                       <div className="space-y-1">
-                        <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 flex items-center gap-1.5 px-1">
+                        <div className="text-xs uppercase tracking-wider text-muted-foreground/65 flex items-center gap-1.5 px-1">
                           <Activity size={9} /> Live Events
                           {(deploying || building) && (
                             <span className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
@@ -395,7 +456,7 @@ export function ExpertAppsPanel({
                           {deployEvents.length > 0 ? (
                             <EventLog events={deployEvents} />
                           ) : (
-                            <div className="text-[10px] text-muted-foreground/40 italic">
+                            <div className="text-xs text-muted-foreground/65 italic">
                               Working…
                             </div>
                           )}
@@ -422,10 +483,10 @@ export function ExpertAppsPanel({
                                     : 'bg-zinc-500'
                             }`}
                           />
-                          <span className="text-[10px] text-muted-foreground/60 capitalize">
+                          <span className="text-xs text-muted-foreground/60 capitalize">
                             {app.status}
                           </span>
-                          <span className="text-[10px] text-muted-foreground/30">
+                          <span className="text-xs text-muted-foreground/30">
                             :{app.port}
                           </span>
                         </div>
@@ -435,7 +496,7 @@ export function ExpertAppsPanel({
                     {app.prompt && (
                       <div className="px-1">
                         <p
-                          className={`text-[11px] text-muted-foreground/50 leading-relaxed whitespace-pre-wrap ${
+                          className={`text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap ${
                             descExpanded ? '' : 'line-clamp-3'
                           }`}>
                           {app.prompt}
@@ -443,7 +504,7 @@ export function ExpertAppsPanel({
                         {app.prompt.length > 140 && (
                           <button
                             onClick={() => setDescExpanded((v) => !v)}
-                            className="mt-1 text-[9px] uppercase tracking-wider text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors">
+                            className="mt-1 text-xs uppercase tracking-wider text-muted-foreground/65 hover:text-muted-foreground/70 transition-colors">
                             {descExpanded ? 'Show less' : 'Show more'}
                           </button>
                         )}
@@ -452,10 +513,10 @@ export function ExpertAppsPanel({
 
                     {app.error && (
                       <div className="p-2.5 bg-red-500/5 border border-red-500/15 rounded-lg">
-                        <div className="text-[9px] uppercase tracking-wider text-red-400/60 mb-1 flex items-center gap-1.5">
+                        <div className="text-xs uppercase tracking-wider text-red-400/60 mb-1 flex items-center gap-1.5">
                           <Bug size={9} /> Error
                         </div>
-                        <p className="text-[10px] text-red-400/70 font-mono whitespace-pre-wrap">
+                        <p className="text-xs text-red-400/70 font-mono whitespace-pre-wrap">
                           {app.error}
                         </p>
                       </div>
@@ -479,11 +540,11 @@ export function ExpertAppsPanel({
                       onDelete={async () => {
                         if (
                           !confirm(
-                            `Delete ${app.name}? This removes the container and files.`,
+                            `Delete ${app.name}? This cancels any running build, removes the container, and wipes the project files.`,
                           )
                         )
                           return;
-                        await appsApi.deleteApp(app.name);
+                        await deleteApp(app.name);
                       }}
                       onRedeploy={() => deployApp()}
                       onAutoFix={() => startFix()}
@@ -513,20 +574,20 @@ export function ExpertAppsPanel({
 
                     {/* ─── Resources ─── */}
                     <div className="space-y-1.5">
-                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 flex items-center gap-1.5 px-1">
+                      <div className="text-xs uppercase tracking-wider text-muted-foreground/65 flex items-center gap-1.5 px-1">
                         <Activity size={9} /> Resources
                       </div>
                       <div className="grid grid-cols-2 gap-1.5">
-                        <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                          <span className="text-muted-foreground/40">
+                        <div className="p-2 bg-white/[0.02] rounded text-xs">
+                          <span className="text-muted-foreground/65">
                             Files
                           </span>
                           <p className="text-foreground/60 mt-0.5">
                             {files.length}
                           </p>
                         </div>
-                        <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                          <span className="text-muted-foreground/40">
+                        <div className="p-2 bg-white/[0.02] rounded text-xs">
+                          <span className="text-muted-foreground/65">
                             Route
                           </span>
                           <p className="text-foreground/60 mt-0.5 font-mono">
@@ -535,32 +596,32 @@ export function ExpertAppsPanel({
                         </div>
                         {containerStats && (
                           <>
-                            <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                              <span className="text-muted-foreground/40">
+                            <div className="p-2 bg-white/[0.02] rounded text-xs">
+                              <span className="text-muted-foreground/65">
                                 CPU
                               </span>
                               <p className="text-foreground/60 mt-0.5 font-mono">
                                 {containerStats.cpu || '—'}
                               </p>
                             </div>
-                            <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                              <span className="text-muted-foreground/40">
+                            <div className="p-2 bg-white/[0.02] rounded text-xs">
+                              <span className="text-muted-foreground/65">
                                 Memory
                               </span>
-                              <p className="text-foreground/60 mt-0.5 font-mono text-[9px]">
+                              <p className="text-foreground/60 mt-0.5 font-mono text-xs">
                                 {containerStats.mem || '—'}
                               </p>
                             </div>
-                            <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                              <span className="text-muted-foreground/40">
+                            <div className="p-2 bg-white/[0.02] rounded text-xs">
+                              <span className="text-muted-foreground/65">
                                 Network
                               </span>
-                              <p className="text-foreground/60 mt-0.5 font-mono text-[9px]">
+                              <p className="text-foreground/60 mt-0.5 font-mono text-xs">
                                 {containerStats.net || '—'}
                               </p>
                             </div>
-                            <div className="p-2 bg-white/[0.02] rounded text-[10px]">
-                              <span className="text-muted-foreground/40">
+                            <div className="p-2 bg-white/[0.02] rounded text-xs">
+                              <span className="text-muted-foreground/65">
                                 PIDs
                               </span>
                               <p className="text-foreground/60 mt-0.5 font-mono">
@@ -577,7 +638,7 @@ export function ExpertAppsPanel({
                       <div className="pt-1 space-y-1.5">
                         <button
                           onClick={() => setSettingsOpen((v) => !v)}
-                          className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-muted-foreground/60 w-full">
+                          className="flex items-center gap-1 text-xs text-muted-foreground/65 hover:text-muted-foreground/60 w-full">
                           <History size={10} /> Build History (
                           {app.builds.length})
                         </button>
@@ -585,11 +646,11 @@ export function ExpertAppsPanel({
                           {[...app.builds].reverse().map((b, i) => (
                             <div
                               key={i}
-                              className="flex items-center gap-2 text-[9px] py-0.5">
+                              className="flex items-center gap-2 text-xs py-0.5">
                               <span
                                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${b.status === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}
                               />
-                              <span className="text-muted-foreground/50 capitalize">
+                              <span className="text-muted-foreground/70 capitalize">
                                 {b.action}
                               </span>
                               <span className="text-muted-foreground/30 flex-1 truncate font-mono">
@@ -609,7 +670,7 @@ export function ExpertAppsPanel({
                       <div className="pt-3 border-t border-border/10 space-y-1.5">
                         <button
                           onClick={() => setGitOpen((v) => !v)}
-                          className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-muted-foreground/60 w-full">
+                          className="flex items-center gap-1 text-xs text-muted-foreground/65 hover:text-muted-foreground/60 w-full">
                           <GitBranch size={10} /> Changes ({commits.length})
                           <span className="ml-auto text-muted-foreground/30">
                             {gitOpen ? '−' : '+'}
@@ -620,16 +681,16 @@ export function ExpertAppsPanel({
                             {commits.map((c) => (
                               <div
                                 key={c.sha}
-                                className="group w-full flex items-center gap-2 text-[10px] py-1 px-1.5 rounded hover:bg-white/[0.03] transition-colors">
+                                className="group w-full flex items-center gap-2 text-xs py-1 px-1.5 rounded hover:bg-white/[0.03] transition-colors">
                                 <button
                                   onClick={() => setDiffSha(c.sha)}
                                   className="flex-1 min-w-0 flex items-center gap-2 text-left">
-                                  <span className="font-mono text-muted-foreground/40 shrink-0">
+                                  <span className="font-mono text-muted-foreground/65 shrink-0">
                                     {c.short_sha}
                                   </span>
                                   {c.action && (
                                     <span
-                                      className={`text-[9px] uppercase shrink-0 ${
+                                      className={`text-xs uppercase shrink-0 ${
                                         c.action === 'fix'
                                           ? 'text-amber-400/70'
                                           : c.action === 'rebuild'
@@ -638,7 +699,7 @@ export function ExpertAppsPanel({
                                               ? 'text-emerald-400/70'
                                               : c.action === 'revert'
                                                 ? 'text-red-400/70'
-                                                : 'text-muted-foreground/50'
+                                                : 'text-muted-foreground/70'
                                       }`}>
                                       {c.action}
                                     </span>
@@ -650,7 +711,7 @@ export function ExpertAppsPanel({
                                     )}
                                   </span>
                                   {c.files ? (
-                                    <span className="text-muted-foreground/40 tabular-nums shrink-0">
+                                    <span className="text-muted-foreground/65 tabular-nums shrink-0">
                                       {c.files}f
                                     </span>
                                   ) : null}
@@ -713,35 +774,35 @@ export function ExpertAppsPanel({
                           setEditIcon(app.icon || '');
                           setEditRoute(app.route || '');
                         }}
-                        className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-muted-foreground/60">
+                        className="flex items-center gap-1 text-xs text-muted-foreground/65 hover:text-muted-foreground/60">
                         <Settings size={10} /> Settings
                       </button>
                       {settingsOpen && (
                         <div className="space-y-2 p-2 bg-white/[0.02] rounded">
                           <div className="space-y-0.5">
-                            <span className="text-[9px] text-muted-foreground/30">
+                            <span className="text-xs text-muted-foreground/30">
                               Icon
                             </span>
                             <input
                               value={editIcon}
                               onChange={(e) => setEditIcon(e.target.value)}
                               placeholder="emoji..."
-                              className="w-full h-6 text-[11px] bg-transparent border border-border/15 rounded px-2 focus:outline-none focus:border-foreground/20"
+                              className="w-full h-6 text-xs bg-transparent border border-border/15 rounded px-2 focus:outline-none focus:border-foreground/20"
                             />
                           </div>
                           <div className="space-y-0.5">
-                            <span className="text-[9px] text-muted-foreground/30">
+                            <span className="text-xs text-muted-foreground/30">
                               Route
                             </span>
                             <input
                               value={editRoute}
                               onChange={(e) => setEditRoute(e.target.value)}
-                              className="w-full h-6 text-[11px] font-mono bg-transparent border border-border/15 rounded px-2 focus:outline-none focus:border-foreground/20"
+                              className="w-full h-6 text-xs font-mono bg-transparent border border-border/15 rounded px-2 focus:outline-none focus:border-foreground/20"
                             />
                           </div>
                           <button
                             onClick={saveSettings}
-                            className="w-full py-1 text-[10px] text-foreground/60 bg-foreground/5 hover:bg-foreground/10 rounded transition-colors">
+                            className="w-full py-1 text-xs text-foreground/60 bg-foreground/5 hover:bg-foreground/10 rounded transition-colors">
                             Save Settings
                           </button>
                         </div>
@@ -761,18 +822,18 @@ export function ExpertAppsPanel({
                               size={12}
                               className="text-violet-400/70"
                             />
-                            <span className="text-[11px] font-mono text-foreground/80">
+                            <span className="text-xs font-mono text-foreground/80">
                               {diffSha.slice(0, 12)}
                             </span>
-                            <span className="text-[11px] text-muted-foreground/60 truncate flex-1">
+                            <span className="text-xs text-muted-foreground/60 truncate flex-1">
                               {commits.find((c) => c.sha === diffSha)
                                 ?.subject || ''}
                             </span>
-                            <div className="flex items-center bg-white/5 rounded text-[10px] overflow-hidden">
+                            <div className="flex items-center bg-white/5 rounded text-xs overflow-hidden">
                               <button
                                 onClick={() => setDiffLayout('single')}
                                 title="One file at a time (sidebar)"
-                                className={`px-2 py-1 ${diffLayout === 'single' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/50 hover:text-foreground'}`}>
+                                className={`px-2 py-1 ${diffLayout === 'single' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/70 hover:text-foreground'}`}>
                                 <PanelLeft
                                   size={11}
                                   className="inline mr-0.5"
@@ -782,34 +843,34 @@ export function ExpertAppsPanel({
                               <button
                                 onClick={() => setDiffLayout('all')}
                                 title="Scroll all files"
-                                className={`px-2 py-1 ${diffLayout === 'all' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/50 hover:text-foreground'}`}>
+                                className={`px-2 py-1 ${diffLayout === 'all' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/70 hover:text-foreground'}`}>
                                 <Rows3 size={11} className="inline mr-0.5" />{' '}
                                 All
                               </button>
                             </div>
-                            <div className="flex items-center bg-white/5 rounded text-[10px] overflow-hidden">
+                            <div className="flex items-center bg-white/5 rounded text-xs overflow-hidden">
                               <button
                                 onClick={() => setDiffMode('split')}
-                                className={`px-2 py-1 ${diffMode === 'split' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/50 hover:text-foreground'}`}>
+                                className={`px-2 py-1 ${diffMode === 'split' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/70 hover:text-foreground'}`}>
                                 <Columns2 size={11} className="inline mr-0.5" />{' '}
                                 Split
                               </button>
                               <button
                                 onClick={() => setDiffMode('unified')}
-                                className={`px-2 py-1 ${diffMode === 'unified' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/50 hover:text-foreground'}`}>
+                                className={`px-2 py-1 ${diffMode === 'unified' ? 'bg-violet-500/20 text-violet-200' : 'text-muted-foreground/70 hover:text-foreground'}`}>
                                 <ListTree size={11} className="inline mr-0.5" />{' '}
                                 Unified
                               </button>
                             </div>
                             <button
                               onClick={() => setDiffSha(null)}
-                              className="p-1 text-muted-foreground/50 hover:text-foreground rounded hover:bg-white/5">
+                              className="p-1 text-muted-foreground/70 hover:text-foreground rounded hover:bg-white/5">
                               <X size={12} />
                             </button>
                           </div>
                           <div className="flex-1 p-3 min-h-0 overflow-hidden">
                             {diffText === 'Loading…' ? (
-                              <div className="text-[11px] text-muted-foreground/60">
+                              <div className="text-xs text-muted-foreground/60">
                                 Loading…
                               </div>
                             ) : (
@@ -826,7 +887,7 @@ export function ExpertAppsPanel({
                   </div>
                 ) : (
                   <div className="flex-1 flex items-center justify-center h-full">
-                    <p className="text-[10px] text-muted-foreground/20">
+                    <p className="text-xs text-muted-foreground/20">
                       No app selected
                     </p>
                   </div>
@@ -836,40 +897,42 @@ export function ExpertAppsPanel({
         </div>
       </div>
 
-      {/* ── Bottom: Tabbed Events / Logs / Terminal panel ── */}
-      <BottomPanel
-        state={bottomState}
-        setState={setBottomState}
-        tab={bottomTab}
-        setTab={setBottomTab}
-        split={bottomSplit}
-        setSplit={setBottomSplit}
-        splitTab={bottomSplitTab}
-        setSplitTab={setBottomSplitTab}
-        events={events}
-        logRef={logRef}
-        selectedApp={selectedApp}
-        appStatus={app?.status}
-        appLogs={appLogs}
-        appLogsLoading={appLogsLoading}
-        appLogsRef={appLogsRef}
-        onRefreshLogs={() => {
-          if (!selectedApp) return;
-          setAppLogsLoading(true);
-          appsApi
-            .getLogs(selectedApp, 200)
-            .then((d) => setAppLogs(d?.logs || ''))
-            .catch(() => setAppLogs('Failed'))
-            .finally(() => setAppLogsLoading(false));
-        }}
-        termCmd={termCmd}
-        setTermCmd={setTermCmd}
-        termHistory={termHistory}
-        setTermHistory={setTermHistory}
-        termRunning={termRunning}
-        termRef={termRef}
-        runTermCmd={runTermCmd}
-      />
+      {/* ── Bottom: Tabbed Events / Logs / Terminal panel (desktop only) ── */}
+      <div className="hidden lg:contents">
+        <BottomPanel
+          state={bottomState}
+          setState={setBottomState}
+          tab={bottomTab}
+          setTab={setBottomTab}
+          split={bottomSplit}
+          setSplit={setBottomSplit}
+          splitTab={bottomSplitTab}
+          setSplitTab={setBottomSplitTab}
+          events={events}
+          logRef={logRef}
+          selectedApp={selectedApp}
+          appStatus={app?.status}
+          appLogs={appLogs}
+          appLogsLoading={appLogsLoading}
+          appLogsRef={appLogsRef}
+          onRefreshLogs={() => {
+            if (!selectedApp) return;
+            setAppLogsLoading(true);
+            appsApi
+              .getLogs(selectedApp, 200)
+              .then((d) => setAppLogs(d?.logs || ''))
+              .catch(() => setAppLogs('Failed'))
+              .finally(() => setAppLogsLoading(false));
+          }}
+          termCmd={termCmd}
+          setTermCmd={setTermCmd}
+          termHistory={termHistory}
+          setTermHistory={setTermHistory}
+          termRunning={termRunning}
+          termRef={termRef}
+          runTermCmd={runTermCmd}
+        />
+      </div>
 
       {/* ── AI Build wizard (the canonical pipeline:
           draft → AI brief → questions → final-prompt preview → build) ── */}

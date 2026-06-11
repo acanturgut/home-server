@@ -268,6 +268,19 @@ func (h *Handler) AppEvents(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GET /api/apps/{name}/history — return persisted task runs for the app
+// so the wizard can show past builds / rebuilds / fixes.
+func (h *Handler) AppHistory(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "name required"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"runs": h.pipeline.History(name),
+	})
+}
+
 // POST /api/apps/clarify — generate AI clarifying questions for a build prompt.
 // Request:  {"prompt": "..."}
 // Response: {"summary": "...", "questions": [{id, question, hint, suggestions, required}]}

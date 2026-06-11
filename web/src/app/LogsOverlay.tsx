@@ -19,14 +19,14 @@ export function LogsOverlay({
         open ? 'h-72' : 'h-0 border-t-0'
       }`}>
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/20">
-        <span className="text-[11px] font-medium text-muted-foreground">
+        <span className="text-xs font-medium text-muted-foreground">
           Logs
         </span>
         <div className="flex items-center gap-2">
           <button
             onClick={onTogglePin}
             title={pinned ? 'Unpin logs' : 'Pin logs'}
-            className={`text-[11px] px-1.5 py-0.5 rounded transition-colors ${
+            className={`text-xs px-1.5 py-0.5 rounded transition-colors ${
               pinned
                 ? 'text-foreground bg-foreground/10'
                 : 'text-muted-foreground hover:text-foreground'
@@ -35,7 +35,7 @@ export function LogsOverlay({
           </button>
           <button
             onClick={onClose}
-            className="text-[11px] text-muted-foreground hover:text-foreground px-1">
+            className="text-xs text-muted-foreground hover:text-foreground px-1">
             ✕
           </button>
         </div>

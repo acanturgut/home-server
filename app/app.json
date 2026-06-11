@@ -1,21 +1,42 @@
 {
   "expo": {
-    "name": "Home AI",
-    "slug": "home-ai",
-    "version": "1.0.0",
+    "name": "Home Voice",
+    "slug": "home-voice",
+    "version": "0.1.0",
     "orientation": "portrait",
-    "scheme": "home-ai",
-    "platforms": ["ios", "android"],
+    "userInterfaceStyle": "automatic",
+    "scheme": "homevoice",
+    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.acanturgut.homeai"
-    },
-    "android": {
-      "package": "com.acanturgut.homeai",
-      "adaptiveIcon": {
-        "backgroundColor": "#0a0a0a"
+      "bundleIdentifier": "com.canturgut.homevoice",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Lets you talk to your home assistant.",
+        "NSSpeechRecognitionUsageDescription": "Used to convert your speech into text so the assistant can answer.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        }
       }
     },
-    "plugins": ["expo-router"]
+    "android": {
+      "package": "com.canturgut.homevoice",
+      "permissions": ["RECORD_AUDIO", "INTERNET"]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Lets you talk to your home assistant.",
+          "speechRecognitionPermission": "Used to convert your speech into text."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }

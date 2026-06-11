@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import {
   Activity,
   Blocks,
+  ChevronLeft,
   ExternalLink,
   Hexagon,
   Power,
@@ -14,7 +15,11 @@ import { formatUptime } from '@/lib/format';
 import { ENDPOINTS } from '@/lib/endpoints';
 import { EndpointCard } from '@/features/settings/components/EndpointCard';
 import { SmartHomeSettings } from '@/features/home';
-import { NetworkPanel } from '@/features/network';
+import { ApiTokensTab } from '@/features/settings/ApiTokensTab';
+import { VillanosSettingsTab } from '@/features/settings/VillanosSettingsTab';
+import { RouterSettingsTab } from '@/features/router';
+import { DNSSettingsTab } from '@/features/dns';
+import { UsersSettingsTab } from '@/features/auth';
 import {
   SettingsCard,
   SkeletonRows,
@@ -27,26 +32,58 @@ import { NodeFormInline } from '@/features/settings/components/NodeFormInline';
 import { useSettings } from '@/features/settings/hooks/useSettings';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { useRoute, pushRoute, useIsMobile } from '@/app/routing';
+
+type SettingsTabId =
+  | 'general'
+  | 'nodes'
+  | 'home'
+  | 'router'
+  | 'dns'
+  | 'users'
+  | 'tokens'
+  | 'villanos'
+  | 'api'
+  | 'prompts';
+
+const VALID_TABS: SettingsTabId[] = [
+  'general',
+  'nodes',
+  'home',
+  'router',
+  'dns',
+  'users',
+  'tokens',
+  'villanos',
+  'api',
+  'prompts',
+];
 
 /* ── Settings Panel (Config + Node CRUD) ── */
 export function SettingsPanel() {
-  const [tab, setTab] = useState<
-    'general' | 'nodes' | 'home' | 'network' | 'api' | 'prompts'
-  >('general');
+  const route = useRoute();
+  const isMobile = useIsMobile();
 
-  // Allow other panels (e.g. dashboard "Manage" button) to deep-link a tab.
+  // Sub-route drives the active tab. On mobile a missing sub means "show the
+  // master list"; on desktop we fall back to General so the body is never
+  // blank when the user lands on /settings.
+  const urlTab = (
+    route.sub && (VALID_TABS as string[]).includes(route.sub)
+      ? (route.sub as SettingsTabId)
+      : undefined
+  );
+  const tab: SettingsTabId = urlTab ?? 'general';
+  const setTab = (next: SettingsTabId) => pushRoute('settings', next);
+  const showMaster = !isMobile || !urlTab;
+  const showDetail = !isMobile || !!urlTab;
+
+  // Legacy `settings:set-tab` listener kept for any code paths that haven't
+  // migrated to the URL-based gotoPage helper yet.
   useEffect(() => {
     const onSetTab = (e: Event) => {
       const detail = (e as CustomEvent).detail as { tab?: string } | undefined;
-      if (
-        detail?.tab === 'general' ||
-        detail?.tab === 'nodes' ||
-        detail?.tab === 'home' ||
-        detail?.tab === 'network' ||
-        detail?.tab === 'api' ||
-        detail?.tab === 'prompts'
-      ) {
-        setTab(detail.tab);
+      if (detail?.tab && (VALID_TABS as string[]).includes(detail.tab)) {
+        pushRoute('settings', detail.tab);
       }
     };
     window.addEventListener('settings:set-tab', onSetTab as EventListener);
@@ -95,39 +132,158 @@ export function SettingsPanel() {
     wakeNode,
   } = useSettings();
 
-  const tabs = [
-    { id: 'general' as const, label: 'General' },
-    { id: 'nodes' as const, label: `Nodes (${nodes.length})` },
-    { id: 'prompts' as const, label: 'Prompts' },
-    { id: 'home' as const, label: 'Smart Home' },
-    { id: 'network' as const, label: 'Network' },
-    { id: 'api' as const, label: 'API' },
+  const tabs: Array<{
+    id:
+      | 'general'
+      | 'nodes'
+      | 'prompts'
+      | 'home'
+      | 'router'
+      | 'dns'
+      | 'users'
+      | 'tokens'
+      | 'villanos'
+      | 'api';
+    label: string;
+    description: string;
+    group: 'system' | 'network' | 'ai' | 'devices';
+  }> = [
+    {
+      id: 'general',
+      label: 'General',
+      description: 'Version, build defaults, system info',
+      group: 'system',
+    },
+    {
+      id: 'users',
+      label: 'Users & Access',
+      description: 'Login accounts and roles',
+      group: 'system',
+    },
+    {
+      id: 'api',
+      label: 'API',
+      description: 'HTTP endpoint reference',
+      group: 'system',
+    },
+
+    {
+      id: 'router',
+      label: 'Router',
+      description: 'ASUS router credentials',
+      group: 'network',
+    },
+    {
+      id: 'dns',
+      label: 'DNS / Ad-blocker',
+      description: 'Local records, blocklists, allowlists',
+      group: 'network',
+    },
+
+    {
+      id: 'nodes',
+      label: `Nodes (${nodes.length})`,
+      description: 'Inference workers and their models',
+      group: 'ai',
+    },
+    {
+      id: 'prompts',
+      label: 'Prompts',
+      description: 'System prompts used by chat & router',
+      group: 'ai',
+    },
+    {
+      id: 'villanos',
+      label: 'VillaOS',
+      description: 'ElevenLabs voices and cast voice profiles',
+      group: 'ai',
+    },
+
+    {
+      id: 'home',
+      label: 'Smart Home',
+      description: 'Bridges and devices',
+      group: 'devices',
+    },
+    {
+      id: 'tokens',
+      label: 'API Tokens',
+      description: 'Bearer tokens for the mobile app, Shortcuts, and scripts',
+      group: 'system',
+    },
+  ];
+
+  const activeTab = tabs.find((t) => t.id === tab) ?? tabs[0];
+  const groups: Array<{ key: string; label: string }> = [
+    { key: 'system', label: 'System' },
+    { key: 'network', label: 'Network' },
+    { key: 'ai', label: 'AI' },
+    { key: 'devices', label: 'Devices' },
   ];
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      {/* Tab bar */}
-      <div className="flex gap-1 border-b border-border/20 pb-px">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-t-md transition-colors ${
-              tab === t.id
-                ? 'text-foreground bg-muted/30 border-b-2 border-foreground/40'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 max-w-6xl">
+      {/* ── Settings nav (vertical grouped list, like iOS Settings) ── */}
+      {showMaster && (
+        <aside className="w-full lg:w-64 shrink-0 space-y-5 lg:sticky lg:top-0 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1">
+          {groups.map((g) => (
+            <div key={g.key} className="space-y-1.5">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 px-1">
+                {g.label}
+              </div>
+              <div className="rounded-xl border border-border/40 bg-card/40 overflow-hidden divide-y divide-border/30">
+                {tabs
+                  .filter((t) => t.group === g.key)
+                  .map((t) => {
+                    const isActive = !isMobile && t.id === tab;
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => setTab(t.id)}
+                        className={`w-full text-left px-3 py-2.5 transition-colors ${
+                          isActive
+                            ? 'bg-primary/10 text-foreground'
+                            : 'text-foreground/85 hover:bg-white/5'
+                        }`}>
+                        <div className="text-sm font-medium">{t.label}</div>
+                        <div className="text-xs text-muted-foreground/75 mt-0.5">
+                          {t.description}
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          ))}
+        </aside>
+      )}
+
+      {/* ── Active tab body ── */}
+      {showDetail && (
+        <div className="flex-1 min-w-0 space-y-5">
+          <header className="space-y-1">
+            {isMobile && (
+              <button
+                onClick={() => pushRoute('settings')}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground/80 hover:text-foreground transition-colors -ml-1">
+                <ChevronLeft size={14} />
+                Settings
+              </button>
+            )}
+            <h2 className="text-lg font-semibold text-foreground">
+              {activeTab.label}
+            </h2>
+            <p className="text-sm text-muted-foreground/80">
+              {activeTab.description}
+            </p>
+          </header>
 
       {/* ── General Tab ── */}
       {tab === 'general' && (
         <div className="space-y-4">
           {/* Top action bar */}
           <div className="flex items-center justify-between">
-            <p className="text-[11px] text-muted-foreground/60">
+            <p className="text-xs text-muted-foreground/60">
               {loading
                 ? 'Loading…'
                 : sysCfg
@@ -140,7 +296,7 @@ export function SettingsPanel() {
                 refreshSettings();
               }}
               disabled={loading || settingsLoading}
-              className="text-[10px] flex items-center gap-1 px-2 py-1 text-muted-foreground/50 hover:text-foreground/80 disabled:opacity-30 transition-colors">
+              className="text-xs flex items-center gap-1 px-2 py-1 text-muted-foreground/70 hover:text-foreground/80 disabled:opacity-30 transition-colors">
               <RefreshCw
                 size={10}
                 className={loading || settingsLoading ? 'animate-spin' : ''}
@@ -150,7 +306,7 @@ export function SettingsPanel() {
           </div>
 
           {loadError && (
-            <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-[11px] text-red-300">
+            <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300">
               {loadError}
             </div>
           )}
@@ -160,7 +316,7 @@ export function SettingsPanel() {
             {loading || !sysCfg ? (
               <SkeletonRows rows={5} />
             ) : (
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                 <InfoRow label="Version" value={sysCfg.version} />
                 <InfoRow label="Port" value={sysCfg.port} mono />
                 <InfoRow
@@ -182,7 +338,7 @@ export function SettingsPanel() {
                   valueClass={
                     sysCfg.anthropic_set
                       ? 'text-emerald-400/80'
-                      : 'text-muted-foreground/50'
+                      : 'text-muted-foreground/70'
                   }
                 />
               </div>
@@ -200,15 +356,15 @@ export function SettingsPanel() {
                     className={`w-2 h-2 rounded-full ${ollamaOnline ? 'bg-emerald-500' : 'bg-zinc-500'}`}
                   />
                   <span className="text-sm font-medium">Ollama</span>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {ollamaOnline ? 'Online' : 'Offline'}
                   </span>
-                  <span className="text-[10px] text-muted-foreground/50 ml-auto font-mono">
+                  <span className="text-xs text-muted-foreground/70 ml-auto font-mono">
                     {ollamaHost}
                   </span>
                 </div>
                 <div className="space-y-1.5 pt-3 border-t border-border/10">
-                  <label className="text-[11px] text-muted-foreground">
+                  <label className="text-xs text-muted-foreground">
                     Router Model (Ollama classifier)
                   </label>
                   <div className="flex gap-2">
@@ -239,18 +395,18 @@ export function SettingsPanel() {
             actions={
               <>
                 {settingsDirty && (
-                  <span className="text-[9px] text-amber-400/80">unsaved</span>
+                  <span className="text-xs text-amber-400/80">unsaved</span>
                 )}
                 <button
                   onClick={resetSettings}
                   disabled={settingsSaving}
-                  className="text-[10px] text-muted-foreground/50 hover:text-foreground transition-colors">
+                  className="text-xs text-muted-foreground/70 hover:text-foreground transition-colors">
                   Reset
                 </button>
                 <button
                   onClick={saveSettings}
                   disabled={!settingsDirty || settingsSaving}
-                  className="text-[10px] px-2 py-0.5 rounded bg-foreground/10 hover:bg-foreground/15 disabled:opacity-30 transition-colors">
+                  className="text-xs px-2 py-0.5 rounded bg-foreground/10 hover:bg-foreground/15 disabled:opacity-30 transition-colors">
                   {settingsSaving ? '…' : 'Save'}
                 </button>
               </>
@@ -300,7 +456,7 @@ export function SettingsPanel() {
 
           {/* ── About card ── */}
           <SettingsCard title="About" icon={<Blocks size={12} />}>
-            <div className="space-y-2 text-[11px] text-muted-foreground/70">
+            <div className="space-y-2 text-xs text-muted-foreground/70">
               <p>
                 <span className="text-foreground/80">home-server</span> — a
                 self-hosted dashboard that turns natural-language prompts into
@@ -311,21 +467,21 @@ export function SettingsPanel() {
                   href="https://github.com/acanturgut/home-server"
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[10px] text-blue-400/80 hover:text-blue-300 inline-flex items-center gap-1">
+                  className="text-xs text-blue-400/80 hover:text-blue-300 inline-flex items-center gap-1">
                   <ExternalLink size={9} /> GitHub
                 </a>
                 <a
                   href={`${API_BASE}/api/health`}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[10px] text-blue-400/80 hover:text-blue-300 inline-flex items-center gap-1">
+                  className="text-xs text-blue-400/80 hover:text-blue-300 inline-flex items-center gap-1">
                   <ExternalLink size={9} /> /api/health
                 </a>
                 <a
                   href={`${API_BASE}/api/system`}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[10px] text-blue-400/80 hover:text-blue-300 inline-flex items-center gap-1">
+                  className="text-xs text-blue-400/80 hover:text-blue-300 inline-flex items-center gap-1">
                   <ExternalLink size={9} /> /api/system
                 </a>
               </div>
@@ -347,7 +503,7 @@ export function SettingsPanel() {
               <button
                 onClick={refresh}
                 disabled={loading}
-                className="text-[10px] flex items-center gap-1 px-2 py-1 text-muted-foreground/50 hover:text-foreground/80 disabled:opacity-30 transition-colors">
+                className="text-xs flex items-center gap-1 px-2 py-1 text-muted-foreground/70 hover:text-foreground/80 disabled:opacity-30 transition-colors">
                 <RefreshCw
                   size={10}
                   className={loading ? 'animate-spin' : ''}
@@ -368,7 +524,7 @@ export function SettingsPanel() {
                     temperature: settings.defaultTemperature,
                   });
                 }}
-                className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors">
+                className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
                 {showAdd ? (
                   <>
                     <X size={11} className="inline" /> Cancel
@@ -384,19 +540,19 @@ export function SettingsPanel() {
 
           {showAdd && (
             <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
-              <p className="text-[11px] font-medium text-foreground/70">
+              <p className="text-xs font-medium text-foreground/70">
                 New Node
               </p>
               <NodeFormInline form={form} setForm={setForm} models={models} />
               <div className="flex gap-2 justify-end">
                 <button
                   onClick={() => setShowAdd(false)}
-                  className="px-2.5 py-1 rounded-md text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+                  className="px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground transition-colors">
                   Cancel
                 </button>
                 <button
                   onClick={addNode}
-                  className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-foreground/10 hover:bg-foreground/15 transition-colors">
+                  className="px-2.5 py-1 rounded-md text-xs font-medium bg-foreground/10 hover:bg-foreground/15 transition-colors">
                   Add
                 </button>
               </div>
@@ -414,16 +570,16 @@ export function SettingsPanel() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{n.name}</span>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {n.tier}
                     </span>
                     {n.gpu && (
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {n.gpu}
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] text-muted-foreground/60 font-mono mt-0.5">
+                  <p className="text-xs text-muted-foreground/60 font-mono mt-0.5">
                     {n.host}
                     {n.model ? ` · ${n.model}` : ''}
                     {n.temperature != null ? ` · t=${n.temperature}` : ''}
@@ -434,7 +590,7 @@ export function SettingsPanel() {
                   {n.mac && (
                     <button
                       onClick={() => wakeNode(n.id)}
-                      className="px-2 py-1 rounded text-[11px] text-violet-400 hover:bg-violet-500/10 transition-colors">
+                      className="px-2 py-1 rounded text-xs text-violet-400 hover:bg-violet-500/10 transition-colors">
                       <Power size={13} />
                     </button>
                   )}
@@ -442,12 +598,12 @@ export function SettingsPanel() {
                     onClick={() =>
                       editId === n.id ? setEditId(null) : startEdit(n)
                     }
-                    className={`px-2 py-1 rounded text-[11px] transition-colors ${editId === n.id ? 'text-blue-300 bg-blue-500/10' : 'text-muted-foreground hover:text-foreground'}`}>
+                    className={`px-2 py-1 rounded text-xs transition-colors ${editId === n.id ? 'text-blue-300 bg-blue-500/10' : 'text-muted-foreground hover:text-foreground'}`}>
                     {editId === n.id ? 'Close' : 'Edit'}
                   </button>
                   <button
                     onClick={() => removeNode(n.id)}
-                    className="px-2 py-1 rounded text-[11px] text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                    className="px-2 py-1 rounded text-xs text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-colors">
                     <X size={13} />
                   </button>
                 </div>
@@ -464,12 +620,12 @@ export function SettingsPanel() {
                   <div className="flex gap-2 justify-end">
                     <button
                       onClick={() => setEditId(null)}
-                      className="px-2.5 py-1 rounded-md text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+                      className="px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground transition-colors">
                       Cancel
                     </button>
                     <button
                       onClick={saveNode}
-                      className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-foreground/10 hover:bg-foreground/15 transition-colors">
+                      className="px-2.5 py-1 rounded-md text-xs font-medium bg-foreground/10 hover:bg-foreground/15 transition-colors">
                       Save
                     </button>
                   </div>
@@ -487,7 +643,11 @@ export function SettingsPanel() {
 
       {/* ── Smart Home Tab (HomeKit + bridges) ── */}
       {tab === 'home' && <SmartHomeSettings />}
-      {tab === 'network' && <NetworkPanel />}
+      {tab === 'tokens' && <ApiTokensTab />}
+      {tab === 'villanos' && <VillanosSettingsTab />}
+      {tab === 'router' && <RouterSettingsTab />}
+      {tab === 'dns' && <DNSSettingsTab />}
+      {tab === 'users' && <UsersSettingsTab />}
 
       {/* ── Prompts Tab ── */}
       {tab === 'prompts' && (
@@ -531,6 +691,8 @@ export function SettingsPanel() {
               </div>
             </section>
           ))}
+        </div>
+      )}
         </div>
       )}
     </div>

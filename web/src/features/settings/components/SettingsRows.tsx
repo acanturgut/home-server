@@ -17,7 +17,7 @@ export function SettingsCard({
   return (
     <div className="rounded-lg border border-border/30 overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/10 bg-white/[0.01]">
-        <div className="flex items-center gap-1.5 text-[11px] text-foreground/80 font-medium">
+        <div className="flex items-center gap-1.5 text-xs text-foreground/80 font-medium">
           {icon && <span className="text-muted-foreground/60">{icon}</span>}
           {title}
         </div>
@@ -65,11 +65,11 @@ export function InfoRow({
 }) {
   return (
     <div className={`flex flex-col gap-0.5 ${full ? 'col-span-2' : ''}`}>
-      <span className="text-[9px] uppercase tracking-wider text-muted-foreground/40">
+      <span className="text-xs uppercase tracking-wider text-muted-foreground/65">
         {label}
       </span>
       <span
-        className={`text-[11px] truncate ${mono ? 'font-mono' : ''} ${valueClass || 'text-foreground/80'}`}
+        className={`text-xs truncate ${mono ? 'font-mono' : ''} ${valueClass || 'text-foreground/80'}`}
         title={value}>
         {value}
       </span>
@@ -95,9 +95,9 @@ export function ToggleRow({
     <div
       className={`flex items-start gap-3 py-1 ${disabled ? 'opacity-40' : ''}`}>
       <div className="flex-1 min-w-0">
-        <div className="text-[11px] text-foreground/85">{label}</div>
+        <div className="text-xs text-foreground/85">{label}</div>
         {hint && (
-          <div className="text-[10px] text-muted-foreground/55 mt-0.5 leading-snug">
+          <div className="text-xs text-muted-foreground/70 mt-0.5 leading-snug">
             {hint}
           </div>
         )}
@@ -136,9 +136,9 @@ export function NumberRow({
   return (
     <div className="flex items-start gap-3 py-1">
       <div className="flex-1 min-w-0">
-        <div className="text-[11px] text-foreground/85">{label}</div>
+        <div className="text-xs text-foreground/85">{label}</div>
         {hint && (
-          <div className="text-[10px] text-muted-foreground/55 mt-0.5 leading-snug">
+          <div className="text-xs text-muted-foreground/70 mt-0.5 leading-snug">
             {hint}
           </div>
         )}
@@ -158,7 +158,7 @@ export function NumberRow({
           className="w-20 tabular-nums text-right"
         />
         {suffix && (
-          <span className="text-[10px] text-muted-foreground/55 w-12">
+          <span className="text-xs text-muted-foreground/70 w-12">
             {suffix}
           </span>
         )}

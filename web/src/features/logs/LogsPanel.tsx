@@ -42,7 +42,7 @@ export function LogsPanel() {
           <button
             key={lv}
             onClick={() => setLevelFilter(lv)}
-            className={`text-[10px] px-2 py-1 rounded-md transition-colors ${
+            className={`text-xs px-2 py-1 rounded-md transition-colors ${
               levelFilter === lv
                 ? 'bg-foreground/10 text-foreground'
                 : lv === 'ERROR'
@@ -54,7 +54,7 @@ export function LogsPanel() {
         ))}
         <button
           onClick={fetchLogs}
-          className="text-[11px] text-muted-foreground hover:text-foreground">
+          className="text-xs text-muted-foreground hover:text-foreground">
           ↻
         </button>
       </div>
@@ -72,8 +72,8 @@ export function LogsPanel() {
                 <div
                   key={i}
                   className="px-3 py-1 hover:bg-muted/10 transition-colors">
-                  <div className="flex items-start gap-2 text-[11px] font-mono">
-                    <span className="text-muted-foreground/50 shrink-0 w-[62px] tabular-nums">
+                  <div className="flex items-start gap-2 text-xs font-mono">
+                    <span className="text-muted-foreground/70 shrink-0 w-[62px] tabular-nums">
                       {l.timestamp
                         ? new Date(l.timestamp).toLocaleTimeString()
                         : ''}
@@ -87,7 +87,7 @@ export function LogsPanel() {
                     </span>
                   </div>
                   {(l.route || l.model || l.node || l.latency) && (
-                    <div className="flex gap-2 ml-[108px] mt-0.5 text-[9px]">
+                    <div className="flex gap-2 ml-[108px] mt-0.5 text-xs">
                       {l.route && (
                         <span className="text-blue-400/60">{l.route}</span>
                       )}
@@ -98,7 +98,7 @@ export function LogsPanel() {
                         <span className="text-amber-400/60">{l.node}</span>
                       )}
                       {l.latency && (
-                        <span className="text-muted-foreground/40">
+                        <span className="text-muted-foreground/65">
                           {l.latency}
                         </span>
                       )}
@@ -110,7 +110,7 @@ export function LogsPanel() {
           )}
         </ScrollArea>
       </div>
-      <p className="text-[10px] text-muted-foreground/40 text-center">
+      <p className="text-xs text-muted-foreground/65 text-center">
         {filtered.length}/{logs.length} entries
       </p>
     </div>

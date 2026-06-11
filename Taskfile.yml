@@ -13,14 +13,24 @@ tasks:
     cmd: go run .
 
   app:dev:
-    desc: Start Expo dev server
+    desc: Start Expo dev server (requires a dev build — Expo Go can't use native speech)
     dir: app
-    cmd: npx expo start
+    cmd: npx expo start --dev-client
 
   app:install:
     desc: Install app dependencies
     dir: app
-    cmd: npm install
+    cmd: yarn install
+
+  app:prebuild:
+    desc: Generate native ios/android folders for the app
+    dir: app
+    cmd: npx expo prebuild --clean
+
+  app:ios:
+    desc: Build & run the iOS dev build on a connected device or simulator
+    dir: app
+    cmd: npx expo run:ios --device
 
   # ─── BUILD ─────────────────────────────────────────────
   server:build:

@@ -16,11 +16,18 @@ import (
 
 	"github.com/acanturgut/home-server/ai"
 	"github.com/acanturgut/home-server/apps"
+	"github.com/acanturgut/home-server/asusrouter"
+	"github.com/acanturgut/home-server/auth"
+	"github.com/acanturgut/home-server/bambu"
 	"github.com/acanturgut/home-server/config"
 	"github.com/acanturgut/home-server/homedevices"
+	"github.com/acanturgut/home-server/homedns"
 	"github.com/acanturgut/home-server/homekit"
 	"github.com/acanturgut/home-server/logger"
+	"github.com/acanturgut/home-server/apitokens"
 	"github.com/acanturgut/home-server/nodestate"
+	"github.com/acanturgut/home-server/trader"
+	"github.com/acanturgut/home-server/villanos"
 	"github.com/acanturgut/home-server/wol"
 	"github.com/google/uuid"
 )
@@ -41,6 +48,13 @@ type Handler struct {
 	rag       *apps.RAGIndex
 	schedules *apps.ScheduleStore
 	homedev   *homedevices.Manager
+	router4   *asusrouter.Manager
+	dns       *homedns.Server
+	auth      *auth.Store
+	bambu     *bambu.Manager
+	trader    *trader.Manager
+	villanos  *villanos.Manager
+	tokens    *apitokens.Store
 	version   string
 	started   time.Time
 }

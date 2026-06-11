@@ -75,13 +75,13 @@ export function ClarifyWizard(props: {
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
           <div className="flex items-center gap-2">
             <Sparkles size={14} className="text-violet-400" />
-            <h3 className="text-[12px] font-medium text-foreground/90">
+            <h3 className="text-sm font-medium text-foreground/90">
               Refine your app idea
             </h3>
           </div>
           <button
             onClick={onClose}
-            className="w-6 h-6 flex items-center justify-center text-muted-foreground/50 hover:text-foreground transition-colors">
+            className="w-6 h-6 flex items-center justify-center text-muted-foreground/70 hover:text-foreground transition-colors">
             <X size={12} />
           </button>
         </div>
@@ -89,14 +89,14 @@ export function ClarifyWizard(props: {
         {/* Original prompt — editable */}
         <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
           <div className="flex items-center justify-between mb-1.5">
-            <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40">
+            <div className="text-xs uppercase tracking-wider text-muted-foreground/65">
               Your idea
             </div>
             <button
               onClick={onRegenerate}
               disabled={loading || !prompt.trim()}
               title="Re-run AI clarification on the current idea"
-              className="text-[9px] text-violet-400/70 hover:text-violet-300 disabled:opacity-30 transition-colors flex items-center gap-1">
+              className="text-xs text-violet-400/70 hover:text-violet-300 disabled:opacity-30 transition-colors flex items-center gap-1">
               <Sparkles size={9} className={loading ? 'animate-pulse' : ''} />
               {loading
                 ? 'Refining…'
@@ -117,14 +117,14 @@ export function ClarifyWizard(props: {
             placeholder="Describe what you want to build… e.g. a kanban board with drag-and-drop, dark theme"
             rows={3}
             autoFocus
-            className="w-full bg-transparent border border-white/5 rounded p-2 text-[12px] text-foreground/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-500/30 resize-none"
+            className="w-full bg-transparent border border-white/5 rounded p-2 text-sm text-foreground/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-500/30 resize-none"
           />
           {summary && (
             <div className="mt-2 pt-2 border-t border-white/5">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40 mb-1">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground/65 mb-1">
                 AI understands
               </div>
-              <p className="text-[11px] text-violet-300/80 leading-relaxed">
+              <p className="text-xs text-violet-300/80 leading-relaxed">
                 {summary}
               </p>
             </div>
@@ -133,7 +133,7 @@ export function ClarifyWizard(props: {
             <div className="mt-2 pt-2 border-t border-white/5">
               <div className="flex items-center gap-1.5 mb-1">
                 <Sparkles size={9} className="text-violet-400/60" />
-                <div className="text-[9px] uppercase tracking-wider text-muted-foreground/40">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground/65">
                   Suggested name
                 </div>
               </div>
@@ -143,9 +143,9 @@ export function ClarifyWizard(props: {
                 onChange={(e) => setName(sanitizeName(e.target.value))}
                 placeholder="my-app"
                 spellCheck={false}
-                className="w-full bg-black/30 border border-white/5 rounded px-2 py-1.5 text-[11px] font-mono text-violet-200/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-400/40 transition-colors"
+                className="w-full bg-black/30 border border-white/5 rounded px-2 py-1.5 text-xs font-mono text-violet-200/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-400/40 transition-colors"
               />
-              <p className="text-[10px] text-muted-foreground/40 mt-1">
+              <p className="text-xs text-muted-foreground/65 mt-1">
                 Lowercase, dashes only. Used as the app folder & container name.
               </p>
             </div>
@@ -160,7 +160,7 @@ export function ClarifyWizard(props: {
                 size={24}
                 className="text-violet-400/60 animate-pulse"
               />
-              <p className="text-[11px] text-muted-foreground/60">
+              <p className="text-xs text-muted-foreground/60">
                 Thinking up the right questions...
               </p>
             </div>
@@ -169,12 +169,12 @@ export function ClarifyWizard(props: {
           {!loading && error && (
             <div className="flex flex-col items-center gap-3 py-6">
               <AlertCircle size={20} className="text-amber-400/70" />
-              <p className="text-[11px] text-amber-300/80 text-center max-w-sm">
+              <p className="text-xs text-amber-300/80 text-center max-w-sm">
                 {error}
               </p>
               <button
                 onClick={onRegenerate}
-                className="text-[10px] px-3 py-1 bg-white/[0.04] hover:bg-white/[0.08] rounded text-muted-foreground/70 hover:text-foreground transition-colors">
+                className="text-xs px-3 py-1 bg-white/[0.04] hover:bg-white/[0.08] rounded text-muted-foreground/70 hover:text-foreground transition-colors">
                 Try again
               </button>
             </div>
@@ -184,8 +184,8 @@ export function ClarifyWizard(props: {
             <div className="space-y-4">
               {questions.map((q, i) => (
                 <div key={q.id} className="space-y-1.5">
-                  <label className="block text-[11px] text-foreground/80">
-                    <span className="text-muted-foreground/40 mr-1.5">
+                  <label className="block text-xs text-foreground/80">
+                    <span className="text-muted-foreground/65 mr-1.5">
                       {i + 1}.
                     </span>
                     {q.question}
@@ -194,7 +194,7 @@ export function ClarifyWizard(props: {
                     )}
                   </label>
                   {q.hint && (
-                    <p className="text-[10px] text-muted-foreground/40 ml-4">
+                    <p className="text-xs text-muted-foreground/65 ml-4">
                       {q.hint}
                     </p>
                   )}
@@ -203,7 +203,7 @@ export function ClarifyWizard(props: {
                     value={answers[q.id] || ''}
                     onChange={(e) => setAns(q.id, e.target.value)}
                     placeholder="Your answer..."
-                    className="ml-4 w-[calc(100%-1rem)] bg-black/30 border border-white/5 rounded px-2 py-1.5 text-[11px] text-foreground/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-400/40 transition-colors"
+                    className="ml-4 w-[calc(100%-1rem)] bg-black/30 border border-white/5 rounded px-2 py-1.5 text-xs text-foreground/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-400/40 transition-colors"
                   />
                   {q.suggestions && q.suggestions.length > 0 && (
                     <div className="ml-4 flex flex-wrap gap-1.5 pt-0.5">
@@ -213,7 +213,7 @@ export function ClarifyWizard(props: {
                           <button
                             key={s}
                             onClick={() => setAns(q.id, s)}
-                            className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+                            className={`px-2 py-0.5 rounded text-xs border transition-colors ${
                               active
                                 ? 'bg-violet-500/15 border-violet-400/40 text-violet-200'
                                 : 'bg-white/[0.02] border-white/5 text-muted-foreground/60 hover:text-foreground/80 hover:border-white/15'
@@ -231,11 +231,11 @@ export function ClarifyWizard(props: {
 
           {!loading && !error && (
             <div className="mt-5 pt-4 border-t border-white/5 space-y-1.5">
-              <label className="block text-[11px] text-foreground/80">
+              <label className="block text-xs text-foreground/80">
                 Anything else?{' '}
-                <span className="text-muted-foreground/40">(optional)</span>
+                <span className="text-muted-foreground/65">(optional)</span>
               </label>
-              <p className="text-[10px] text-muted-foreground/40">
+              <p className="text-xs text-muted-foreground/65">
                 Extra context, design hints, libraries to use, things to avoid…
               </p>
               <textarea
@@ -243,7 +243,7 @@ export function ClarifyWizard(props: {
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
                 placeholder="e.g. keep it minimalist, use Tailwind, prefer SQLite over Postgres…"
-                className="w-full bg-black/30 border border-white/5 rounded px-2 py-1.5 text-[11px] text-foreground/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-400/40 transition-colors resize-none"
+                className="w-full bg-black/30 border border-white/5 rounded px-2 py-1.5 text-xs text-foreground/90 placeholder:text-muted-foreground/30 focus:outline-none focus:border-violet-400/40 transition-colors resize-none"
               />
             </div>
           )}
@@ -255,12 +255,12 @@ export function ClarifyWizard(props: {
             <button
               onClick={onRegenerate}
               disabled={loading || !prompt.trim()}
-              className="text-[10px] flex items-center gap-1 px-2 py-1 text-muted-foreground/50 hover:text-foreground/80 disabled:opacity-30 transition-colors">
+              className="text-xs flex items-center gap-1 px-2 py-1 text-muted-foreground/70 hover:text-foreground/80 disabled:opacity-30 transition-colors">
               <RefreshCw size={10} className={loading ? 'animate-spin' : ''} />
               Regenerate
             </button>
             {!loading && questions.length > 0 && (
-              <span className="text-[9px] text-muted-foreground/40">
+              <span className="text-xs text-muted-foreground/65">
                 {answeredCount}/{questions.length} answered
               </span>
             )}
@@ -269,13 +269,13 @@ export function ClarifyWizard(props: {
             <button
               onClick={onSkip}
               disabled={!prompt.trim()}
-              className="text-[10px] px-3 py-1.5 text-muted-foreground/60 hover:text-foreground disabled:opacity-30 transition-colors">
+              className="text-xs px-3 py-1.5 text-muted-foreground/60 hover:text-foreground disabled:opacity-30 transition-colors">
               Skip & build
             </button>
             <button
               onClick={onBuild}
               disabled={loading || requiredMissing || !prompt.trim()}
-              className="text-[11px] px-3 py-1.5 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-400/30 rounded text-violet-100 disabled:opacity-30 transition-colors flex items-center gap-1.5">
+              className="text-xs px-3 py-1.5 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-400/30 rounded text-violet-100 disabled:opacity-30 transition-colors flex items-center gap-1.5">
               <Sparkles size={11} />
               Build app
             </button>

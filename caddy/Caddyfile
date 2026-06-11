@@ -1,0 +1,27 @@
+# Reverse proxy + HTTPS for the home-server.
+#
+# `tls internal` tells Caddy to mint certs from its own local CA (no public
+# DNS / Let's Encrypt challenge needed). The CA root cert is exported to
+# /data/caddy/pki/authorities/local/root.crt — install it on each device
+# (Mac/iPhone/iPad: Settings → Profile → Trust the "Caddy Local Authority")
+# to make HTTPS green. Without that step you'll get a self-signed warning.
+
+{
+        # Bind to all addresses on host network. Email is only used by
+        # Let's Encrypt; safe to leave with a placeholder for `tls internal`.
+        email admin@canshome.com
+}
+
+# Catch-all for anything pointed at this host (canshome.com or LAN IP).
+canshome.com, *.canshome.com, home.lan, *.home.lan, 192.168.50.199 {
+        encode zstd gzip
+
+        # API + websocket + agent endpoints
+        @api path /api/*
+        reverse_proxy @api 127.0.0.1:8080
+
+        # Everything else -> the dashboard SPA
+        reverse_proxy 127.0.0.1:8080
+
+        tls internal
+}

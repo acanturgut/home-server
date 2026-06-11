@@ -1,4 +1,5 @@
-FROM golang:1.22-alpine AS builder
+# syntax=docker/dockerfile:1.7
+FROM golang:1.25-alpine AS builder
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
@@ -7,14 +8,24 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /home-server .
 
 FROM alpine:3.19
 
-# Layer 1: system packages (cached unless base image changes)
-RUN apk add --no-cache ca-certificates curl docker-cli nodejs npm python3 py3-pip git \
-    build-base python3-dev
+# Layer 1: system packages. Node/npm are kept around because the generated
+# apps need `npm run build` inside their own Dockerfiles, and `unzip` +
+# `bash` are needed by the opencode install script. tzdata is required so
+# Go's time.LoadLocation("America/New_York") etc. resolves real IANA
+# zones — without it everything falls back to UTC and market-hours math
+# is silently wrong.
+RUN apk add --no-cache ca-certificates curl bash unzip docker-cli nodejs npm git ffmpeg tzdata
 
-# Layer 2: aider install (cached unless aider version changes — this is the slow one)
-# --no-cache-dir + MAX_JOBS=1 to prevent OOM on low-memory devices (Pi 5 has 8GB)
-RUN MAX_JOBS=1 pip3 install --no-cache-dir --break-system-packages aider-chat \
-    && apk del build-base python3-dev
+# Layer 2: opencode (single prebuilt binary — no pip, no Python toolchain).
+# The installer chooses an install path based on its own priority order and
+# only adds it to /etc/profile (which non-login shells don't source). After
+# install, locate the binary and symlink it into /usr/local/bin so PATH
+# resolves it for `exec.Command("opencode", ...)` from the Go server.
+ENV OPENCODE_DISABLE_AUTOUPDATE=true
+RUN curl -fsSL https://opencode.ai/install | bash \
+    && OC_BIN="$(find /root /usr/local /opt -maxdepth 5 -type f -name opencode 2>/dev/null | head -n1)" \
+    && test -n "$OC_BIN" && ln -sf "$OC_BIN" /usr/local/bin/opencode \
+    && opencode --version
 
 # Layer 3: Go binary (changes on every code change — always last)
 COPY --from=builder /home-server /usr/local/bin/home-server

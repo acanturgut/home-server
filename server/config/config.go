@@ -29,13 +29,14 @@ type Node struct {
 }
 
 type Config struct {
-	Port         string `json:"port"`
-	OllamaHost   string `json:"ollama_host"`
-	RouterModel  string `json:"router_model"`
-	LogDir       string `json:"log_dir"`
-	DataDir      string `json:"data_dir"`
-	HomeKitPIN   string `json:"homekit_pin"`
-	AnthropicKey string `json:"-"`
+	Port          string `json:"port"`
+	OllamaHost    string `json:"ollama_host"`
+	RouterModel   string `json:"router_model"`
+	LogDir        string `json:"log_dir"`
+	DataDir       string `json:"data_dir"`
+	HomeKitPIN    string `json:"homekit_pin"`
+	AnthropicKey  string `json:"-"`
+	ElevenLabsKey string `json:"-"`
 }
 
 var (
@@ -46,13 +47,14 @@ var (
 func Load() *Config {
 	once.Do(func() {
 		cfg = &Config{
-			Port:         getEnv("PORT", "8080"),
-			OllamaHost:   getEnv("OLLAMA_HOST", "http://localhost:11434"),
-			RouterModel:  getEnv("ROUTER_MODEL", "gemma3:1b"),
-			LogDir:       getEnv("LOG_DIR", "/var/log/home-server"),
-			DataDir:      getEnv("DATA_DIR", "/var/lib/home-server"),
-			HomeKitPIN:   getEnv("HOMEKIT_PIN", "00102003"),
-			AnthropicKey: getEnv("ANTHROPIC_API_KEY", ""),
+			Port:          getEnv("PORT", "8080"),
+			OllamaHost:    getEnv("OLLAMA_HOST", "http://localhost:11434"),
+			RouterModel:   getEnv("ROUTER_MODEL", "gemma3:1b"),
+			LogDir:        getEnv("LOG_DIR", "/var/log/home-server"),
+			DataDir:       getEnv("DATA_DIR", "/var/lib/home-server"),
+			HomeKitPIN:    getEnv("HOMEKIT_PIN", "00102003"),
+			AnthropicKey:  getEnv("ANTHROPIC_API_KEY", ""),
+			ElevenLabsKey: getEnv("ELEVENLABS_API_KEY", ""),
 		}
 	})
 	return cfg

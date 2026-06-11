@@ -156,7 +156,7 @@ export function InlineSpans({ text }: { text: string }) {
           return (
             <code
               key={i}
-              className="px-1 py-px text-[12px] rounded bg-white/10 font-mono">
+              className="px-1 py-px text-sm rounded bg-white/10 font-mono">
               {p.body}
             </code>
           );
@@ -189,13 +189,13 @@ export function CodeBlock({ lang, code }: { lang: string; code: string }) {
   return (
     <div className="rounded-md border border-white/10 bg-black/40 overflow-hidden">
       <div className="flex items-center justify-between px-2 py-1 border-b border-white/5 bg-white/[0.02]">
-        <span className="text-[9px] uppercase tracking-wider text-muted-foreground/50 font-mono">
+        <span className="text-xs uppercase tracking-wider text-muted-foreground/70 font-mono">
           {lang || 'text'}
         </span>
         <div className="flex items-center gap-1">
           <button
             onClick={onCopy}
-            className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground/60 hover:text-foreground rounded hover:bg-white/5 transition-colors">
+            className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground/60 hover:text-foreground rounded hover:bg-white/5 transition-colors">
             <Copy size={10} />
             {copied ? 'Copied' : 'Copy'}
           </button>
@@ -203,7 +203,7 @@ export function CodeBlock({ lang, code }: { lang: string; code: string }) {
             <button
               onClick={() => copyToClipboard(code)}
               title="Copy command — paste into the bottom Terminal tab"
-              className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-violet-300/70 hover:text-violet-200 rounded hover:bg-white/5 transition-colors">
+              className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-violet-300/70 hover:text-violet-200 rounded hover:bg-white/5 transition-colors">
               <Terminal size={10} />
               Copy as cmd
             </button>
@@ -211,7 +211,7 @@ export function CodeBlock({ lang, code }: { lang: string; code: string }) {
         </div>
       </div>
       <pre
-        className={`text-[12px] font-mono p-3 overflow-auto leading-relaxed ${isDiff ? 'diff-block' : ''}`}>
+        className={`text-sm font-mono p-3 overflow-auto leading-relaxed ${isDiff ? 'diff-block' : ''}`}>
         {isDiff ? (
           code.split('\n').map((l, i) => {
             const cls =
@@ -278,26 +278,26 @@ export function ToolCallBlock({ payload }: { payload: string }) {
   return (
     <div className="rounded-md border border-violet-400/30 bg-violet-500/5 overflow-hidden">
       <div className="flex items-center justify-between px-2 py-1 border-b border-violet-400/20 bg-violet-500/10">
-        <span className="text-[10px] uppercase tracking-wider text-violet-300/80 font-mono">
+        <span className="text-xs uppercase tracking-wider text-violet-300/80 font-mono">
           tool · {name}
         </span>
         <button
           onClick={run}
           disabled={running || !parsed.name}
-          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-violet-200 hover:bg-violet-500/20 rounded transition-colors disabled:opacity-40">
+          className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-violet-200 hover:bg-violet-500/20 rounded transition-colors disabled:opacity-40">
           {running ? 'Running…' : 'Run'}
         </button>
       </div>
-      <pre className="text-[11px] font-mono p-2 overflow-auto text-violet-100/70">
+      <pre className="text-xs font-mono p-2 overflow-auto text-violet-100/70">
         {JSON.stringify(parsed.args || {}, null, 2)}
       </pre>
       {err && (
-        <div className="px-2 py-1 text-[10px] text-red-300 border-t border-violet-400/20 bg-red-500/10">
+        <div className="px-2 py-1 text-xs text-red-300 border-t border-violet-400/20 bg-red-500/10">
           {err}
         </div>
       )}
       {result && (
-        <pre className="text-[11px] font-mono p-2 overflow-auto max-h-72 border-t border-violet-400/20 text-foreground/80 bg-black/30">
+        <pre className="text-xs font-mono p-2 overflow-auto max-h-72 border-t border-violet-400/20 text-foreground/80 bg-black/30">
           {result}
         </pre>
       )}
@@ -325,7 +325,7 @@ export function CompareBlock({ payload }: { payload: string }) {
   }
   if (data.pending) {
     return (
-      <div className="text-[11px] text-violet-300/80 italic">
+      <div className="text-xs text-violet-300/80 italic">
         Fanning out to {(data.routes || []).join(', ')}…
       </div>
     );
@@ -341,7 +341,7 @@ export function CompareBlock({ payload }: { payload: string }) {
         <div
           key={i}
           className="rounded-md border border-violet-400/20 bg-violet-500/5 overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between px-2 py-1 border-b border-violet-400/20 bg-violet-500/10 text-[10px]">
+          <div className="flex items-center justify-between px-2 py-1 border-b border-violet-400/20 bg-violet-500/10 text-xs">
             <span className="font-mono text-violet-200">
               {r.route} · {r.node || '—'}
             </span>
@@ -349,7 +349,7 @@ export function CompareBlock({ payload }: { payload: string }) {
               {r.ms} ms
             </span>
           </div>
-          <div className="p-2 text-[12px] overflow-auto max-h-96">
+          <div className="p-2 text-sm overflow-auto max-h-96">
             {r.error ? (
               <div className="text-red-300">{r.error}</div>
             ) : (

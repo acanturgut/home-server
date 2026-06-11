@@ -6,32 +6,32 @@ import { parseUnifiedDiff, type DiffFile } from '@/lib/diff';
 function FileBlock({ f, mode }: { f: DiffFile; mode: 'split' | 'unified' }) {
   return (
     <div className="rounded border border-white/10">
-      <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-[#0a0a0a] border-b border-white/10 text-[11px] rounded-t">
+      <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-[#0a0a0a] border-b border-white/10 text-xs rounded-t">
         <FileCode2 size={11} className="text-violet-400/70 shrink-0" />
         <span className="font-mono text-foreground/80 truncate flex-1">
           {f.path}
         </span>
         {f.isNew && (
-          <span className="text-[9px] uppercase text-emerald-400/80">new</span>
+          <span className="text-xs uppercase text-emerald-400/80">new</span>
         )}
         {f.isDeleted && (
-          <span className="text-[9px] uppercase text-red-400/80">deleted</span>
+          <span className="text-xs uppercase text-red-400/80">deleted</span>
         )}
-        <span className="text-[10px] tabular-nums text-emerald-400/80">
+        <span className="text-xs tabular-nums text-emerald-400/80">
           +{f.added}
         </span>
-        <span className="text-[10px] tabular-nums text-red-400/80">
+        <span className="text-xs tabular-nums text-red-400/80">
           −{f.removed}
         </span>
       </div>
       {mode === 'split' ? (
-        <div className="grid grid-cols-2 text-[10px] font-mono">
+        <div className="grid grid-cols-2 text-xs font-mono">
           {f.rows.map((row, ri) => {
             if (row.kind === 'gap') {
               return (
                 <div
                   key={ri}
-                  className="col-span-2 px-3 py-1 bg-sky-500/5 text-sky-400/60 border-y border-white/5 text-[9px]">
+                  className="col-span-2 px-3 py-1 bg-sky-500/5 text-sky-400/60 border-y border-white/5 text-xs">
                   ⋯
                 </div>
               );
@@ -77,13 +77,13 @@ function FileBlock({ f, mode }: { f: DiffFile; mode: 'split' | 'unified' }) {
           })}
         </div>
       ) : (
-        <div className="text-[10px] font-mono">
+        <div className="text-xs font-mono">
           {f.rows.map((row, ri) => {
             if (row.kind === 'gap') {
               return (
                 <div
                   key={ri}
-                  className="px-3 py-1 bg-sky-500/5 text-sky-400/60 text-[9px]">
+                  className="px-3 py-1 bg-sky-500/5 text-sky-400/60 text-xs">
                   ⋯
                 </div>
               );
@@ -132,7 +132,7 @@ function FileBlock({ f, mode }: { f: DiffFile; mode: 'split' | 'unified' }) {
                 <span className="w-9 shrink-0 text-right pr-2 text-muted-foreground/30 select-none">
                   {no ?? ''}
                 </span>
-                <span className="px-1 text-muted-foreground/40">{sign}</span>
+                <span className="px-1 text-muted-foreground/65">{sign}</span>
                 <span className="flex-1 whitespace-pre-wrap break-all text-foreground/80">
                   {text ?? ''}
                 </span>
@@ -167,7 +167,7 @@ export function DiffView({
   }, [diff]);
   if (!files.length) {
     return (
-      <div className="p-4 text-[11px] text-muted-foreground/60">
+      <div className="p-4 text-xs text-muted-foreground/60">
         No changes.
       </div>
     );
@@ -184,7 +184,7 @@ export function DiffView({
   return (
     <div className="flex gap-3 h-full min-h-0">
       <div className="w-56 shrink-0 h-full overflow-y-auto overflow-x-hidden border-r border-white/10 pr-2 -mr-1">
-        <div className="sticky top-0 bg-[#0a0a0a] z-10 text-[9px] uppercase tracking-wider text-muted-foreground/40 px-2 py-1">
+        <div className="sticky top-0 bg-[#0a0a0a] z-10 text-xs uppercase tracking-wider text-muted-foreground/65 px-2 py-1">
           {files.length} file{files.length === 1 ? '' : 's'} changed
         </div>
         {files.map((f, fi) => (
@@ -192,7 +192,7 @@ export function DiffView({
             key={fi}
             onClick={() => onPick(fi)}
             title={f.path}
-            className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-left text-[11px] mb-0.5 ${
+            className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-left text-xs mb-0.5 ${
               fi === selected
                 ? 'bg-violet-500/15 text-foreground'
                 : 'text-muted-foreground/70 hover:bg-white/5'
@@ -201,10 +201,10 @@ export function DiffView({
             <span className="truncate flex-1 font-mono">
               {f.path.split('/').pop()}
             </span>
-            <span className="text-[9px] tabular-nums text-emerald-400/70">
+            <span className="text-xs tabular-nums text-emerald-400/70">
               +{f.added}
             </span>
-            <span className="text-[9px] tabular-nums text-red-400/70">
+            <span className="text-xs tabular-nums text-red-400/70">
               −{f.removed}
             </span>
           </button>

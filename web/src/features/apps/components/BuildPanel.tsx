@@ -18,6 +18,10 @@ export const PIPELINE_STEPS = [
 export const STEP_LABELS: Record<string, string> = {
   planning: 'Plan',
   task: 'Tasks',
+  generating: 'Gen',
+  todo: 'Todo',
+  tool: 'Tool',
+  thinking: 'Think',
   validating: 'Validate',
   deploying: 'Deploy',
   'hot-reload': '⚡ Hot',
@@ -29,6 +33,10 @@ export const STEP_LABELS: Record<string, string> = {
 export const STEP_COLORS: Record<string, string> = {
   planning: 'text-violet-400',
   task: 'text-cyan-400',
+  generating: 'text-blue-400/70',
+  todo: 'text-emerald-400',
+  tool: 'text-amber-400',
+  thinking: 'text-muted-foreground/50 italic',
   validating: 'text-orange-400',
   deploying: 'text-emerald-400',
   'hot-reload': 'text-amber-400 font-semibold',
@@ -70,20 +78,20 @@ export function BuildNodeStats({ building }: { building: boolean }) {
           : 0;
         return (
           <div key={s.node_id} className="space-y-1">
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
               <Activity size={10} className="shrink-0" />
               <span className="font-medium text-foreground/50">
                 {s.hostname || s.node_id}
               </span>
-              <span className="text-muted-foreground/40">·</span>
-              <span className="text-muted-foreground/40 truncate">
+              <span className="text-muted-foreground/65">·</span>
+              <span className="text-muted-foreground/65 truncate">
                 {s.gpu_name}
               </span>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-[9px]">
+            <div className="grid grid-cols-3 gap-2 text-xs">
               <div className="flex items-center gap-1.5">
                 <Cpu size={9} className="text-blue-400/60 shrink-0" />
-                <span className="text-muted-foreground/50">GPU</span>
+                <span className="text-muted-foreground/70">GPU</span>
                 <div className="flex-1 h-1 rounded-full bg-muted/30 overflow-hidden">
                   <div
                     className="h-full rounded-full bg-blue-500 transition-all"
@@ -96,7 +104,7 @@ export function BuildNodeStats({ building }: { building: boolean }) {
               </div>
               <div className="flex items-center gap-1.5">
                 <HardDrive size={9} className="text-purple-400/60 shrink-0" />
-                <span className="text-muted-foreground/50">VRAM</span>
+                <span className="text-muted-foreground/70">VRAM</span>
                 <div className="flex-1 h-1 rounded-full bg-muted/30 overflow-hidden">
                   <div
                     className="h-full rounded-full bg-purple-500 transition-all"
@@ -109,7 +117,7 @@ export function BuildNodeStats({ building }: { building: boolean }) {
               </div>
               <div className="flex items-center gap-1.5">
                 <Thermometer size={9} className="text-orange-400/60 shrink-0" />
-                <span className="text-muted-foreground/50">Temp</span>
+                <span className="text-muted-foreground/70">Temp</span>
                 <span
                   className={`tabular-nums ml-auto ${(s.gpu_temp || 0) > 80 ? 'text-red-400' : (s.gpu_temp || 0) > 65 ? 'text-amber-400' : 'text-foreground/50'}`}>
                   {s.gpu_temp || '—'}°C
@@ -160,12 +168,12 @@ export function PipelineProgress({ events }: { events: BuildEvent[] }) {
             </div>
             {/* Label */}
             <span
-              className={`text-[10px] leading-tight pb-1 ${
+              className={`text-xs leading-tight pb-1 ${
                 done
                   ? 'text-emerald-400/80'
                   : active
                     ? 'text-blue-400 font-medium'
-                    : 'text-muted-foreground/40'
+                    : 'text-muted-foreground/65'
               }`}>
               {STEP_LABELS[step]}
             </span>
@@ -199,7 +207,7 @@ export function EventLog({
         return (
           <div key={i} className="group">
             <div
-              className={`flex items-start gap-2 text-[11px] font-mono px-1 py-0.5 rounded hover:bg-muted/10 transition-colors ${ev.detail ? 'cursor-pointer' : ''}`}
+              className={`flex items-start gap-2 text-xs font-mono px-1 py-0.5 rounded hover:bg-muted/10 transition-colors ${ev.detail ? 'cursor-pointer' : ''}`}
               onClick={() => {
                 if (!ev.detail) return;
                 setOpenDetails((prev) => {
@@ -208,7 +216,7 @@ export function EventLog({
                   return next;
                 });
               }}>
-              <span className="text-muted-foreground/40 shrink-0 tabular-nums whitespace-nowrap">
+              <span className="text-muted-foreground/65 shrink-0 tabular-nums whitespace-nowrap">
                 {fmtTime(ev.timestamp)}
               </span>
               {dt != null && i > 0 && (
@@ -233,7 +241,7 @@ export function EventLog({
             </div>
             {ev.detail && openDetails.has(i) && (
               <div className="ml-[60px] mr-2 mb-1 p-2 rounded bg-muted/20 border border-border/10">
-                <pre className="text-[10px] font-mono text-muted-foreground/60 whitespace-pre-wrap break-words max-h-48 overflow-auto">
+                <pre className="text-xs font-mono text-muted-foreground/60 whitespace-pre-wrap break-words max-h-48 overflow-auto">
                   {ev.detail}
                 </pre>
               </div>
@@ -242,7 +250,7 @@ export function EventLog({
         );
       })}
       {events.length > 1 && t0 != null && (
-        <div className="px-1 pt-1 mt-1 border-t border-border/10 text-[10px] text-muted-foreground/40 tabular-nums flex items-center gap-2">
+        <div className="px-1 pt-1 mt-1 border-t border-border/10 text-xs text-muted-foreground/65 tabular-nums flex items-center gap-2">
           <span>{events.length} events</span>
           <span>·</span>
           <span>
@@ -315,11 +323,11 @@ export function TaskBoard({ events }: { events: BuildEvent[] }) {
     <div className="px-3 py-2.5 space-y-2">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           {doneCount}/{tasks.length} tasks
         </span>
         {plan?.description && (
-          <span className="text-[10px] text-muted-foreground/50 truncate ml-4">
+          <span className="text-xs text-muted-foreground/70 truncate ml-4">
             {plan.description}
           </span>
         )}
@@ -343,7 +351,7 @@ export function TaskBoard({ events }: { events: BuildEvent[] }) {
               key={task.id}
               className="flex items-center gap-2 py-1 px-1 rounded hover:bg-muted/10 transition-colors">
               <span
-                className={`text-[10px] shrink-0 ${
+                className={`text-xs shrink-0 ${
                   status === 'done'
                     ? 'text-emerald-400'
                     : status === 'running'
@@ -361,11 +369,11 @@ export function TaskBoard({ events }: { events: BuildEvent[] }) {
                       : '○'}
               </span>
               <span
-                className={`text-[11px] flex-1 truncate ${status === 'done' ? 'text-muted-foreground' : 'text-foreground/80'}`}>
+                className={`text-xs flex-1 truncate ${status === 'done' ? 'text-muted-foreground' : 'text-foreground/80'}`}>
                 {task.title}
               </span>
               <span
-                className={`text-[9px] shrink-0 px-1.5 py-0.5 rounded ${
+                className={`text-xs shrink-0 px-1.5 py-0.5 rounded ${
                   task.worker === 'heavy'
                     ? 'text-cyan-400/70 bg-cyan-500/5'
                     : 'text-teal-400/70 bg-teal-500/5'
@@ -374,7 +382,7 @@ export function TaskBoard({ events }: { events: BuildEvent[] }) {
                 {task.nodeName || task.worker}
               </span>
               {live?.latency && (
-                <span className="text-[9px] text-muted-foreground/40 tabular-nums shrink-0">
+                <span className="text-xs text-muted-foreground/65 tabular-nums shrink-0">
                   {live.latency}
                 </span>
               )}

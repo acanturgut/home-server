@@ -115,7 +115,7 @@ export function StatusBar({
   }, []);
 
   return (
-    <footer className="h-7 shrink-0 bg-muted/15 border-t border-border/30 flex items-center px-4 gap-3 text-[11px] font-mono text-muted-foreground overflow-x-auto">
+    <footer className="h-7 shrink-0 bg-muted/15 border-t border-border/30 flex items-center px-4 gap-3 text-xs font-mono text-muted-foreground overflow-x-auto">
       {sys ? (
         <>
           <span className="flex items-center gap-1.5">

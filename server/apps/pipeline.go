@@ -1,13 +1,15 @@
 // Package apps — app builder pipeline.
 //
-// Generation is delegated to **aider** running locally in the home-server
-// container, pointed at the heavy LM Studio worker via its OpenAI-compatible
-// /v1 endpoint. After aider writes files we run a small set of idempotent
-// patchers (vite base, missing scaffold deps, geist font, host-api proxy,
-// absolute URL rewrite), then docker build & run.
+// Generation is delegated to **opencode** (https://opencode.ai) running
+// locally in the home-server container as a prebuilt single binary, pointed
+// at the heavy LM Studio worker via its OpenAI-compatible /v1 endpoint.
+// After opencode writes files we run a small set of idempotent patchers
+// (vite base, missing scaffold deps, geist font, host-api proxy, absolute
+// URL rewrite), then docker build & run.
 package apps
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -59,6 +61,7 @@ type Pipeline struct {
 	store    *Store
 	prompts  *PromptStore
 	settings *SettingsStore
+	history  *TaskHistory
 	mu       sync.Mutex
 	cancels  map[string]context.CancelFunc
 	active   map[string]bool
@@ -70,11 +73,24 @@ type Pipeline struct {
 
 const maxEventLog = 1000
 
-func NewPipeline(store *Store, prompts *PromptStore, settings *SettingsStore) *Pipeline {
+func NewPipeline(store *Store, prompts *PromptStore, settings *SettingsStore, history *TaskHistory) *Pipeline {
+	// Any app left in `building` from a previous server run is stale —
+	// the goroutine driving it died with the process. Mark them failed
+	// so the user can cancel/delete cleanly instead of waiting forever.
+	for _, app := range store.All() {
+		if app.Status == StatusBuilding {
+			app.Status = StatusFailed
+			if app.Error == "" {
+				app.Error = "Build was interrupted by a server restart. Cancel and try again."
+			}
+			_ = store.Set(app)
+		}
+	}
 	return &Pipeline{
 		store:    store,
 		prompts:  prompts,
 		settings: settings,
+		history:  history,
 		cancels:  make(map[string]context.CancelFunc),
 		active:   make(map[string]bool),
 		events:   make(map[string][]PipelineEvent),
@@ -116,6 +132,33 @@ func (p *Pipeline) Events(name string) []PipelineEvent {
 	return out
 }
 
+// History returns the persisted task runs for an app, newest first.
+func (p *Pipeline) History(name string) []TaskRun {
+	if p.history == nil {
+		return nil
+	}
+	return p.history.List(name)
+}
+
+// recordRun snapshots the buffered events into persistent history. Called
+// at the end of every Build/Rebuild/Fix run (success or failure).
+func (p *Pipeline) recordRun(name, kind, prompt string, start time.Time, success bool, errMsg string) {
+	if p.history == nil || name == "" {
+		return
+	}
+	p.history.Append(TaskRun{
+		ID:        fmt.Sprintf("%s-%d", name, start.UnixNano()),
+		AppName:   name,
+		Kind:      kind,
+		Prompt:    prompt,
+		StartedAt: start,
+		EndedAt:   time.Now(),
+		Success:   success,
+		Error:     errMsg,
+		Events:    p.Events(name),
+	})
+}
+
 // wrapEmit returns an emit fn that records each event into the per-app log
 // (so the UI can re-attach after a refresh) AND forwards to the original
 // streaming emit (for the still-connected client).
@@ -134,14 +177,29 @@ func (p *Pipeline) IsActive(name string) bool {
 	return p.active[name]
 }
 
+// Cancel aborts an in-flight Build/Rebuild/Fix, OR — if no goroutine is
+// active but the app is stuck in `building` (e.g. the server restarted
+// mid-build) — flips the stored status to `failed` so the UI lets the
+// user delete or retry. Returns true when something was actually changed.
 func (p *Pipeline) Cancel(name string) bool {
 	p.mu.Lock()
 	cancel, ok := p.cancels[name]
 	p.mu.Unlock()
 	if ok {
 		cancel()
+		return true
 	}
-	return ok
+	// No live goroutine — clean up a stale `building` record so the user
+	// isn't stuck waiting on a build that no longer exists.
+	if app, exists := p.store.Get(name); exists && app.Status == StatusBuilding {
+		app.Status = StatusFailed
+		if app.Error == "" {
+			app.Error = "Build was interrupted (server restart or crash). Cancelled."
+		}
+		p.store.Set(app)
+		return true
+	}
+	return false
 }
 
 func (p *Pipeline) registerCancel(name string, cancel context.CancelFunc) {
@@ -201,6 +259,11 @@ func (p *Pipeline) Build(ctx context.Context, prompt, nameHint string, heavy, _ 
 	// pane. Wrap the streaming emit so each event is recorded too.
 	p.resetEvents(appName)
 	emit = p.wrapEmit(appName, emit)
+
+	defer func() {
+		p.recordRun(appName, "build", prompt, start,
+			app.Status == StatusRunning, app.Error)
+	}()
 
 	emit(newEvent("planning", fmt.Sprintf("Creating '%s' on port %d using %s", appName, port, heavy.Name)))
 
@@ -265,6 +328,10 @@ func (p *Pipeline) Rebuild(ctx context.Context, name, changeRequest string, heav
 		emit(newEvent("error", fmt.Sprintf("App '%s' not found", name)))
 		return
 	}
+	defer func() {
+		p.recordRun(name, "rebuild", changeRequest, start,
+			app.Status == StatusRunning, app.Error)
+	}()
 	projectDir := p.store.ProjectDir(name)
 	port := app.Port
 
@@ -323,6 +390,10 @@ func (p *Pipeline) FixErrors(ctx context.Context, name, userDescription string, 
 		emit(newEvent("error", fmt.Sprintf("App '%s' not found", name)))
 		return
 	}
+	defer func() {
+		p.recordRun(name, "fix", userDescription, start,
+			app.Status == StatusRunning, app.Error)
+	}()
 	projectDir := p.store.ProjectDir(name)
 	port := app.Port
 
@@ -421,8 +492,19 @@ func (p *Pipeline) Restart(ctx context.Context, name string) error {
 	return nil
 }
 
-// Remove stops and deletes an app completely.
+// Remove stops and deletes an app completely. Safe to call mid-build:
+// any in-flight goroutine for this app is cancelled first so its docker
+// build / opencode subprocess stops touching files we're about to wipe.
 func (p *Pipeline) Remove(ctx context.Context, name string) error {
+	// Cancel any active build/rebuild/fix and give it a brief moment to
+	// release file handles before we rm -rf the project dir.
+	p.mu.Lock()
+	cancel, active := p.cancels[name]
+	p.mu.Unlock()
+	if active {
+		cancel()
+		time.Sleep(300 * time.Millisecond)
+	}
 	p.Stop(ctx, name)
 	os.RemoveAll(p.store.ProjectDir(name))
 	p.store.Delete(name)
@@ -449,14 +531,14 @@ func (p *Pipeline) GitCommit(name, message string) string {
 
 // ── LLM-driven code generation ──────────────────────────────────────
 
-// generateAppSources asks aider to write the initial app source.
+// generateAppSources asks opencode to write the initial app source.
 func (p *Pipeline) generateAppSources(ctx context.Context, projectDir, prompt string, port int, heavy NodeInfo, callLM CallLMFunc, emit func(PipelineEvent)) error {
-	emit(newEvent("generating", fmt.Sprintf("Asking aider (%s) to write the app", heavy.Name)))
+	emit(newEvent("generating", fmt.Sprintf("Asking opencode (%s) to write the app", heavy.Name)))
 
 	system := p.prompts.Get().Build
 	message := fmt.Sprintf("%s\n\nBuild this app: %s\n\nListen on port %d (process.env.PORT).", system, prompt, port)
 
-	if err := p.runAider(ctx, projectDir, message, heavy, emit); err != nil {
+	if err := p.runOpencode(ctx, projectDir, message, heavy, emit); err != nil {
 		return err
 	}
 
@@ -466,20 +548,20 @@ func (p *Pipeline) generateAppSources(ctx context.Context, projectDir, prompt st
 	ensureHostApiProxy(projectDir)
 	patchAbsoluteHomeApiUrls(projectDir, emit)
 	if appJsxIsPlaceholder(projectDir) {
-		emit(newEvent("generating", "Warning: aider did not overwrite src/App.jsx — placeholder welcome screen will be shown."))
+		emit(newEvent("generating", "Warning: model did not overwrite src/App.jsx — placeholder welcome screen will be shown."))
 	}
 	return nil
 }
 
-// generateAppChange asks aider for a focused change set.
+// generateAppChange asks opencode for a focused change set.
 func (p *Pipeline) generateAppChange(ctx context.Context, projectDir, change string, port int, heavy NodeInfo, callLM CallLMFunc, emit func(PipelineEvent)) error {
-	emit(newEvent("generating", fmt.Sprintf("Asking aider (%s) for the change", heavy.Name)))
+	emit(newEvent("generating", fmt.Sprintf("Asking opencode (%s) for the change", heavy.Name)))
 
 	system := p.prompts.Get().Build
 	user := strings.NewReplacer("{{change}}", change, "{{port}}", fmt.Sprintf("%d", port)).Replace(p.prompts.Get().Rebuild)
 	message := system + "\n\n" + user
 
-	if err := p.runAider(ctx, projectDir, message, heavy, emit); err != nil {
+	if err := p.runOpencode(ctx, projectDir, message, heavy, emit); err != nil {
 		return err
 	}
 	patchViteBase(projectDir)
@@ -490,9 +572,9 @@ func (p *Pipeline) generateAppChange(ctx context.Context, projectDir, change str
 	return nil
 }
 
-// generateAppFix asks aider to repair the project given container logs.
+// generateAppFix asks opencode to repair the project given container logs.
 func (p *Pipeline) generateAppFix(ctx context.Context, projectDir, userDesc, logs string, port int, heavy NodeInfo, callLM CallLMFunc, emit func(PipelineEvent)) error {
-	emit(newEvent("generating", fmt.Sprintf("Asking aider (%s) to diagnose & fix", heavy.Name)))
+	emit(newEvent("generating", fmt.Sprintf("Asking opencode (%s) to diagnose & fix", heavy.Name)))
 
 	system := p.prompts.Get().Build
 	portStr := fmt.Sprintf("%d", port)
@@ -504,7 +586,7 @@ func (p *Pipeline) generateAppFix(ctx context.Context, projectDir, userDesc, log
 	}
 	message := system + "\n\n" + user
 
-	if err := p.runAider(ctx, projectDir, message, heavy, emit); err != nil {
+	if err := p.runOpencode(ctx, projectDir, message, heavy, emit); err != nil {
 		return err
 	}
 	patchViteBase(projectDir)
@@ -515,11 +597,16 @@ func (p *Pipeline) generateAppFix(ctx context.Context, projectDir, userDesc, log
 	return nil
 }
 
-// runAider invokes the local `aider` CLI against the heavy worker's LM Studio
-// /v1 endpoint. Streams stdout/stderr line-by-line as PipelineEvents so the
-// wizard shows live build progress (token-by-token thinking, file edits, etc.).
-// 10-minute hard cap so a stuck model can't hang the pipeline forever.
-func (p *Pipeline) runAider(ctx context.Context, projectDir string, message string, heavy NodeInfo, emit func(PipelineEvent)) error {
+// runOpencode invokes the local `opencode` CLI against the heavy worker's
+// LM Studio /v1 endpoint. opencode is a single prebuilt binary (no Python,
+// no pip — see Dockerfile) that runs an autonomous coding agent: it reads
+// & writes files itself via its built-in tools, so we just hand it the
+// prompt and the project directory.
+//
+// Provider config is injected via OPENCODE_CONFIG_CONTENT so we don't have
+// to write a per-project opencode.json. Streams stdout line-by-line as
+// PipelineEvents so the wizard shows live build progress.
+func (p *Pipeline) runOpencode(ctx context.Context, projectDir string, message string, heavy NodeInfo, emit func(PipelineEvent)) error {
 	apiBase := strings.TrimSuffix(heavy.Host, "/v1")
 	if !strings.HasSuffix(apiBase, "/v1") {
 		apiBase = apiBase + "/v1"
@@ -535,40 +622,68 @@ func (p *Pipeline) runAider(ctx context.Context, projectDir string, message stri
 		emit(newEvent("generating", fmt.Sprintf("Auto-detected model: %s", model)))
 	}
 
-	args := []string{
-		"--message", message,
-		"--yes-always",
-		"--no-git",
-		"--no-auto-commits",
-		"--no-suggest-shell-commands",
-		"--no-analytics",
-		"--no-fancy-input",
-		"--no-show-model-warnings",
-		"--model", "openai/" + model,
-		"--openai-api-key", "dummy",
-		"--openai-api-base", apiBase,
+	// Inline opencode config: custom "lmstudio" provider pointing at the
+	// heavy worker. providerID + modelID become the --model arg below.
+	cfg := map[string]any{
+		"$schema":     "https://opencode.ai/config.json",
+		"model":       "lmstudio/" + model,
+		"small_model": "lmstudio/" + model,
+		"autoupdate":  false,
+		"share":       "disabled",
+		"snapshot":    false,
+		"provider": map[string]any{
+			"lmstudio": map[string]any{
+				"npm":  "@ai-sdk/openai-compatible",
+				"name": "LM Studio (heavy)",
+				"options": map[string]any{
+					"baseURL": apiBase,
+					"apiKey":  "dummy",
+				},
+				"models": map[string]any{
+					model: map[string]any{
+						"name":  model,
+						"limit": map[string]any{"context": 128000, "output": 32000},
+					},
+				},
+			},
+		},
 	}
-	for _, f := range listSourceFiles(projectDir) {
-		args = append(args, "--file", f)
+	cfgJSON, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal opencode config: %v", err)
 	}
 
 	timeoutMin := 30
-	if v := os.Getenv("AIDER_TIMEOUT_MIN"); v != "" {
+	if v := os.Getenv("OPENCODE_TIMEOUT_MIN"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			timeoutMin = n
+		}
+	} else if v := os.Getenv("AIDER_TIMEOUT_MIN"); v != "" {
+		// Backward compat with old env var name.
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			timeoutMin = n
 		}
 	}
-	aiderCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMin)*time.Minute)
+	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMin)*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(aiderCtx, "aider", args...)
+	cmd := exec.CommandContext(runCtx, "opencode", "run",
+		"--dangerously-skip-permissions",
+		"--model", "lmstudio/"+model,
+		message,
+	)
 	cmd.Dir = projectDir
-	cmd.Env = append(os.Environ(), "OPENAI_API_KEY=dummy")
-
-	stdinPipe, err := cmd.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("stdin pipe: %v", err)
+	cmd.Env = append(os.Environ(),
+		"OPENCODE_CONFIG_CONTENT="+string(cfgJSON),
+		"OPENCODE_DISABLE_AUTOUPDATE=true",
+		"OPENCODE_DISABLE_LSP_DOWNLOAD=true",
+		"OPENCODE_AUTO_SHARE=false",
+		"OPENCODE_DISABLE_MODELS_FETCH=true",
+	)
+	if os.Getenv("HOME") == "" {
+		cmd.Env = append(cmd.Env, "HOME=/root")
 	}
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("stdout pipe: %v", err)
@@ -576,63 +691,27 @@ func (p *Pipeline) runAider(ctx context.Context, projectDir string, message stri
 	cmd.Stderr = cmd.Stdout
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start aider: %v", err)
+		return fmt.Errorf("start opencode: %v", err)
 	}
-	stdinPipe.Close()
 
-	buf := make([]byte, 4096)
-	for {
-		n, readErr := stdout.Read(buf)
-		if n > 0 {
-			line := strings.TrimSpace(string(buf[:n]))
-			if line != "" && emit != nil {
-				emit(newEvent("generating", line))
-			}
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		raw := scanner.Text()
+		parsed := parseOpencodeLine(raw)
+		if parsed.Step == "" || emit == nil {
+			continue
 		}
-		if readErr != nil {
-			break
-		}
+		emit(newEvent(parsed.Step, parsed.Message))
 	}
 
 	if err := cmd.Wait(); err != nil {
-		if aiderCtx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("aider timed out after %d minutes — try a smaller model or simpler prompt (raise AIDER_TIMEOUT_MIN to allow longer)", timeoutMin)
+		if runCtx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("opencode timed out after %d minutes — try a smaller model or simpler prompt (raise OPENCODE_TIMEOUT_MIN to allow longer)", timeoutMin)
 		}
-		return fmt.Errorf("aider failed: %v", err)
+		return fmt.Errorf("opencode failed: %v", err)
 	}
 	return nil
-}
-
-// listSourceFiles returns relative paths of editable source files in a
-// project directory — fed to aider with --file so it can edit them. Skips
-// node_modules, dist, .git, and binary/lock files.
-func listSourceFiles(projectDir string) []string {
-	var files []string
-	skipDirs := map[string]bool{"node_modules": true, "dist": true, ".git": true, "build": true}
-	skipExts := map[string]bool{".lock": true, ".png": true, ".jpg": true, ".ico": true, ".woff": true, ".woff2": true, ".ttf": true}
-	filepath.Walk(projectDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if info.IsDir() {
-			if skipDirs[info.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if skipExts[filepath.Ext(info.Name())] {
-			return nil
-		}
-		if info.Size() > 100*1024 {
-			return nil
-		}
-		rel, _ := filepath.Rel(projectDir, path)
-		if rel != "" {
-			files = append(files, rel)
-		}
-		return nil
-	})
-	return files
 }
 
 // ── Docker build & run ──────────────────────────────────────────────

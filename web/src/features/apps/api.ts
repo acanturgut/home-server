@@ -141,6 +141,28 @@ export const appsApi = {
       }>;
     }>(`/api/apps/${app}/events`),
 
+  /** Persisted task-run history for an app (newest first). */
+  getHistory: (app: string) =>
+    apiJsonSafe<{
+      runs?: Array<{
+        id: string;
+        app_name: string;
+        kind: string;
+        prompt?: string;
+        started_at: string;
+        ended_at: string;
+        success: boolean;
+        error?: string;
+        events: Array<{
+          step: string;
+          message: string;
+          detail?: string;
+          latency?: string;
+          timestamp?: string;
+        }>;
+      }>;
+    }>(`/api/apps/${app}/history`),
+
   // lifecycle
   deleteApp: (name: string) =>
     apiFetch(`/api/apps/${name}`, { method: 'DELETE' }),

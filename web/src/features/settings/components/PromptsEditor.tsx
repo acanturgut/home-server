@@ -66,7 +66,7 @@ export function PromptsEditor({
           <h3 className="text-sm font-medium text-foreground/80">
             System Prompts
           </h3>
-          <p className="text-[11px] text-muted-foreground/50 mt-0.5">
+          <p className="text-xs text-muted-foreground/70 mt-0.5">
             Edit the prompts sent to aider during build, rebuild, and fix
             phases. Use template variables like {'{{port}}'} that get replaced
             at runtime.
@@ -76,13 +76,13 @@ export function PromptsEditor({
           <button
             onClick={onReset}
             disabled={saving}
-            className="px-3 py-1.5 text-[11px] text-muted-foreground/50 hover:text-foreground/70 border border-border/20 rounded-md hover:bg-muted/20 transition-colors disabled:opacity-30">
+            className="px-3 py-1.5 text-xs text-muted-foreground/70 hover:text-foreground/70 border border-border/20 rounded-md hover:bg-muted/20 transition-colors disabled:opacity-30">
             Reset Defaults
           </button>
           <button
             onClick={onSave}
             disabled={saving || !dirty}
-            className="px-3 py-1.5 text-[11px] text-foreground/80 bg-foreground/10 hover:bg-foreground/15 rounded-md transition-colors disabled:opacity-30">
+            className="px-3 py-1.5 text-xs text-foreground/80 bg-foreground/10 hover:bg-foreground/15 rounded-md transition-colors disabled:opacity-30">
             {saving ? 'Saving...' : dirty ? 'Save Changes' : 'Saved'}
           </button>
         </div>
@@ -104,12 +104,12 @@ export function PromptsEditor({
                 <span className="text-sm font-medium text-foreground/70">
                   {meta.label}
                 </span>
-                <p className="text-[10px] text-muted-foreground/40 mt-0.5">
+                <p className="text-xs text-muted-foreground/65 mt-0.5">
                   {meta.desc}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[9px] text-muted-foreground/30 tabular-nums">
+                <span className="text-xs text-muted-foreground/30 tabular-nums">
                   {lines} lines
                 </span>
                 <ChevronDown
@@ -120,7 +120,7 @@ export function PromptsEditor({
             </button>
             {isOpen && (
               <div className="border-t border-border/10 p-3 space-y-2">
-                <div className="flex items-center gap-2 text-[9px] text-muted-foreground/30">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground/30">
                   <span>Variables:</span>
                   <code className="bg-muted/20 px-1.5 py-0.5 rounded">
                     {meta.vars}
@@ -131,7 +131,7 @@ export function PromptsEditor({
                   onChange={(e) => onChange(key, e.target.value)}
                   rows={Math.min(Math.max(lines + 2, 8), 30)}
                   spellCheck={false}
-                  className="w-full bg-black/20 text-[11px] font-mono text-foreground/70 leading-relaxed p-3 rounded-md border border-border/10 focus:outline-none focus:border-foreground/20 resize-y"
+                  className="w-full bg-black/20 text-xs font-mono text-foreground/70 leading-relaxed p-3 rounded-md border border-border/10 focus:outline-none focus:border-foreground/20 resize-y"
                 />
               </div>
             )}

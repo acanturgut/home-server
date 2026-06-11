@@ -23,6 +23,39 @@ export interface HealthDTO {
   };
 }
 
+export interface VillanosAgentSettingsDTO {
+  id: string;
+  origin: string;
+  voice: string;
+  voice_id: string;
+}
+
+export interface VillanosSettingsDTO {
+  elevenlabs_api_key?: string;
+  elevenlabs_api_key_set: boolean;
+  elevenlabs_model_id: string;
+  elevenlabs_default_voice_id: string;
+  elevenlabs_narrator_voice_id: string;
+  elevenlabs_stability: number;
+  elevenlabs_similarity: number;
+  voice_style_intensity: number;
+  conversation_overlap_ms: number;
+  pause_same_speaker_ms: number;
+  pause_different_speaker_ms: number;
+  pause_emotional_ms: number;
+  pause_narrator_ms: number;
+  narrator_auto_play: boolean;
+  character_auto_play: boolean;
+  sound_effects_enabled: boolean;
+  sound_effects_prompt: string;
+  sound_effects_duration_seconds: number;
+  sound_effects_volume: number;
+  sound_effects_prompt_influence: number;
+  sound_effects_model_id: string;
+  clear_elevenlabs_api_key?: boolean;
+  agents: VillanosAgentSettingsDTO[];
+}
+
 /** Settings page HTTP calls. */
 export const settingsApi = {
   // prompts
@@ -53,6 +86,15 @@ export const settingsApi = {
     }),
   resetSettings: () =>
     apiJson<Record<string, unknown>>('/api/settings/reset', { method: 'POST' }),
+
+  // VillaOS
+  getVillanosSettings: () =>
+    apiJson<VillanosSettingsDTO>('/api/villanos/settings'),
+  putVillanosSettings: (body: VillanosSettingsDTO) =>
+    apiJson<VillanosSettingsDTO>('/api/villanos/settings', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 
   // nodes
   getNodeModels: (id: string) =>

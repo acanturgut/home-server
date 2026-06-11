@@ -3,6 +3,7 @@ import { API_BASE } from '@/lib/api';
 import { appsApi } from '@/features/apps/api';
 import type { AppInfo, BuildEvent } from '@/lib/types';
 import { buildTree, type AppFile } from '@/features/apps/components/CodeEditor';
+import { useRoute, pushRoute } from '@/app/routing';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -10,10 +11,38 @@ interface ChatMessage {
 }
 
 export function useAppsPanel() {
+  const route = useRoute();
   const [apps, setApps] = useState<AppInfo[]>([]);
-  const [selectedApp, setSelectedApp] = useState<string | null>(() =>
-    localStorage.getItem('selectedApp'),
-  );
+  // Selected-app is URL-driven when the user is on /apps; otherwise we
+  // fall back to the last-known selection (localStorage) so navigating away
+  // and back lands them on the same app.
+  const initialApp = (() => {
+    const segs = window.location.pathname.split('/').filter(Boolean);
+    if (segs[0] === 'apps' && segs[1]) {
+      try {
+        return decodeURIComponent(segs[1]);
+      } catch {
+        return segs[1];
+      }
+    }
+    return localStorage.getItem('selectedApp');
+  })();
+  const [selectedApp, setSelectedAppState] = useState<string | null>(initialApp);
+  const setSelectedApp = useCallback((name: string | null) => {
+    setSelectedAppState(name);
+    // Only update the URL when we're actually on the apps page so that
+    // selecting an app from a deep-link doesn't shove a history entry while
+    // the user is on a different page.
+    if (window.location.pathname.split('/').filter(Boolean)[0] === 'apps') {
+      pushRoute('apps', name ?? undefined);
+    }
+  }, []);
+  // Keep state in sync with browser back/forward.
+  useEffect(() => {
+    if (route.page !== 'apps') return;
+    const next = route.sub ?? null;
+    setSelectedAppState((prev) => (prev === next ? prev : next));
+  }, [route.page, route.sub]);
   const [prompt, setPrompt] = useState('');
 
   // Listen for cross-panel handoff (e.g. from Chat → "Send to Apps")
@@ -102,12 +131,12 @@ export function useAppsPanel() {
   const [bottomState, setBottomState] = useState<
     'minimized' | 'normal' | 'expanded'
   >('normal');
-  const [bottomTab, setBottomTab] = useState<'events' | 'logs' | 'terminal'>(
-    'events',
-  );
+  const [bottomTab, setBottomTab] = useState<
+    'events' | 'todos' | 'logs' | 'terminal'
+  >('events');
   const [bottomSplit, setBottomSplit] = useState(false);
   const [bottomSplitTab, setBottomSplitTab] = useState<
-    'events' | 'logs' | 'terminal'
+    'events' | 'todos' | 'logs' | 'terminal'
   >('logs');
 
   // App logs state
@@ -220,6 +249,18 @@ export function useAppsPanel() {
     if (selectedApp) localStorage.setItem('selectedApp', selectedApp);
     else localStorage.removeItem('selectedApp');
   }, [selectedApp]);
+
+  // If the URL pinned an app that no longer exists (e.g. it was just
+  // deleted, or the slug is stale from a bookmark), drop the selection
+  // and rewrite the URL so the panel falls back to the apps list cleanly
+  // instead of rendering an empty detail pane.
+  useEffect(() => {
+    if (route.page !== 'apps' || !selectedApp || apps.length === 0) return;
+    if (!apps.some((a) => a.name === selectedApp)) {
+      setSelectedAppState(null);
+      pushRoute('apps');
+    }
+  }, [apps, selectedApp, route.page]);
 
   // Refresh git log when the selected app changes (or after a build/fix completes).
   const loadCommits = useCallback(() => {
@@ -462,6 +503,12 @@ export function useAppsPanel() {
     setBuilding(true);
     setEvents([]);
     setRightTab('info');
+    // Auto-open the bottom panel in split view: keep whatever tab the user
+    // had (defaults to Events) on the left, and pin the live Todo checklist
+    // to the right side so they can watch progress without losing the log.
+    if (bottomState === 'minimized') setBottomState('normal');
+    setBottomSplit(true);
+    setBottomSplitTab('todos');
     const controller = new AbortController();
     abortRef.current = controller;
     try {
@@ -696,9 +743,29 @@ export function useAppsPanel() {
     });
   };
   const deleteApp = async (name: string) => {
-    await appsApi.deleteApp(name);
+    // Make sure any in-flight build for this app is torn down before we
+    // ask the server to wipe it — otherwise the cancelled stream may keep
+    // emitting events into a now-deleted app.
+    try {
+      await appsApi.cancelBuild(name);
+    } catch {
+      /* not building, fine */
+    }
+    if (selectedApp === name && abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+      setBuilding(false);
+    }
+    try {
+      await appsApi.deleteApp(name);
+    } catch (e) {
+      // Surface the failure rather than silently leaving a stale entry.
+      // eslint-disable-next-line no-console
+      console.error('Delete failed', e);
+    }
     if (selectedApp === name) setSelectedApp(null);
     refresh();
+    pushRoute('apps');
   };
   const stopApp = async (name: string) => {
     await appsApi.stopApp(name);

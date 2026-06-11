@@ -85,7 +85,7 @@ export function NodeFormInline({
           { key: 'mac', label: 'MAC', placeholder: 'AA:BB:CC:DD:EE:FF' },
         ].map((f) => (
           <div key={f.key} className="space-y-0.5">
-            <label className="text-[10px] text-muted-foreground/60">
+            <label className="text-xs text-muted-foreground/60">
               {f.label}
             </label>
             <Input
@@ -100,7 +100,7 @@ export function NodeFormInline({
           </div>
         ))}
         <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground/60">Tier</label>
+          <label className="text-xs text-muted-foreground/60">Tier</label>
           <select
             value={form.tier}
             onChange={(e) =>
@@ -112,7 +112,7 @@ export function NodeFormInline({
           </select>
         </div>
         <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground/60">Model</label>
+          <label className="text-xs text-muted-foreground/60">Model</label>
           {localModels.length > 0 ? (
             <select
               value={form.model}
@@ -143,10 +143,10 @@ export function NodeFormInline({
       {/* Temperature */}
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <label className="text-[10px] text-muted-foreground/60">
+          <label className="text-xs text-muted-foreground/60">
             Temperature
           </label>
-          <span className="text-[10px] font-mono text-muted-foreground">
+          <span className="text-xs font-mono text-muted-foreground">
             {form.temperature.toFixed(2)}
           </span>
         </div>
@@ -164,7 +164,7 @@ export function NodeFormInline({
           }
           className="w-full h-1.5 rounded-full appearance-none bg-border/30 accent-blue-500"
         />
-        <div className="flex justify-between text-[9px] text-muted-foreground/40">
+        <div className="flex justify-between text-xs text-muted-foreground/65">
           <span>Precise</span>
           <span>Creative</span>
         </div>
@@ -173,31 +173,31 @@ export function NodeFormInline({
       {/* Loaded models with eject */}
       {nodeId && online && localModels.length > 0 && (
         <div className="space-y-1.5">
-          <label className="text-[10px] text-muted-foreground/60">
+          <label className="text-xs text-muted-foreground/60">
             Loaded Models
           </label>
           {localModels.map((m) => (
             <div
               key={m}
               className="flex items-center justify-between py-1 px-2 rounded-md bg-muted/20 text-xs">
-              <span className="font-mono text-[11px] truncate">{m}</span>
+              <span className="font-mono text-xs truncate">{m}</span>
               <div className="flex items-center gap-1.5 shrink-0">
                 {form.model !== m && (
                   <button
                     onClick={() => setForm((prev) => ({ ...prev, model: m }))}
-                    className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
+                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
                     Set Active
                   </button>
                 )}
                 {form.model === m && (
-                  <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                  <span className="text-xs text-emerald-400 flex items-center gap-1">
                     <Circle size={6} fill="currentColor" /> Active
                   </span>
                 )}
                 <button
                   onClick={() => unloadModel(m)}
                   disabled={loadingModel === m}
-                  className="text-[10px] text-red-400/60 hover:text-red-400 disabled:opacity-50 transition-colors">
+                  className="text-xs text-red-400/60 hover:text-red-400 disabled:opacity-50 transition-colors">
                   {loadingModel === m ? '...' : '⏏ Eject'}
                 </button>
               </div>
@@ -209,7 +209,7 @@ export function NodeFormInline({
       {/* Load model by name */}
       {nodeId && online && (
         <div className="space-y-1">
-          <label className="text-[10px] text-muted-foreground/60">
+          <label className="text-xs text-muted-foreground/60">
             Load Model
           </label>
           <div className="flex gap-1.5">

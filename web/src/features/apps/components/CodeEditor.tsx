@@ -121,18 +121,18 @@ export function FileTreeNode({
           ? 'text-amber-400/50'
           : ext === 'css'
             ? 'text-purple-400/70'
-            : 'text-muted-foreground/40';
+            : 'text-muted-foreground/65';
 
   return (
     <>
       <button
         onClick={() => (node.isDir ? onToggle(node.path) : onSelect(node.path))}
-        className={`w-full flex items-center gap-1 py-[3px] text-[11px] font-mono transition-colors hover:bg-white/[0.03] ${
+        className={`w-full flex items-center gap-1 py-[3px] text-xs font-mono transition-colors hover:bg-white/[0.03] ${
           isActive ? 'bg-blue-500/8 text-blue-300' : 'text-muted-foreground/70'
         }`}
         style={{ paddingLeft: `${12 + depth * 14}px` }}
         title={node.path}>
-        <span className={`shrink-0 w-4 text-center text-[9px] ${iconColor}`}>
+        <span className={`shrink-0 w-4 text-center text-xs ${iconColor}`}>
           {fileIcon}
         </span>
         <span

@@ -92,13 +92,13 @@ export function EndpointCard({ ep }: { ep: Endpoint }) {
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-3 py-2 px-1 text-left hover:bg-white/[0.02] transition-colors">
         <span
-          className={`font-mono text-[10px] font-semibold w-12 shrink-0 ${METHOD_COLORS[ep.method]}`}>
+          className={`font-mono text-xs font-semibold w-12 shrink-0 ${METHOD_COLORS[ep.method]}`}>
           {ep.method}
         </span>
-        <code className="text-[11px] font-mono text-foreground/70 flex-1 min-w-0 truncate">
+        <code className="text-xs font-mono text-foreground/70 flex-1 min-w-0 truncate">
           {ep.path}
         </code>
-        <span className="text-[10px] text-muted-foreground/40 hidden sm:block truncate max-w-[200px]">
+        <span className="text-xs text-muted-foreground/65 hidden sm:block truncate max-w-[200px]">
           {ep.summary}
         </span>
         <ChevronDown
@@ -108,10 +108,10 @@ export function EndpointCard({ ep }: { ep: Endpoint }) {
       </button>
       {open && (
         <div className="pb-3 px-1 space-y-2.5">
-          <p className="text-[10px] text-muted-foreground/60">{ep.summary}</p>
+          <p className="text-xs text-muted-foreground/60">{ep.summary}</p>
           {ep.pathParams?.map((k) => (
             <div key={k} className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground/40 w-16 shrink-0">
+              <span className="text-xs text-muted-foreground/65 w-16 shrink-0">
                 :{k}
               </span>
               <input
@@ -120,13 +120,13 @@ export function EndpointCard({ ep }: { ep: Endpoint }) {
                 onChange={(e) =>
                   setParams((p) => ({ ...p, [k]: e.target.value }))
                 }
-                className="flex-1 h-6 text-[11px] font-mono bg-transparent border-b border-border/20 focus:border-foreground/30 focus:outline-none px-1 transition-colors"
+                className="flex-1 h-6 text-xs font-mono bg-transparent border-b border-border/20 focus:border-foreground/30 focus:outline-none px-1 transition-colors"
               />
             </div>
           ))}
           {ep.queryParams?.map((q) => (
             <div key={q.name} className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground/40 w-16 shrink-0">
+              <span className="text-xs text-muted-foreground/65 w-16 shrink-0">
                 ?{q.name}
               </span>
               <input
@@ -135,7 +135,7 @@ export function EndpointCard({ ep }: { ep: Endpoint }) {
                 onChange={(e) =>
                   setParams((p) => ({ ...p, [q.name]: e.target.value }))
                 }
-                className="flex-1 h-6 text-[11px] font-mono bg-transparent border-b border-border/20 focus:border-foreground/30 focus:outline-none px-1 transition-colors"
+                className="flex-1 h-6 text-xs font-mono bg-transparent border-b border-border/20 focus:border-foreground/30 focus:outline-none px-1 transition-colors"
               />
             </div>
           ))}
@@ -143,7 +143,7 @@ export function EndpointCard({ ep }: { ep: Endpoint }) {
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              className="w-full font-mono text-[10px] bg-white/[0.02] border border-border/15 rounded p-2 min-h-[80px] resize-y focus:outline-none focus:border-foreground/20 transition-colors"
+              className="w-full font-mono text-xs bg-white/[0.02] border border-border/15 rounded p-2 min-h-[80px] resize-y focus:outline-none focus:border-foreground/20 transition-colors"
               spellCheck={false}
             />
           )}
@@ -151,10 +151,10 @@ export function EndpointCard({ ep }: { ep: Endpoint }) {
             <button
               onClick={execute}
               disabled={loading}
-              className="px-3 py-1 rounded text-[10px] font-medium bg-foreground/10 hover:bg-foreground/15 disabled:opacity-40 transition-colors">
+              className="px-3 py-1 rounded text-xs font-medium bg-foreground/10 hover:bg-foreground/15 disabled:opacity-40 transition-colors">
               {loading ? '...' : 'Run'}
             </button>
-            <code className="text-[9px] text-muted-foreground/30 truncate">
+            <code className="text-xs text-muted-foreground/30 truncate">
               {buildUrl()}
             </code>
           </div>
@@ -162,11 +162,11 @@ export function EndpointCard({ ep }: { ep: Endpoint }) {
             <div className="space-y-1">
               {status !== null && (
                 <span
-                  className={`text-[10px] font-mono ${status >= 200 && status < 300 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  className={`text-xs font-mono ${status >= 200 && status < 300 ? 'text-emerald-400' : 'text-red-400'}`}>
                   {status}
                 </span>
               )}
-              <pre className="text-[10px] font-mono text-foreground/60 bg-black/20 rounded p-2 max-h-[300px] overflow-auto whitespace-pre-wrap break-words">
+              <pre className="text-xs font-mono text-foreground/60 bg-black/20 rounded p-2 max-h-[300px] overflow-auto whitespace-pre-wrap break-words">
                 {response}
               </pre>
             </div>

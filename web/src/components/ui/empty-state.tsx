@@ -27,7 +27,7 @@ export function EmptyState({
       {title && (
         <div className="text-sm font-medium text-foreground/80">{title}</div>
       )}
-      {message && <div className="text-[11px] max-w-sm">{message}</div>}
+      {message && <div className="text-xs max-w-sm">{message}</div>}
       {action && <div className="mt-1">{action}</div>}
     </div>
   );

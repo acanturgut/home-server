@@ -39,9 +39,10 @@ type RouteDecision struct {
 }
 
 type Router struct {
-	client *Client
-	cfg    *config.Config
-	nodes  *config.NodeStore
+	client  *Client
+	cfg     *config.Config
+	nodes   *config.NodeStore
+	homedev HomeController // optional; nil = no home-control tool
 }
 
 func NewRouter(cfg *config.Config, nodes *config.NodeStore) *Router {
@@ -50,6 +51,34 @@ func NewRouter(cfg *config.Config, nodes *config.NodeStore) *Router {
 		cfg:    cfg,
 		nodes:  nodes,
 	}
+}
+
+// SetHomeController enables in-chat home-device control. When set, ChatStream
+// will pre-scan the user message for explicit device intents (e.g. "turn on
+// the living room lights") and execute them directly, bypassing the LLM.
+func (r *Router) SetHomeController(c HomeController) {
+	r.homedev = c
+}
+
+// HomeController returns the registered controller (may be nil).
+func (r *Router) HomeController() HomeController { return r.homedev }
+
+// TryHomeIntent attempts to handle the message as a home-control / status
+// command. Returns (reply, true) when handled; (_, false) lets the caller
+// fall through to a normal LLM call. Mirrors the streaming path in
+// ChatStream but collapses every event into the final reply text so it can
+// be returned over a one-shot HTTP request (Siri / Shortcuts).
+func (r *Router) TryHomeIntent(ctx context.Context, msg string) (string, bool) {
+	if r.homedev == nil {
+		return "", false
+	}
+	var reply string
+	handled := tryHandleHomeIntent(ctx, r.homedev, msg, func(ev StreamEvent) {
+		if ev.Step == "done" && ev.Content != "" {
+			reply = ev.Content
+		}
+	})
+	return reply, handled
 }
 
 const classifierSystemPrompt = `You are a task classifier. You read a user message and output ONE word.
@@ -397,6 +426,8 @@ func (r *Router) maybeSearch(ctx context.Context, messages []Message, lastMsg st
 
 	logger.Info(fmt.Sprintf("web search: got %d results for %q", len(results), lastMsg))
 
+	results = search.Enrich(ctx, results, 3, 6000)
+
 	context := search.FormatResults(results)
 	injected := make([]Message, 0, len(messages)+1)
 	injected = append(injected, Message{
@@ -434,6 +465,9 @@ func (r *Router) maybeSearchStream(ctx context.Context, messages []Message, last
 		Message: fmt.Sprintf("Found %d results", len(results)),
 		Content: strings.Join(titles, " · "),
 	})
+
+	emit(StreamEvent{Step: "searching", Message: "Reading top sources…"})
+	results = search.Enrich(ctx, results, 3, 6000)
 
 	context := search.FormatResults(results)
 	injected := make([]Message, 0, len(messages)+1)
@@ -517,6 +551,13 @@ func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Me
 	}
 
 	lastMsg := messages[len(messages)-1].Content
+
+	// Home-control short-circuit. If the user message is an explicit device
+	// command we can satisfy entirely with a tool call ("turn on the lights"),
+	// execute it and return without invoking the LLM.
+	if r.homedev != nil && tryHandleHomeIntent(ctx, r.homedev, lastMsg, emit) {
+		return
+	}
 
 	var decision RouteDecision
 	userForcedLocal := false
