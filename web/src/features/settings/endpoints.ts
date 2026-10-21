@@ -1,6 +1,6 @@
 /** One route in the Settings → API explorer. */
 export interface Endpoint {
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   path: string;
   summary: string;
   group: string;
@@ -300,23 +300,6 @@ export const ENDPOINTS: Endpoint[] = [
     ],
     ['DELETE', '/api/auth/users/{id}', 'Delete a user (admin)'],
   ]),
-  ...group('API tokens', [
-    ['GET', '/api/tokens', 'List API tokens (admin)'],
-    [
-      'POST',
-      '/api/tokens',
-      'Create a token (admin)',
-      { body: { name: 'iPhone Shortcut' } },
-    ],
-    [
-      'PATCH',
-      '/api/tokens/{id}',
-      'Rename a token (admin)',
-      { body: { name: 'iPhone Shortcut' } },
-    ],
-    ['POST', '/api/tokens/{id}/rotate', 'Replace the secret (admin)'],
-    ['DELETE', '/api/tokens/{id}', 'Delete a token (admin)'],
-  ]),
   ...group('Dashboard', [
     ['GET', '/api/dashboard/overview', 'Location, public IP and weather'],
     ['GET', '/api/dashboard/cluster', 'Cluster-wide CPU, GPU and memory'],
@@ -341,12 +324,6 @@ export const ENDPOINTS: Endpoint[] = [
     ],
     ['GET', '/api/chats', 'Saved chat sessions'],
     ['PUT', '/api/chats', 'Replace saved chat sessions', { body: [] }],
-    [
-      'POST',
-      '/api/ai/ask',
-      'Voice ask: home control or a short spoken answer (API token)',
-      { body: { prompt: 'Turn off the living room lights' } },
-    ],
     ['GET', '/api/settings', 'Assistant settings'],
     [
       'PUT',

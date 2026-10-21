@@ -36,7 +36,7 @@ func (s *Store) Middleware(publicPaths ...string) func(http.Handler) http.Handle
 				next.ServeHTTP(w, r)
 				return
 			}
-			user, ok := s.FromRequest(r)
+			user, ok := s.fromRequest(r)
 			if !ok {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
 				return
@@ -50,8 +50,8 @@ func (s *Store) Middleware(publicPaths ...string) func(http.Handler) http.Handle
 	}
 }
 
-// FromRequest resolves the session cookie on r.
-func (s *Store) FromRequest(r *http.Request) (User, bool) {
+// fromRequest resolves the session cookie on r.
+func (s *Store) fromRequest(r *http.Request) (User, bool) {
 	c, err := r.Cookie(cookieName)
 	if err != nil {
 		return User{}, false

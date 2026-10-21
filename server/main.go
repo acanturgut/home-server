@@ -12,7 +12,6 @@ import (
 
 	"github.com/acanturgut/home-server/ai"
 	"github.com/acanturgut/home-server/api"
-	"github.com/acanturgut/home-server/apitokens"
 	"github.com/acanturgut/home-server/assistant"
 	"github.com/acanturgut/home-server/asusrouter"
 	"github.com/acanturgut/home-server/auth"
@@ -83,7 +82,6 @@ func main() {
 		LAN:       network.NewScanner(cfg.DataDir),
 		DNS:       dnsSrv,
 		Auth:      authStore,
-		Tokens:    apitokens.NewStore(cfg.DataDir),
 		Version:   version,
 	})
 

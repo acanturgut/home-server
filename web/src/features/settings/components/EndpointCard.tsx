@@ -15,7 +15,6 @@ const METHOD_TONE = {
   GET: 'success',
   POST: 'info',
   PUT: 'warning',
-  PATCH: 'warning',
   DELETE: 'destructive',
 } as const satisfies Record<Endpoint['method'], string>;
 

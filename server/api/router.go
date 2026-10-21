@@ -106,17 +106,6 @@ func NewRouter(h *Handler) http.Handler {
 	mux.HandleFunc("GET /api/chats", h.ListChats)
 	mux.HandleFunc("PUT /api/chats", h.SaveChats)
 
-	// Voice / script ask endpoint: API token (Authorization: Bearer) or a
-	// signed-in non-viewer session.
-	mux.HandleFunc("POST /api/ai/ask", h.AIAsk)
-
-	// API tokens
-	mux.HandleFunc("GET /api/tokens", admin(h.ListTokens))
-	mux.HandleFunc("POST /api/tokens", admin(h.CreateToken))
-	mux.HandleFunc("PATCH /api/tokens/{id}", admin(h.RenameToken))
-	mux.HandleFunc("POST /api/tokens/{id}/rotate", admin(h.RotateToken))
-	mux.HandleFunc("DELETE /api/tokens/{id}", admin(h.DeleteToken))
-
 	// Unknown API paths are 404s, not the SPA shell.
 	mux.HandleFunc("/api/", http.NotFound)
 
@@ -126,7 +115,6 @@ func NewRouter(h *Handler) http.Handler {
 	authed := h.auth.Middleware(
 		"/api/auth/login",
 		"/api/agent/heartbeat", // node agents push without a session
-		"/api/ai/ask",          // authorizes inline (API token or session)
 	)(mux)
 	return http.MaxBytesHandler(authed, maxBodyBytes)
 }

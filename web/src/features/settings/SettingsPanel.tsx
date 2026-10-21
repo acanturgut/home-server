@@ -1,11 +1,10 @@
 import type { ComponentType } from 'react';
 import { MasterDetail } from '@/components/ui/master-detail';
-import { UsersSettingsTab, useAuth } from '@/features/auth';
+import { UsersSettingsTab } from '@/features/auth';
 import { DNSSettingsTab } from '@/features/dns';
 import { SmartHomeSettings } from '@/features/home';
 import { RouterSettingsTab } from '@/features/network';
 import { ApiTab } from '@/features/settings/ApiTab';
-import { ApiTokensTab } from '@/features/settings/ApiTokensTab';
 import { GeneralTab } from '@/features/settings/GeneralTab';
 import { NodesTab } from '@/features/settings/NodesTab';
 import { pushRoute, useRoute } from '@/lib/routing';
@@ -20,7 +19,6 @@ interface SettingsTab {
   group: (typeof GROUPS)[number];
   component: ComponentType;
   /** The server answers 403 to viewers here, so the tab is hidden. */
-  adminOnly?: boolean;
 }
 
 /** Every settings tab, in nav order within its group. */
@@ -38,14 +36,6 @@ const SETTINGS_TABS: SettingsTab[] = [
     description: 'Your password; admins manage accounts',
     group: 'System',
     component: UsersSettingsTab,
-  },
-  {
-    id: 'tokens',
-    label: 'API tokens',
-    description: 'Bearer tokens for Shortcuts and scripts',
-    group: 'System',
-    component: ApiTokensTab,
-    adminOnly: true,
   },
   {
     id: 'api',
@@ -86,26 +76,24 @@ const SETTINGS_TABS: SettingsTab[] = [
 
 /**
  * Settings: grouped tab list beside the active tab. The tab lives in the
- * URL (/settings/<id>); unknown or forbidden ids fall back to General.
+ * URL (/settings/<id>); unknown ids fall back to General.
  */
 export function SettingsPanel() {
   const { sub } = useRoute();
-  const isAdmin = useAuth().user?.role === 'admin';
-  const tabs = SETTINGS_TABS.filter((t) => isAdmin || !t.adminOnly);
-  const active = tabs.find((t) => t.id === sub);
-  const current = active ?? tabs[0];
+  const active = SETTINGS_TABS.find((t) => t.id === sub);
+  const current = active ?? SETTINGS_TABS[0];
   const Tab = current.component;
 
   return (
     <MasterDetail
       groups={GROUPS.map((group) => ({
         label: group,
-        items: tabs
-          .filter((t) => t.group === group)
-          .map(({ id, label, description }) => ({ id, label, description })),
+        items: SETTINGS_TABS.filter((t) => t.group === group).map(
+          ({ id, label, description }) => ({ id, label, description }),
+        ),
       }))}
       activeId={active?.id}
-      defaultId={tabs[0].id}
+      defaultId={SETTINGS_TABS[0].id}
       onSelect={(id) => pushRoute('settings', id)}
       backLabel="Settings"
       onBack={() => pushRoute('settings')}

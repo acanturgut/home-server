@@ -42,15 +42,6 @@ export interface RuntimeSettings {
   routerModel?: string;
 }
 
-export interface ApiToken {
-  id: string;
-  name: string;
-  token: string;
-  created_at: string;
-  /** Go zero time ("0001-01-01…") until first use. */
-  last_used_at?: string;
-}
-
 interface HealthDTO {
   backends?: {
     ollama?: boolean;
@@ -86,12 +77,4 @@ export const settingsApi = {
   updateNode: (id: string, body: NodeInput) =>
     send<NodeConfig>('PUT', `/api/nodes/${id}`, body),
   deleteNode: (id: string) => send<unknown>('DELETE', `/api/nodes/${id}`),
-
-  // API tokens (admin only)
-  listTokens: () => apiJson<{ tokens: ApiToken[] | null }>('/api/tokens'),
-  createToken: (name: string) =>
-    send<ApiToken>('POST', '/api/tokens', { name }),
-  rotateToken: (id: string) =>
-    send<ApiToken>('POST', `/api/tokens/${id}/rotate`),
-  deleteToken: (id: string) => send<void>('DELETE', `/api/tokens/${id}`),
 };

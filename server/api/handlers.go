@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/acanturgut/home-server/ai"
-	"github.com/acanturgut/home-server/apitokens"
 	"github.com/acanturgut/home-server/assistant"
 	"github.com/acanturgut/home-server/asusrouter"
 	"github.com/acanturgut/home-server/auth"
@@ -36,7 +35,6 @@ type Deps struct {
 	LAN       *network.Scanner
 	DNS       *homedns.Server
 	Auth      *auth.Store
-	Tokens    *apitokens.Store
 	Version   string
 }
 
@@ -52,7 +50,6 @@ type Handler struct {
 	lan      *network.Scanner
 	dns      *homedns.Server
 	auth     *auth.Store
-	tokens   *apitokens.Store
 	version  string
 	started  time.Time
 	sysHist  *sysHistory
@@ -72,7 +69,6 @@ func NewHandler(d Deps) *Handler {
 		lan:      d.LAN,
 		dns:      d.DNS,
 		auth:     d.Auth,
-		tokens:   d.Tokens,
 		version:  d.Version,
 		started:  time.Now(),
 		sysHist:  newSysHistory(60),

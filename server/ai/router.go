@@ -76,19 +76,6 @@ func (r *Router) ClassifierModel() string {
 	return r.cfg.RouterModel
 }
 
-// TryHomeIntent attempts to handle the message as a home-control / status
-// command. Returns (reply, true) when handled; (_, false) lets the caller
-// fall through to a normal LLM call.
-func (r *Router) TryHomeIntent(ctx context.Context, msg string) (string, bool) {
-	var reply string
-	handled := tryHandleHomeIntent(ctx, r.home, msg, func(ev StreamEvent) {
-		if ev.Step == "done" && ev.Content != "" {
-			reply = ev.Content
-		}
-	})
-	return reply, handled
-}
-
 const classifierSystemPrompt = `You are a task classifier. You read a user message and output ONE word.
 
 Your job: decide if a task is simple (LOW-END) or complex (HIGH-END).
