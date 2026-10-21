@@ -1,5 +1,5 @@
-import { apiFetch, apiJson, apiJsonSafe } from '@/lib/api';
-import type { LogEntry, NodeStats } from '@/lib/types';
+import { apiJson, apiJsonSafe } from '@/lib/api';
+import type { LogEntry } from '@/lib/types';
 
 export interface SystemHistoryPoint {
   t: string;
@@ -13,8 +13,6 @@ export interface SystemHistoryPoint {
 export interface NodeRow {
   id: string;
   name: string;
-  host: string;
-  mac?: string;
 }
 
 interface OverviewLocation {
@@ -46,20 +44,6 @@ export interface DashboardOverview {
   updated: string;
 }
 
-export interface ClusterAggregate {
-  nodes_online: number;
-  nodes_total: number;
-  cpu_avg: number;
-  cpu_temp_avg: number;
-  mem_used_gb: number;
-  mem_total_gb: number;
-  gpu_count: number;
-  gpu_avg: number;
-  gpu_temp_avg: number;
-  vram_used_mb: number;
-  vram_total_mb: number;
-}
-
 export interface NodeModelStatus {
   id: string;
   state: string;
@@ -70,28 +54,11 @@ export interface NodeModelStatus {
 export const dashboardApi = {
   systemHistory: () => apiJsonSafe<SystemHistoryPoint[]>('/api/system/history'),
   nodes: () => apiJsonSafe<NodeRow[]>('/api/nodes'),
-  nodeStats: () => apiJsonSafe<Record<string, NodeStats>>('/api/nodes/stats'),
   logs: (n = 200) => apiJsonSafe<LogEntry[]>(`/api/logs?n=${n}`),
   overview: () => apiJsonSafe<DashboardOverview>('/api/dashboard/overview'),
-  cluster: () => apiJsonSafe<ClusterAggregate>('/api/dashboard/cluster'),
-
-  // node power + model controls (cluster cards)
-  wakeNode: (id: string) =>
-    apiFetch(`/api/nodes/${id}/wake`, { method: 'POST' }),
-  shutdownNode: (id: string) =>
-    apiFetch(`/api/nodes/${id}/shutdown`, { method: 'POST' }),
+  /** Throws when the node's model API is unreachable. */
   nodeModelsStatus: (id: string) =>
-    apiJsonSafe<{ models?: NodeModelStatus[] }>(
+    apiJson<{ models?: NodeModelStatus[] | null }>(
       `/api/nodes/${id}/models/status`,
     ),
-  loadNodeModel: (nodeId: string, model: string) =>
-    apiJson<unknown>(`/api/nodes/${nodeId}/models/load`, {
-      method: 'POST',
-      body: JSON.stringify({ model }),
-    }),
-  unloadNodeModel: (nodeId: string, model: string) =>
-    apiJson<unknown>(`/api/nodes/${nodeId}/models/unload`, {
-      method: 'POST',
-      body: JSON.stringify({ model }),
-    }),
 };

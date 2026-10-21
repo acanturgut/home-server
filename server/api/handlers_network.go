@@ -4,22 +4,19 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
-
-	"github.com/acanturgut/home-server/network"
 )
 
 // GET /api/network/devices — LAN device list (ARP table + reverse DNS).
 func (h *Handler) NetworkDevices(w http.ResponseWriter, r *http.Request) {
-	res := network.Scan()
-	writeJSON(w, http.StatusOK, res)
+	writeJSON(w, http.StatusOK, h.lan.Scan())
 }
 
 // PUT /api/network/devices/{mac} — set or clear a custom display name.
 // Body: {"name": "..."}; empty/missing name removes the override.
 func (h *Handler) RenameNetworkDevice(w http.ResponseWriter, r *http.Request) {
-	mac := strings.ToLower(strings.TrimSpace(r.PathValue("mac")))
-	if mac == "" {
-		writeJSON(w, http.StatusBadRequest, errorResp{Error: "mac required"})
+	mac, ok := parseMAC(r.PathValue("mac"))
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "valid mac required"})
 		return
 	}
 	var body struct {
@@ -29,7 +26,7 @@ func (h *Handler) RenameNetworkDevice(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid body"})
 		return
 	}
-	if err := network.SetName(mac, strings.TrimSpace(body.Name)); err != nil {
+	if err := h.lan.SetName(mac, strings.TrimSpace(body.Name)); err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorResp{Error: err.Error()})
 		return
 	}

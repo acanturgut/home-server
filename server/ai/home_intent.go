@@ -12,8 +12,7 @@ import (
 )
 
 // HomeController is the minimum surface ai.Router needs to control devices.
-// homedevices.Manager satisfies it; an interface keeps the package boundary
-// clean and easy to mock in tests.
+// homedevices.Manager satisfies it; tests use a fake.
 type HomeController interface {
 	Devices() []homedevices.Device
 	Apply(ctx context.Context, deviceID string, a homedevices.Action) error
@@ -99,7 +98,7 @@ func tryHandleHomeIntent(ctx context.Context, ctrl HomeController, msg string, e
 	start := time.Now()
 	results := make([]applyResult, 0, len(targets))
 	for _, d := range targets {
-		action := intentToAction(intent, d)
+		action := intentToAction(intent)
 		err := ctrl.Apply(ctx, d.ID, action)
 		results = append(results, applyResult{dev: d, err: err})
 	}
@@ -307,7 +306,7 @@ func selectTargets(intent homeIntent, devices []homedevices.Device) []homedevice
 	return out
 }
 
-func intentToAction(intent homeIntent, d homedevices.Device) homedevices.Action {
+func intentToAction(intent homeIntent) homedevices.Action {
 	switch intent.Verb {
 	case verbOn:
 		return homedevices.Action{Action: "on"}
@@ -341,7 +340,6 @@ func intentToAction(intent homeIntent, d homedevices.Device) homedevices.Action 
 		v := 100
 		return homedevices.Action{Action: "position", Position: &v}
 	}
-	_ = d
 	return homedevices.Action{Action: "toggle"}
 }
 

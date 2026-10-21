@@ -1,10 +1,11 @@
 package homedevices
 
 import (
-	"encoding/json"
-	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/acanturgut/home-server/jsonfile"
+	"github.com/acanturgut/home-server/logger"
 )
 
 // DeviceOverride captures user customisations for a discovered device that
@@ -25,13 +26,12 @@ type OverrideStore struct {
 }
 
 func NewOverrideStore(dataDir string) *OverrideStore {
-	_ = os.MkdirAll(dataDir, 0755)
 	s := &OverrideStore{
 		path: filepath.Join(dataDir, "home_device_overrides.json"),
 		data: map[string]DeviceOverride{},
 	}
-	if raw, err := os.ReadFile(s.path); err == nil {
-		_ = json.Unmarshal(raw, &s.data)
+	if err := jsonfile.Load(s.path, &s.data); err != nil {
+		logger.Error("homedevices: " + err.Error())
 	}
 	return s
 }
@@ -46,8 +46,7 @@ func (s *OverrideStore) All() map[string]DeviceOverride {
 	return out
 }
 
-// Set merges the given override on top of any existing one. An empty Room
-// string clears the room override; Hidden is always replaced.
+// Set replaces the device's override; an all-empty override removes it.
 func (s *OverrideStore) Set(id string, o DeviceOverride) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -57,13 +56,5 @@ func (s *OverrideStore) Set(id string, o DeviceOverride) error {
 	} else {
 		s.data[id] = o
 	}
-	return s.save()
-}
-
-func (s *OverrideStore) save() error {
-	raw, err := json.MarshalIndent(s.data, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(s.path, raw, 0644)
+	return jsonfile.Save(s.path, s.data)
 }

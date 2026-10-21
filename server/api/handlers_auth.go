@@ -2,31 +2,29 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/acanturgut/home-server/auth"
 )
 
-// SetAuth wires the auth store into the API. Call once from main.
-func (h *Handler) SetAuth(s *auth.Store) { h.auth = s }
-
 // ── Login / session ────────────────────────────────────────────────────
 
-// POST /api/auth/login — { username, password } → sets session cookie.
+// POST /api/auth/login — { username, password } → sets the session cookie.
 func (h *Handler) AuthLogin(w http.ResponseWriter, r *http.Request) {
-	if h.auth == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: "auth disabled"})
-		return
-	}
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid body"})
 		return
 	}
-	user, err := h.auth.Authenticate(body.Username, body.Password)
+	user, err := h.auth.Login(body.Username, body.Password, auth.ClientIP(r))
+	if errors.Is(err, auth.ErrTooManyAttempts) {
+		writeJSON(w, http.StatusTooManyRequests, errorResp{Error: err.Error()})
+		return
+	}
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, errorResp{Error: err.Error()})
 		return
@@ -36,53 +34,46 @@ func (h *Handler) AuthLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, errorResp{Error: err.Error()})
 		return
 	}
-	auth.SetCookie(w, sess.Token, r.TLS != nil)
-	// Also return the session token in the body so non-browser clients
-	// (e.g. the React Native app) can send it as `Authorization: Bearer`.
-	writeJSON(w, http.StatusOK, map[string]any{"user": user, "token": sess.Token})
+	auth.SetCookie(w, r, sess.Token)
+	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
 // POST /api/auth/logout
 func (h *Handler) AuthLogout(w http.ResponseWriter, r *http.Request) {
-	if h.auth != nil {
-		if c, err := r.Cookie(auth.CookieName); err == nil {
-			h.auth.DeleteSession(c.Value)
-		}
+	if c, err := r.Cookie(auth.CookieName); err == nil {
+		h.auth.DeleteSession(c.Value)
 	}
 	auth.ClearCookie(w)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// GET /api/auth/me — current user (or 401).
+// GET /api/auth/me — current user.
 func (h *Handler) AuthMe(w http.ResponseWriter, r *http.Request) {
-	u, ok := auth.FromContext(r.Context())
-	if !ok {
-		writeJSON(w, http.StatusUnauthorized, errorResp{Error: "unauthenticated"})
-		return
-	}
+	u, _ := auth.FromContext(r.Context())
 	writeJSON(w, http.StatusOK, map[string]any{"user": u})
 }
 
-// POST /api/auth/change-password — change own password. { current, new }.
+// POST /api/auth/change-password — { current, new }. Signs out the user's
+// other sessions.
 func (h *Handler) AuthChangePassword(w http.ResponseWriter, r *http.Request) {
-	u, ok := auth.FromContext(r.Context())
-	if !ok || h.auth == nil {
-		writeJSON(w, http.StatusUnauthorized, errorResp{Error: "unauthenticated"})
-		return
-	}
+	u, _ := auth.FromContext(r.Context())
 	var body struct {
 		Current string `json:"current"`
 		New     string `json:"new"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid body"})
 		return
 	}
-	if _, err := h.auth.Authenticate(u.Username, body.Current); err != nil {
+	if _, err := h.auth.Login(u.Username, body.Current, auth.ClientIP(r)); err != nil {
 		writeJSON(w, http.StatusForbidden, errorResp{Error: "current password incorrect"})
 		return
 	}
-	if err := h.auth.SetPassword(u.ID, body.New); err != nil {
+	current := ""
+	if c, err := r.Cookie(auth.CookieName); err == nil {
+		current = c.Value
+	}
+	if err := h.auth.SetPassword(u.ID, body.New, current); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: err.Error()})
 		return
 	}
@@ -93,25 +84,17 @@ func (h *Handler) AuthChangePassword(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/auth/users
 func (h *Handler) AuthListUsers(w http.ResponseWriter, r *http.Request) {
-	if h.auth == nil {
-		writeJSON(w, http.StatusOK, []auth.User{})
-		return
-	}
 	writeJSON(w, http.StatusOK, h.auth.Users())
 }
 
 // POST /api/auth/users — { username, password, role }.
 func (h *Handler) AuthCreateUser(w http.ResponseWriter, r *http.Request) {
-	if h.auth == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: "auth disabled"})
-		return
-	}
 	var body struct {
 		Username string    `json:"username"`
 		Password string    `json:"password"`
 		Role     auth.Role `json:"role"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid body"})
 		return
 	}
@@ -127,40 +110,31 @@ func (h *Handler) AuthCreateUser(w http.ResponseWriter, r *http.Request) {
 
 // PUT /api/auth/users/{id}/role — { role }.
 func (h *Handler) AuthSetRole(w http.ResponseWriter, r *http.Request) {
-	if h.auth == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: "auth disabled"})
-		return
-	}
-	id := r.PathValue("id")
 	var body struct {
 		Role auth.Role `json:"role"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid body"})
 		return
 	}
-	if err := h.auth.SetRole(id, body.Role); err != nil {
+	if err := h.auth.SetRole(r.PathValue("id"), body.Role); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// PUT /api/auth/users/{id}/password — admin reset, { new }.
+// PUT /api/auth/users/{id}/password — admin reset, { new }. Signs the user
+// out everywhere.
 func (h *Handler) AuthResetPassword(w http.ResponseWriter, r *http.Request) {
-	if h.auth == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: "auth disabled"})
-		return
-	}
-	id := r.PathValue("id")
 	var body struct {
 		New string `json:"new"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid body"})
 		return
 	}
-	if err := h.auth.SetPassword(id, body.New); err != nil {
+	if err := h.auth.SetPassword(r.PathValue("id"), body.New, ""); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: err.Error()})
 		return
 	}
@@ -169,12 +143,7 @@ func (h *Handler) AuthResetPassword(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /api/auth/users/{id}
 func (h *Handler) AuthDeleteUser(w http.ResponseWriter, r *http.Request) {
-	if h.auth == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: "auth disabled"})
-		return
-	}
-	id := r.PathValue("id")
-	if err := h.auth.DeleteUser(id); err != nil {
+	if err := h.auth.DeleteUser(r.PathValue("id")); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: err.Error()})
 		return
 	}

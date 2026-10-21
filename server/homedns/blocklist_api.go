@@ -26,7 +26,7 @@ func (s *Server) BlocklistToggleSource(url string, enabled bool) error {
 
 // BlocklistRefresh triggers an asynchronous refresh of all sources.
 func (s *Server) BlocklistRefresh() {
-	go s.blocklist.refresh(context{cancel: s.stop})
+	go s.blocklist.refresh(s.ctx)
 }
 
 // BlocklistAddAllow adds a domain (and its subdomains) to the allowlist.

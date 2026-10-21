@@ -1,12 +1,20 @@
 import { useMemo } from 'react';
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
-import { ChartContainer, type ChartConfig } from '@/components/ui/chart';
+import { Card, CardHeader } from '@/components/ui/card';
+import {
+  ChartContainer,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ChartLegend } from '@/features/dashboard/components/ChartLegend';
 import { useDashboardData } from '@/features/dashboard/hooks/useDashboardData';
+import { formatCompact as fmt, formatTime, plural } from '@/lib/format';
 
-const cfg: ChartConfig = {
-  prompt: { label: 'prompt', color: '#60a5fa' },
-  completion: { label: 'completion', color: '#34d399' },
-};
+const cfg = {
+  prompt: { label: 'Prompt', color: 'var(--chart-1)' },
+  completion: { label: 'Completion', color: 'var(--chart-2)' },
+} satisfies ChartConfig;
 
 interface TokenStats {
   total: number;
@@ -17,9 +25,7 @@ interface TokenStats {
   perMinute: { t: string; prompt: number; completion: number }[];
 }
 
-/** Token usage analytics: aggregate counters + per-minute stacked bars.
- * (per-model + per-tier breakdowns live in ModelLeaderboard / ClusterOverview
- * to avoid duplicate data.) */
+/** Token totals plus per-minute prompt / completion bars (per model: ModelLeaderboard). */
 export function TokenUsage() {
   const { logs } = useDashboardData();
 
@@ -56,10 +62,7 @@ export function TokenUsage() {
       perMinute: Array.from(byMinute.entries())
         .sort(([a], [b]) => a - b)
         .map(([t, v]) => ({
-          t: new Date(t).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
+          t: formatTime(t),
           prompt: v.p,
           completion: v.c,
         })),
@@ -67,109 +70,52 @@ export function TokenUsage() {
   }, [logs]);
 
   return (
-    <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-medium text-foreground/80">
-            Token Usage
-          </p>
-          <p className="text-xs text-muted-foreground/60">
-            {fmt(stats.total)} total · {stats.requests} req · avg{' '}
-            {fmt(Math.round(stats.avg))}/req
-          </p>
-        </div>
-        <div className="flex gap-3 text-xs">
-          <span className="flex items-center gap-1 text-muted-foreground/80">
-            <span
-              className="w-2 h-2 rounded-full"
-              style={{ background: cfg.prompt.color }}
+    <Card className="space-y-3">
+      <CardHeader
+        title="Token usage"
+        description={`${fmt(stats.total)} total · ${plural(stats.requests, 'request')} · avg ${fmt(Math.round(stats.avg))} per request`}
+        actions={<ChartLegend config={cfg} />}
+      />
+      {stats.perMinute.length >= 2 ? (
+        <ChartContainer config={cfg} className="aspect-auto h-40 w-full">
+          <BarChart
+            data={stats.perMinute}
+            margin={{ top: 4, right: 4, bottom: 0, left: -16 }}
+          >
+            <CartesianGrid vertical={false} stroke="var(--border)" />
+            <XAxis
+              dataKey="t"
+              tickLine={false}
+              axisLine={false}
+              minTickGap={40}
             />
-            prompt{' '}
-            <span className="tabular-nums text-muted-foreground/60">
-              {fmt(stats.prompt)}
-            </span>
-          </span>
-          <span className="flex items-center gap-1 text-muted-foreground/80">
-            <span
-              className="w-2 h-2 rounded-full"
-              style={{ background: cfg.completion.color }}
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(v: number) => fmt(v)}
             />
-            completion{' '}
-            <span className="tabular-nums text-muted-foreground/60">
-              {fmt(stats.completion)}
-            </span>
-          </span>
-        </div>
-      </div>
-      <div>
-        {/* Timeline (stacked bars) */}
-        {stats.perMinute.length >= 2 ? (
-          <ChartContainer config={cfg} className="h-[160px] w-full">
-            <BarChart
-              data={stats.perMinute}
-              margin={{ top: 4, right: 4, bottom: 0, left: -16 }}>
-              <CartesianGrid
-                vertical={false}
-                stroke="hsl(var(--border))"
-                strokeOpacity={0.15}
-              />
-              <XAxis
-                dataKey="t"
-                tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
-                tickLine={false}
-                axisLine={false}
-                minTickGap={40}
-              />
-              <YAxis
-                tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(v: number) => fmt(v)}
-              />
-              <Tooltip
-                cursor={{ fill: 'hsl(var(--border))', fillOpacity: 0.1 }}
-                contentStyle={{
-                  background: 'hsl(var(--popover))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: 8,
-                  fontSize: 11,
-                }}
-                formatter={(value, name) => [fmt(Number(value)), String(name)]}
-              />
-              <Bar
-                dataKey="prompt"
-                stackId="t"
-                fill={cfg.prompt.color}
-                isAnimationActive={false}
-              />
-              <Bar
-                dataKey="completion"
-                stackId="t"
-                fill={cfg.completion.color}
-                radius={[3, 3, 0, 0]}
-                isAnimationActive={false}
-              />
-            </BarChart>
-          </ChartContainer>
-        ) : (
-          <Empty />
-        )}
-      </div>
-    </div>
+            <Tooltip
+              cursor={{ fill: 'var(--muted)', fillOpacity: 0.5 }}
+              content={<ChartTooltipContent config={cfg} formatValue={fmt} />}
+            />
+            <Bar
+              dataKey="prompt"
+              stackId="t"
+              fill={cfg.prompt.color}
+              isAnimationActive={false}
+            />
+            <Bar
+              dataKey="completion"
+              stackId="t"
+              fill={cfg.completion.color}
+              radius={[3, 3, 0, 0]}
+              isAnimationActive={false}
+            />
+          </BarChart>
+        </ChartContainer>
+      ) : (
+        <EmptyState title="No token data yet" className="h-40" />
+      )}
+    </Card>
   );
-}
-
-function Empty() {
-  return (
-    <div className="h-[160px] flex items-center justify-center text-xs text-muted-foreground/65 italic">
-      No token data yet
-    </div>
-  );
-}
-
-function fmt(n: number) {
-  if (!Number.isFinite(n)) return '0';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return `${n}`;
 }

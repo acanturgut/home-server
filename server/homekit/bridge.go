@@ -87,7 +87,7 @@ func NewBridge(nodes *config.NodeStore, ns *nodestate.Store, dataDir string, pin
 }
 
 func (b *Bridge) Start(ctx context.Context) error {
-	logger.Info(fmt.Sprintf("homekit: bridge starting on :51826 (PIN: %s)", b.server.Pin))
+	logger.Info("homekit: bridge starting on :51826")
 
 	// Background goroutine: sync switch state with actual node online status
 	go func() {

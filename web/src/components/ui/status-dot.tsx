@@ -1,54 +1,35 @@
 import { cn } from '@/lib/utils';
 
-export type DotStatus = 'running' | 'failed' | 'stopped' | 'idle' | string;
+type Status = 'online' | 'offline' | 'warning' | 'error';
 
-// Monochrome: state reads from brightness and fill, not hue.
-const LIVE = 'bg-foreground';
-const BUSY = 'bg-muted-foreground';
-const OFF = 'bg-muted-foreground/40';
-const FAIL = 'bg-transparent ring-1 ring-inset ring-foreground';
-
-const STYLE: Record<string, string> = {
-  running: LIVE,
-  ok: LIVE,
-  online: LIVE,
-  failed: FAIL,
-  error: FAIL,
-  warn: BUSY,
-  warning: BUSY,
-  pending: BUSY,
-  building: BUSY,
-  stopped: OFF,
-  idle: OFF,
+const TONE: Record<Status, string> = {
+  online: 'bg-success',
+  offline: 'bg-muted-foreground/50',
+  warning: 'bg-warning',
+  error: 'bg-destructive',
 };
 
-export interface StatusDotProps {
-  status: DotStatus;
-  /** Pixel size. Defaults to 6. */
-  size?: number;
-  /** Pulse animation for active states. */
-  pulse?: boolean;
-  className?: string;
-}
-
-/** Small dot indicating a status. Centralized style mapping. */
+/**
+ * Small state dot. Announced as an image named after the status; pair it
+ * with a visible label when the state matters (colour alone is not enough).
+ * Size defaults to 6px; override with a `size-*` class.
+ */
 export function StatusDot({
   status,
-  size = 6,
-  pulse = false,
   className,
-}: StatusDotProps) {
-  const color = STYLE[status] ?? OFF;
+}: {
+  status: Status;
+  className?: string;
+}) {
   return (
     <span
+      role="img"
+      aria-label={status}
       className={cn(
-        'inline-block rounded-full align-middle',
-        color,
-        pulse && 'animate-pulse',
+        'inline-block size-1.5 shrink-0 rounded-full',
+        TONE[status],
         className,
       )}
-      style={{ width: size, height: size }}
-      aria-label={status}
     />
   );
 }

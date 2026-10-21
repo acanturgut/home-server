@@ -1,13 +1,13 @@
 package homedevices
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/acanturgut/home-server/jsonfile"
+	"github.com/acanturgut/home-server/logger"
 	"github.com/google/uuid"
 )
 
@@ -22,29 +22,24 @@ type Store struct {
 }
 
 func NewStore(dataDir string) *Store {
-	_ = os.MkdirAll(dataDir, 0755)
 	s := &Store{
 		path:    filepath.Join(dataDir, "home_devices.json"),
 		devices: map[string]Device{},
 	}
-	s.load()
+	if err := jsonfile.Load(s.path, &s.bridges); err != nil {
+		logger.Error("homedevices: " + err.Error())
+	}
 	return s
 }
 
-func (s *Store) load() {
-	data, err := os.ReadFile(s.path)
-	if err != nil {
-		return
-	}
-	_ = json.Unmarshal(data, &s.bridges)
-}
-
+// save persists the bridge list without the runtime status fields.
 func (s *Store) save() error {
-	data, err := json.MarshalIndent(s.bridges, "", "  ")
-	if err != nil {
-		return err
+	out := make([]Bridge, len(s.bridges))
+	for i, b := range s.bridges {
+		b.Status, b.Error = "", ""
+		out[i] = b
 	}
-	return os.WriteFile(s.path, data, 0644)
+	return jsonfile.Save(s.path, out)
 }
 
 func (s *Store) Bridges() []Bridge {
@@ -87,8 +82,8 @@ func (s *Store) UpdateBridge(b Bridge) error {
 	defer s.mu.Unlock()
 	for i, existing := range s.bridges {
 		if existing.ID == b.ID {
-			// Preserve Added timestamp.
 			b.Added = existing.Added
+			b.Status, b.Error = existing.Status, existing.Error
 			s.bridges[i] = b
 			return s.save()
 		}

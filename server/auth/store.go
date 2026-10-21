@@ -16,13 +16,12 @@
 //
 // Sessions are 32-byte random tokens stored server-side (so logout/revocation
 // works) and shipped to the browser as a `Secure?,HttpOnly,SameSite=Lax`
-// cookie. Default lifetime: 30 days; refreshed (sliding) on each call.
+// cookie. Default lifetime: 30 days, extended (sliding) while in use.
 package auth
 
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -31,14 +30,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/acanturgut/home-server/jsonfile"
 	"golang.org/x/crypto/bcrypt"
 )
 
 const (
 	cookieName        = "hs_session"
 	defaultSessionTTL = 30 * 24 * time.Hour
-	bcryptCost        = 12
 )
+
+// bcryptCost is a var only so tests can use bcrypt.MinCost.
+var bcryptCost = 12
 
 // Role enumerates per-user permission levels.
 type Role string
@@ -73,19 +75,18 @@ type Store struct {
 	sessPath  string
 	users     map[string]*User    // by ID
 	sessions  map[string]*Session // by token
+	limiter   loginLimiter
 }
 
 // NewStore loads (or initialises) data from dataDir. If no users exist yet,
 // it creates an "admin" account with a random password and logs it.
 func NewStore(dataDir string) (*Store, error) {
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, err
-	}
 	s := &Store{
 		usersPath: filepath.Join(dataDir, "users.json"),
 		sessPath:  filepath.Join(dataDir, "sessions.json"),
 		users:     map[string]*User{},
 		sessions:  map[string]*Session{},
+		limiter:   loginLimiter{fails: map[string]failCount{}},
 	}
 	if err := s.loadUsers(); err != nil {
 		return nil, err
@@ -154,8 +155,11 @@ func (s *Store) CreateUser(username, password string, role Role) (*User, error) 
 		}
 	}
 	s.users[u.ID] = u
+	if err = s.saveUsersLocked(); err != nil {
+		delete(s.users, u.ID)
+	}
 	s.mu.Unlock()
-	if err := s.saveUsers(); err != nil {
+	if err != nil {
 		return nil, err
 	}
 	return u, nil
@@ -174,8 +178,9 @@ func (s *Store) Users() []User {
 	return out
 }
 
-// SetPassword updates a user's password (also called by self-service change).
-func (s *Store) SetPassword(userID, newPassword string) error {
+// SetPassword updates a user's password and revokes their sessions, except
+// keepSession (the caller's own token on a self-service change; "" for none).
+func (s *Store) SetPassword(userID, newPassword, keepSession string) error {
 	if len(newPassword) < 8 {
 		return errors.New("password must be at least 8 characters")
 	}
@@ -191,8 +196,16 @@ func (s *Store) SetPassword(userID, newPassword string) error {
 	}
 	u.PasswordHash = string(hash)
 	u.UpdatedAt = time.Now()
-	s.mu.Unlock()
-	return s.saveUsers()
+	for tok, sess := range s.sessions {
+		if sess.UserID == userID && tok != keepSession {
+			delete(s.sessions, tok)
+		}
+	}
+	defer s.mu.Unlock()
+	if err := s.saveUsersLocked(); err != nil {
+		return err
+	}
+	return s.saveSessionsLocked()
 }
 
 // SetRole changes a user's role. The last remaining admin cannot be demoted.
@@ -212,8 +225,8 @@ func (s *Store) SetRole(userID string, role Role) error {
 	}
 	u.Role = role
 	u.UpdatedAt = time.Now()
-	s.mu.Unlock()
-	return s.saveUsers()
+	defer s.mu.Unlock()
+	return s.saveUsersLocked()
 }
 
 // DeleteUser removes a user and revokes all of their sessions.
@@ -234,11 +247,11 @@ func (s *Store) DeleteUser(userID string) error {
 			delete(s.sessions, tok)
 		}
 	}
-	s.mu.Unlock()
-	if err := s.saveUsers(); err != nil {
+	defer s.mu.Unlock()
+	if err := s.saveUsersLocked(); err != nil {
 		return err
 	}
-	return s.saveSessions()
+	return s.saveSessionsLocked()
 }
 
 func (s *Store) adminCountLocked() int {
@@ -252,6 +265,16 @@ func (s *Store) adminCountLocked() int {
 }
 
 // ── Auth ────────────────────────────────────────────────────────────────
+
+// Login is Authenticate with per-client brute-force throttling.
+func (s *Store) Login(username, password, clientIP string) (User, error) {
+	if s.limiter.blocked(clientIP) {
+		return User{}, ErrTooManyAttempts
+	}
+	u, err := s.Authenticate(username, password)
+	s.limiter.record(clientIP, err != nil)
+	return u, err
+}
 
 // Authenticate verifies username+password and returns the matching user
 // (with password hash stripped) on success.
@@ -296,50 +319,48 @@ func (s *Store) CreateSession(userID string) (Session, error) {
 		ExpiresAt: now.Add(defaultSessionTTL),
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.sessions[tok] = &sess
-	s.mu.Unlock()
-	_ = s.saveSessions()
+	if err := s.saveSessionsLocked(); err != nil {
+		return Session{}, err
+	}
 	return sess, nil
 }
 
 // LookupSession returns the user for a token, refreshing the session's
 // expiry on success (sliding window).
 func (s *Store) LookupSession(token string) (User, bool) {
-	s.mu.Lock()
-	sess, ok := s.sessions[token]
-	if !ok {
-		s.mu.Unlock()
+	if token == "" {
 		return User{}, false
 	}
-	if time.Now().After(sess.ExpiresAt) {
-		delete(s.sessions, token)
-		s.mu.Unlock()
-		_ = s.saveSessions()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess, ok := s.sessions[token]
+	if !ok {
 		return User{}, false
 	}
 	user, ok := s.users[sess.UserID]
-	if !ok {
+	if !ok || time.Now().After(sess.ExpiresAt) {
 		delete(s.sessions, token)
-		s.mu.Unlock()
-		_ = s.saveSessions()
+		_ = s.saveSessionsLocked()
 		return User{}, false
 	}
-	// Slide.
+	// Slide (at most once per half-TTL, so this rarely writes).
 	if time.Until(sess.ExpiresAt) < defaultSessionTTL/2 {
 		sess.ExpiresAt = time.Now().Add(defaultSessionTTL)
+		_ = s.saveSessionsLocked()
 	}
 	out := *user
 	out.PasswordHash = ""
-	s.mu.Unlock()
 	return out, true
 }
 
 // DeleteSession revokes one session token.
 func (s *Store) DeleteSession(token string) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	delete(s.sessions, token)
-	s.mu.Unlock()
-	_ = s.saveSessions()
+	_ = s.saveSessionsLocked()
 }
 
 // gcSessions periodically prunes expired sessions.
@@ -356,25 +377,19 @@ func (s *Store) gcSessions() {
 				changed = true
 			}
 		}
-		s.mu.Unlock()
 		if changed {
-			_ = s.saveSessions()
+			_ = s.saveSessionsLocked()
 		}
+		s.mu.Unlock()
 	}
 }
 
 // ── Persistence ─────────────────────────────────────────────────────────
+// Saves run under s.mu so concurrent writers can't persist stale snapshots.
 
 func (s *Store) loadUsers() error {
-	data, err := os.ReadFile(s.usersPath)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
 	var list []User
-	if err := json.Unmarshal(data, &list); err != nil {
+	if err := jsonfile.Load(s.usersPath, &list); err != nil {
 		return err
 	}
 	for i := range list {
@@ -383,30 +398,17 @@ func (s *Store) loadUsers() error {
 	return nil
 }
 
-func (s *Store) saveUsers() error {
-	s.mu.RLock()
+func (s *Store) saveUsersLocked() error {
 	list := make([]User, 0, len(s.users))
 	for _, u := range s.users {
 		list = append(list, *u)
 	}
-	s.mu.RUnlock()
-	data, err := json.MarshalIndent(list, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(s.usersPath, data, 0600)
+	return jsonfile.Save(s.usersPath, list)
 }
 
 func (s *Store) loadSessions() error {
-	data, err := os.ReadFile(s.sessPath)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
 	var list []Session
-	if err := json.Unmarshal(data, &list); err != nil {
+	if err := jsonfile.Load(s.sessPath, &list); err != nil {
 		return err
 	}
 	now := time.Now()
@@ -418,18 +420,12 @@ func (s *Store) loadSessions() error {
 	return nil
 }
 
-func (s *Store) saveSessions() error {
-	s.mu.RLock()
+func (s *Store) saveSessionsLocked() error {
 	list := make([]Session, 0, len(s.sessions))
 	for _, sess := range s.sessions {
 		list = append(list, *sess)
 	}
-	s.mu.RUnlock()
-	data, err := json.MarshalIndent(list, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(s.sessPath, data, 0600)
+	return jsonfile.Save(s.sessPath, list)
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────

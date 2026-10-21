@@ -17,11 +17,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -36,9 +39,12 @@ type Result struct {
 	Source  string `json:"source,omitempty"` // "ddg-ia", "ddg-html", "wikipedia"
 }
 
-// httpClient is shared so we get connection reuse.
+// httpClient is shared so we get connection reuse. Result pages are URLs
+// chosen by whoever ranks in a search, so it only connects to public
+// addresses (checked after DNS resolution, on every redirect hop too).
 var httpClient = &http.Client{
-	Timeout: 12 * time.Second,
+	Timeout:   12 * time.Second,
+	Transport: publicOnlyTransport(),
 	// Don't follow more than 5 redirects (DDG sometimes loops).
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
@@ -46,6 +52,30 @@ var httpClient = &http.Client{
 		}
 		return nil
 	},
+}
+
+// cgnat is 100.64.0.0/10, which is neither public nor IsPrivate.
+var cgnat = netip.MustParsePrefix("100.64.0.0/10")
+
+func publicOnlyTransport() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.Proxy = nil
+	t.DialContext = (&net.Dialer{Timeout: 5 * time.Second, Control: dialPublicOnly}).DialContext
+	return t
+}
+
+// dialPublicOnly refuses loopback, private, link-local, CGNAT, multicast and
+// unspecified destinations, so fetched URLs can't reach the LAN (SSRF).
+func dialPublicOnly(_, address string, _ syscall.RawConn) error {
+	ap, err := netip.ParseAddrPort(address)
+	if err != nil {
+		return err
+	}
+	ip := ap.Addr().Unmap()
+	if !ip.IsGlobalUnicast() || ip.IsPrivate() || cgnat.Contains(ip) {
+		return fmt.Errorf("refusing to connect to non-public address %s", ip)
+	}
+	return nil
 }
 
 const userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
@@ -98,11 +128,6 @@ func Search(ctx context.Context, query string, maxResults int) ([]Result, error)
 		}
 	}
 	return nil, lastErr
-}
-
-// DuckDuckGo is kept as an alias for backward compatibility.
-func DuckDuckGo(ctx context.Context, query string, maxResults int) ([]Result, error) {
-	return Search(ctx, query, maxResults)
 }
 
 // FormatResults renders results as an LLM-friendly context block.
@@ -304,7 +329,10 @@ func ddgInstantAnswer(ctx context.Context, query string, max int) ([]Result, err
 	ctx, cancel := context.WithTimeout(ctx, 6*time.Second)
 	defer cancel()
 	u := "https://api.duckduckgo.com/?format=json&no_html=1&skip_disambig=1&q=" + url.QueryEscape(query)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json")
 	resp, err := httpClient.Do(req)
@@ -570,7 +598,10 @@ func wikipediaSearch(ctx context.Context, query string, max int) ([]Result, erro
 	defer cancel()
 	u := fmt.Sprintf("https://en.wikipedia.org/w/rest.php/v1/search/page?q=%s&limit=%d",
 		url.QueryEscape(query), max)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("User-Agent", "home-server/1.0 (https://github.com/acanturgut/home-server)")
 	req.Header.Set("Accept", "application/json")
 	resp, err := httpClient.Do(req)

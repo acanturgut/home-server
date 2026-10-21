@@ -2,12 +2,13 @@ package asusrouter
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/acanturgut/home-server/jsonfile"
+	"github.com/acanturgut/home-server/logger"
 )
 
 // Manager owns the persisted Config + an active Client and caches the most
@@ -30,7 +31,6 @@ type Manager struct {
 // If no config has been saved yet, the returned manager is "unconfigured" —
 // every read call returns ErrNotConfigured.
 func NewManager(dataDir string) *Manager {
-	_ = os.MkdirAll(dataDir, 0755)
 	m := &Manager{
 		path:     filepath.Join(dataDir, "asusrouter.json"),
 		cacheTTL: 15 * time.Second,
@@ -43,27 +43,16 @@ func NewManager(dataDir string) *Manager {
 var ErrNotConfigured = errors.New("asusrouter: not configured")
 
 func (m *Manager) load() {
-	data, err := os.ReadFile(m.path)
-	if err != nil {
+	if err := jsonfile.Load(m.path, &m.cfg); err != nil {
+		logger.Error("asusrouter: " + err.Error())
 		return
 	}
-	var cfg Config
-	if json.Unmarshal(data, &cfg) != nil {
-		return
-	}
-	m.cfg = cfg
-	if cfg.Host != "" && cfg.Username != "" {
-		m.client = New(cfg)
+	if m.cfg.Host != "" && m.cfg.Username != "" {
+		m.client = New(m.cfg)
 	}
 }
 
-func (m *Manager) save() error {
-	data, err := json.MarshalIndent(m.cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(m.path, data, 0600)
-}
+func (m *Manager) save() error { return jsonfile.Save(m.path, m.cfg) }
 
 // Configured reports whether credentials are stored.
 func (m *Manager) Configured() bool {

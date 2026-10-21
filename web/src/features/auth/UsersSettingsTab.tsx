@@ -1,283 +1,305 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import {
-  KeyRound,
-  Loader2,
-  LogOut,
-  Plus,
-  ShieldCheck,
-  Trash2,
-  UserCog,
-  Users,
-} from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { KeyRound, LogOut, Trash2, UserCog, Users } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  SettingsCard,
-  SkeletonRows,
-} from '@/components/ui/settings-rows';
+import { Card, CardHeader } from '@/components/ui/card';
+import { Dialog } from '@/components/ui/dialog';
+import { Field } from '@/components/ui/field';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { SkeletonRows } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 import { authApi, type Role, type User } from '@/features/auth/api';
 import { useAuth } from '@/features/auth/useAuth';
+import { useAction } from '@/hooks/useAction';
+import { useConfirm } from '@/hooks/useConfirm';
+import { errorMessage, plural } from '@/lib/format';
 
-/**
- * Settings → Users tab. Lists accounts (admin only), supports add / role
- * change / password reset / delete, and exposes self-service password change
- * + sign-out for the current viewer.
- */
+const fail = (what: string, e: unknown) =>
+  toast(`${what} failed`, { tone: 'error', description: errorMessage(e) });
+
+/** Settings → Account: your password and sign-out; admins also manage users. */
 export function UsersSettingsTab() {
-  const { user: me, logout } = useAuth();
-  const isAdmin = me?.role === 'admin';
-
-  const [users, setUsers] = useState<User[] | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  // Add-user form.
-  const [newUsername, setNewUsername] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState<Role>('viewer');
-
-  // Self-service change password.
-  const [curPw, setCurPw] = useState('');
-  const [nextPw, setNextPw] = useState('');
-  const [pwMsg, setPwMsg] = useState<string | null>(null);
-
-  const refresh = useCallback(
-    () =>
-      authApi.users.list().then(
-        (list) => {
-          setUsers(list);
-          setErr(null);
-        },
-        (e) => {
-          setErr(e instanceof Error ? e.message : String(e));
-          setUsers([]);
-        },
-      ),
-    [],
+  const { user } = useAuth();
+  return (
+    <div className="space-y-4">
+      <MyAccountCard />
+      {user?.role === 'admin' && <UserAdminCard />}
+    </div>
   );
+}
 
-  // The user list is only rendered for admins, so only admins fetch it.
+/** Account list, roles, password resets and new users (admin only). */
+function UserAdminCard() {
+  const { user: me } = useAuth();
+  const confirm = useConfirm();
+  const [users, setUsers] = useState<User[] | null>(null);
+  const [resetFor, setResetFor] = useState<User | null>(null);
+
+  const fetchUsers = useCallback(async () => {
+    setUsers(await authApi.users.list());
+  }, []);
+  const { run: refresh, error: loadError } = useAction(fetchUsers);
   useEffect(() => {
-    if (isAdmin) void refresh();
-  }, [isAdmin, refresh]);
-
-  const onCreate = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setErr(null);
-    try {
-      await authApi.users.create(newUsername.trim(), newPassword, newRole);
-      setNewUsername('');
-      setNewPassword('');
-      setNewRole('viewer');
-      await refresh();
-    } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : String(ex));
-    } finally {
-      setBusy(false);
-    }
-  };
+    void refresh();
+  }, [refresh]);
 
   const onSetRole = async (u: User, role: Role) => {
-    setBusy(true);
     try {
       await authApi.users.setRole(u.id, role);
       await refresh();
-    } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : String(ex));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onResetPassword = async (u: User) => {
-    const pw = window.prompt(`Set new password for ${u.username}:`);
-    if (!pw) return;
-    setBusy(true);
-    try {
-      await authApi.users.setPassword(u.id, pw);
-    } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : String(ex));
-    } finally {
-      setBusy(false);
+    } catch (e) {
+      fail('Changing the role', e);
     }
   };
 
   const onDelete = async (u: User) => {
-    if (!window.confirm(`Delete user "${u.username}"?`)) return;
-    setBusy(true);
+    const ok = await confirm({
+      title: `Delete ${u.username}?`,
+      body: 'Their sessions end and they can no longer sign in.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await authApi.users.delete(u.id);
       await refresh();
-    } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : String(ex));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onChangeOwnPassword = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setPwMsg(null);
-    try {
-      await authApi.changePassword(curPw, nextPw);
-      setCurPw('');
-      setNextPw('');
-      setPwMsg('Password updated.');
-    } catch (ex) {
-      setPwMsg(ex instanceof Error ? ex.message : String(ex));
-    } finally {
-      setBusy(false);
+    } catch (e) {
+      fail('Deleting the user', e);
     }
   };
 
   return (
-    <div className="space-y-4">
-      {/* Account self-service. */}
-      <SettingsCard
-        title="My account"
-        icon={<UserCog className="h-3.5 w-3.5" />}
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => logout()}
-            className="h-7 px-2 text-xs">
-            <LogOut className="mr-1 h-3.5 w-3.5" />
-            Sign out
-          </Button>
-        }>
-        <div className="text-xs text-muted-foreground">
-          Signed in as{' '}
-          <span className="font-medium text-foreground">{me?.username}</span> (
-          <span className="font-medium">{me?.role}</span>)
-        </div>
-        <form
-          onSubmit={onChangeOwnPassword}
-          className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-center">
-          <Input
-            type="password"
-            placeholder="Current password"
-            value={curPw}
-            onChange={(e) => setCurPw(e.target.value)}
-            required
-          />
-          <Input
-            type="password"
-            placeholder="New password"
-            value={nextPw}
-            onChange={(e) => setNextPw(e.target.value)}
-            required
-          />
-          <Button type="submit" disabled={busy} size="sm">
-            {busy ? (
-              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <KeyRound className="mr-1 h-3.5 w-3.5" />
-            )}
-            Change
-          </Button>
-        </form>
-        {pwMsg && (
-          <p className="text-xs text-muted-foreground">{pwMsg}</p>
-        )}
-      </SettingsCard>
-
-      {/* Admin-only: user management. */}
-      {isAdmin && (
-        <SettingsCard
-          title={`Users (${users?.length ?? 0})`}
-          icon={<Users className="h-3.5 w-3.5" />}>
-          {err && (
-            <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              {err}
-            </p>
-          )}
-
-          {users === null ? (
-            <SkeletonRows rows={3} block />
-          ) : users.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No users.</p>
-          ) : (
-            <ul className="divide-y divide-border/20 rounded-md border border-border/20">
-              {users.map((u) => (
+    <>
+      <Card className="space-y-3">
+        <CardHeader
+          title="Users"
+          icon={<Users />}
+          description={users && plural(users.length, 'account')}
+        />
+        {loadError && <Alert>{loadError}</Alert>}
+        {!users ? (
+          !loadError && <SkeletonRows rows={3} block />
+        ) : (
+          <ul className="divide-y rounded-md border">
+            {users.map((u) => {
+              const self = u.id === me?.id;
+              return (
                 <li
                   key={u.id}
-                  className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs">
-                  <ShieldCheck
-                    className={
-                      u.role === 'admin'
-                        ? 'h-3.5 w-3.5 text-amber-400'
-                        : 'h-3.5 w-3.5 text-muted-foreground/60'
-                    }
-                  />
-                  <span className="font-medium">{u.username}</span>
-                  <select
-                    className="ml-auto h-7 rounded-md border border-border/40 bg-background px-2 text-xs"
+                  className="flex items-center gap-2 py-1.5 pr-1.5 pl-3"
+                >
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {u.username}
+                  </span>
+                  {self && <Badge>You</Badge>}
+                  <Select
+                    selectSize="sm"
+                    aria-label={`Role for ${u.username}`}
                     value={u.role}
-                    disabled={busy || u.id === me?.id}
-                    onChange={(e) => onSetRole(u, e.target.value as Role)}>
-                    <option value="admin">admin</option>
-                    <option value="viewer">viewer</option>
-                  </select>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 px-2"
-                    disabled={busy}
-                    onClick={() => onResetPassword(u)}
-                    title="Reset password">
-                    <KeyRound className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 px-2 text-destructive hover:text-destructive"
-                    disabled={busy || u.id === me?.id}
+                    disabled={self}
+                    onChange={(e) => onSetRole(u, e.target.value as Role)}
+                    className="w-auto"
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="viewer">Viewer</option>
+                  </Select>
+                  <IconButton
+                    icon={<KeyRound />}
+                    label={`Reset password for ${u.username}`}
+                    onClick={() => setResetFor(u)}
+                  />
+                  <IconButton
+                    icon={<Trash2 />}
+                    label={`Delete ${u.username}`}
+                    disabled={self}
                     onClick={() => onDelete(u)}
-                    title="Delete user">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  />
                 </li>
-              ))}
-            </ul>
-          )}
+              );
+            })}
+          </ul>
+        )}
+        <AddUserForm onAdded={refresh} />
+      </Card>
 
-          <form
-            onSubmit={onCreate}
-            className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-center pt-2 border-t border-border/20">
-            <Input
-              placeholder="username"
-              value={newUsername}
-              onChange={(e) => setNewUsername(e.target.value)}
-              required
-            />
-            <Input
-              type="password"
-              placeholder="password (min 8)"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-            />
-            <select
-              className="h-9 rounded-md border border-border/40 bg-background px-2 text-xs"
-              value={newRole}
-              onChange={(e) => setNewRole(e.target.value as Role)}>
-              <option value="viewer">viewer</option>
-              <option value="admin">admin</option>
-            </select>
-            <Button type="submit" size="sm" disabled={busy}>
-              {busy ? (
-                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Plus className="mr-1 h-3.5 w-3.5" />
-              )}
-              Add
-            </Button>
-          </form>
-        </SettingsCard>
-      )}
-    </div>
+      {/* Keyed so each open starts with an empty field and no error. */}
+      <ResetPasswordDialog
+        key={resetFor?.id}
+        user={resetFor}
+        onClose={() => setResetFor(null)}
+      />
+    </>
+  );
+}
+
+function MyAccountCard() {
+  const { user: me, logout } = useAuth();
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const change = useAction(async () => {
+    await authApi.changePassword(current, next);
+    setCurrent('');
+    setNext('');
+    toast('Password updated', { tone: 'success' });
+  });
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    void change.run();
+  };
+
+  return (
+    <Card className="space-y-3">
+      <CardHeader
+        title="My account"
+        icon={<UserCog />}
+        description={`Signed in as ${me?.username} (${me?.role})`}
+        actions={
+          <Button variant="outline" size="sm" onClick={() => void logout()}>
+            <LogOut />
+            Sign out
+          </Button>
+        }
+      />
+      <form
+        onSubmit={submit}
+        className="flex flex-col gap-3 sm:flex-row sm:items-end"
+      >
+        <Field label="Current password" className="flex-1">
+          <Input
+            type="password"
+            autoComplete="current-password"
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+            required
+          />
+        </Field>
+        <Field label="New password" className="flex-1">
+          <Input
+            type="password"
+            autoComplete="new-password"
+            minLength={8}
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+            required
+          />
+        </Field>
+        <Button type="submit" variant="secondary" loading={change.busy}>
+          Change password
+        </Button>
+      </form>
+      {change.error && <Alert>{change.error}</Alert>}
+    </Card>
+  );
+}
+
+function AddUserForm({ onAdded }: { onAdded: () => Promise<unknown> }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState<Role>('viewer');
+  const add = useAction(async () => {
+    await authApi.users.create(username.trim(), password, role);
+    setUsername('');
+    setPassword('');
+    setRole('viewer');
+    await onAdded();
+  });
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    void add.run();
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-3 border-t pt-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <Field label="Username" className="flex-1">
+          <Input
+            autoComplete="off"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+        </Field>
+        <Field label="Password" className="flex-1">
+          <Input
+            type="password"
+            autoComplete="new-password"
+            minLength={8}
+            placeholder="At least 8 characters"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </Field>
+        <Field label="Role">
+          <Select
+            value={role}
+            onChange={(e) => setRole(e.target.value as Role)}
+          >
+            <option value="viewer">Viewer</option>
+            <option value="admin">Admin</option>
+          </Select>
+        </Field>
+        <Button type="submit" loading={add.busy}>
+          Add user
+        </Button>
+      </div>
+      {add.error && <Alert>{add.error}</Alert>}
+    </form>
+  );
+}
+
+/** Admin sets a new password for `user`; open while `user` is set. */
+function ResetPasswordDialog({
+  user,
+  onClose,
+}: {
+  user: User | null;
+  onClose: () => void;
+}) {
+  const [password, setPassword] = useState('');
+  const save = useAction(async () => {
+    if (!user) return;
+    await authApi.users.setPassword(user.id, password);
+    toast(`Password reset for ${user.username}`, { tone: 'success' });
+    onClose();
+  });
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    void save.run();
+  };
+
+  return (
+    <Dialog
+      open={user !== null}
+      onOpenChange={(open) => !open && onClose()}
+      title="Reset password"
+      description={user && `Set a new password for ${user.username}.`}
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="New password">
+          <Input
+            type="password"
+            autoComplete="new-password"
+            minLength={8}
+            autoFocus
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </Field>
+        {save.error && <Alert>{save.error}</Alert>}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={save.busy}>
+            Set password
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

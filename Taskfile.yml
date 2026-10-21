@@ -12,6 +12,41 @@ tasks:
     dir: server
     cmd: go run .
 
+  # ─── QUALITY ───────────────────────────────────────────
+  check:
+    desc: Run every lint, type, test and vulnerability gate
+    cmds:
+      - task: check:go
+        vars: { MOD: server }
+      - task: check:go
+        vars: { MOD: agent }
+      - task: check:web
+
+  check:go:
+    internal: true
+    dir: '{{.MOD}}'
+    cmds:
+      - test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - go vet ./...
+      - go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+      - go run golang.org/x/tools/cmd/deadcode@v0.52.0 -test ./...
+      - go test ./...
+      # Fails on any reachable advisory except GO-2026-4316 (go-chi/chi v1
+      # RedirectSlashes, no fixed release): chi comes in via brutella/hap,
+      # which never uses that middleware.
+      - |
+        out=$(go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...) || exit 1
+        vulns=$(printf '%s' "$out" | jq -r 'select(.finding.trace[0].function?) | .finding.osv' | sort -u | grep -vx GO-2026-4316 || true)
+        test -z "$vulns" || { echo "reachable vulnerabilities: $vulns"; exit 1; }
+
+  check:web:
+    dir: web
+    cmds:
+      - yarn format:check
+      - yarn lint
+      - yarn tsc -b
+      - yarn npm audit --all --recursive
+
   # ─── BUILD ─────────────────────────────────────────────
   server:build:
     desc: Build Go binary for Pi (arm64)

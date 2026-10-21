@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   CircuitBoard,
   Clock,
@@ -11,19 +11,14 @@ import {
   Server,
   Thermometer,
 } from 'lucide-react';
-import { formatUptime } from '@/lib/format';
-import type { SystemInfo } from '@/lib/types';
+import { appApi, type ClusterAggregate, type SystemInfo } from '@/app/api';
+import { IconButton } from '@/components/ui/icon-button';
+import { Meter } from '@/components/ui/meter';
 import { Spinner } from '@/components/ui/spinner';
 import { StatusDot } from '@/components/ui/status-dot';
-import { IconButton } from '@/components/ui/icon-button';
-import { dashboardApi, type ClusterAggregate } from '@/features/dashboard';
-
-interface StatusBarProps {
-  sys: SystemInfo | null;
-  nodeCount: number;
-  logsOpen: boolean;
-  onToggleLogs: () => void;
-}
+import { usePolling } from '@/hooks/usePolling';
+import { formatUptime } from '@/lib/format';
+import { cn } from '@/lib/utils';
 
 const ICON = 13;
 
@@ -42,23 +37,19 @@ function Metric({
   className?: string;
 }) {
   return (
-    <span className={`${className} items-center gap-1.5`} title={title}>
-      <span className="text-muted-foreground/70">{icon}</span>
-      {pct !== undefined && <MiniBar pct={pct} />}
+    <div
+      className={cn(
+        className,
+        'shrink-0 items-center gap-1.5 whitespace-nowrap',
+      )}
+      title={title}
+    >
+      <span className="text-muted-foreground">{icon}</span>
+      {pct !== undefined && (
+        <Meter value={pct} label={title} className="w-10" />
+      )}
       <span className="tabular-nums">{children}</span>
-    </span>
-  );
-}
-
-function MiniBar({ pct }: { pct: number }) {
-  const safe = Math.max(0, Math.min(100, pct));
-  return (
-    <span className="w-10 h-1 rounded-full bg-muted inline-block overflow-hidden">
-      <span
-        className="block h-full rounded-full bg-foreground/60 transition-all"
-        style={{ width: `${safe}%` }}
-      />
-    </span>
+    </div>
   );
 }
 
@@ -70,8 +61,8 @@ function ClusterMetrics({ c }: { c: ClusterAggregate }) {
     c.vram_total_mb > 0 ? (c.vram_used_mb / c.vram_total_mb) * 100 : 0;
   const temp = c.gpu_count > 0 ? c.gpu_temp_avg : c.cpu_temp_avg;
   return (
-    <span className="hidden md:flex items-center gap-4 pl-4">
-      <span className="text-muted-foreground/70" title="Cluster">
+    <div className="hidden items-center gap-4 pl-4 md:flex">
+      <span className="text-muted-foreground" title="Cluster">
         <Network size={ICON} />
       </span>
       <Metric icon={<Cpu size={ICON} />} title="Cluster CPU" pct={c.cpu_avg}>
@@ -80,7 +71,8 @@ function ClusterMetrics({ c }: { c: ClusterAggregate }) {
       <Metric
         icon={<MemoryStick size={ICON} />}
         title="Cluster RAM"
-        pct={memPct}>
+        pct={memPct}
+      >
         {c.mem_used_gb.toFixed(1)}/{c.mem_total_gb.toFixed(0)}G
       </Metric>
       {c.gpu_count > 0 && (
@@ -89,14 +81,16 @@ function ClusterMetrics({ c }: { c: ClusterAggregate }) {
             icon={<Gpu size={ICON} />}
             title="Cluster GPU"
             pct={c.gpu_avg}
-            className="hidden lg:flex">
+            className="hidden lg:flex"
+          >
             {c.gpu_avg.toFixed(0)}%
           </Metric>
           <Metric
             icon={<CircuitBoard size={ICON} />}
             title="VRAM"
             pct={vramPct}
-            className="hidden lg:flex">
+            className="hidden lg:flex"
+          >
             {(c.vram_used_mb / 1024).toFixed(1)}/
             {(c.vram_total_mb / 1024).toFixed(0)}G
           </Metric>
@@ -106,42 +100,41 @@ function ClusterMetrics({ c }: { c: ClusterAggregate }) {
         <Metric
           icon={<Thermometer size={ICON} />}
           title={c.gpu_count > 0 ? 'GPU temp' : 'CPU temp'}
-          className="hidden xl:flex">
+          className="hidden xl:flex"
+        >
           {temp.toFixed(0)}°
         </Metric>
       )}
-    </span>
+    </div>
   );
 }
 
+/** Bottom bar: host and cluster load (polled), node count, logs toggle. */
 export function StatusBar({
-  sys,
-  nodeCount,
   logsOpen,
   onToggleLogs,
-}: StatusBarProps) {
+}: {
+  logsOpen: boolean;
+  onToggleLogs: () => void;
+}) {
+  const [sys, setSys] = useState<SystemInfo | null>(null);
   const [cluster, setCluster] = useState<ClusterAggregate | null>(null);
 
-  useEffect(() => {
-    let alive = true;
-    const run = async () => {
-      const c = await dashboardApi.cluster();
-      if (alive && c) setCluster(c);
-    };
-    run();
-    const id = setInterval(run, 5000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
+  usePolling(async () => {
+    const s = await appApi.system();
+    if (s) setSys(s);
+  }, 8000);
+  usePolling(async () => {
+    const c = await appApi.cluster();
+    if (c) setCluster(c);
+  }, 5000);
 
   return (
-    <footer className="h-9 shrink-0 bg-background flex items-center pl-5 pr-3 gap-4 text-xs text-muted-foreground overflow-x-auto">
+    <footer className="flex h-9 shrink-0 items-center gap-4 overflow-x-auto border-t pr-3 pl-5 text-xs text-muted-foreground">
       {sys ? (
         <>
-          <span className="flex items-center gap-2 text-foreground/80">
-            <StatusDot status="running" />
+          <span className="flex items-center gap-2 text-foreground">
+            <StatusDot status="online" />
             {sys.hostname}
           </span>
           <Metric icon={<Clock size={ICON} />} title="Uptime">
@@ -153,31 +146,35 @@ export function StatusBar({
           <Metric
             icon={<MemoryStick size={ICON} />}
             title="Memory"
-            pct={sys.memory.used_pct}>
+            pct={sys.memory.used_pct}
+          >
             {sys.memory.used_pct.toFixed(0)}%
           </Metric>
           <Metric
             icon={<HardDrive size={ICON} />}
             title="Disk"
-            pct={sys.disk.used_pct}>
+            pct={sys.disk.used_pct}
+          >
             {sys.disk.used_pct.toFixed(0)}%
           </Metric>
           {cluster && <ClusterMetrics c={cluster} />}
-          <span className="ml-auto flex items-center gap-4 shrink-0">
-            <Metric icon={<Server size={ICON} />} title="Nodes">
-              {nodeCount}
-            </Metric>
+          <div className="ml-auto flex shrink-0 items-center gap-4">
+            {cluster && (
+              <Metric icon={<Server size={ICON} />} title="Nodes online">
+                {cluster.nodes_online}/{cluster.nodes_total}
+              </Metric>
+            )}
             <IconButton
-              icon={<ScrollText size={14} />}
+              icon={<ScrollText />}
               label={logsOpen ? 'Hide logs' : 'Show logs'}
               active={logsOpen}
               onClick={onToggleLogs}
             />
-          </span>
+          </div>
         </>
       ) : (
         <span className="flex items-center gap-1.5">
-          <Spinner size={10} />
+          <Spinner size={12} />
           Connecting…
         </span>
       )}

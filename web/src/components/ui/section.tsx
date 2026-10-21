@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * Page-level section wrapper. Renders a small uppercase label, optional
- * subtitle and toolbar, then children.
+ * Page-level section wrapper: heading, optional description and toolbar,
+ * then children.
  */
 export function Section({
   title,
@@ -24,12 +24,10 @@ export function Section({
         <div className="flex items-end justify-between gap-3 px-1">
           <div className="min-w-0">
             {title && (
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-                {title}
-              </h3>
+              <h3 className="text-sm font-medium text-foreground">{title}</h3>
             )}
             {description && (
-              <p className="text-xs text-muted-foreground/65 mt-0.5">
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 {description}
               </p>
             )}

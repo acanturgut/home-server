@@ -10,21 +10,14 @@ import (
 	"time"
 
 	"github.com/acanturgut/home-server/ai"
-	"github.com/acanturgut/home-server/apitokens"
 	"github.com/acanturgut/home-server/auth"
 	"github.com/acanturgut/home-server/homedevices"
 	"github.com/acanturgut/home-server/logger"
 	"github.com/google/uuid"
 )
 
-// SetTokens wires the API token store. Without this the public ask
-// endpoint will reject every request and the token CRUD endpoints return
-// 503.
-func (h *Handler) SetTokens(s *apitokens.Store) { h.tokens = s }
-
-// The voice/ask pipeline boils down to "string in, string out". Auth is
-// any valid bearer token from the API tokens store. The same endpoint
-// powers the iPhone Shortcut, the React Native app, and any curl script.
+// The voice/ask pipeline boils down to "string in, string out". It powers
+// the iPhone Shortcut and any curl script.
 //
 // Pipeline:
 //  1. Try to handle as a direct home-control intent ("turn off the kitchen
@@ -50,14 +43,9 @@ type askResp struct {
 	Handler string `json:"handler,omitempty"` // "home" | "llm"
 }
 
-// AIAsk handles POST /api/ai/ask (and the legacy /api/siri/ask alias).
-//
-// Auth accepts EITHER:
-//   - a bearer API token from the apitokens store (Shortcuts, scripts), OR
-//   - a logged-in user identified by the session cookie or a session-token
-//     bearer (the React Native app uses this — username+password login).
+// AIAsk handles POST /api/ai/ask.
 func (h *Handler) AIAsk(w http.ResponseWriter, r *http.Request) {
-	if !h.askAuthOK(r) {
+	if !h.askAllowed(r) {
 		writeJSON(w, http.StatusUnauthorized, askResp{Reply: "Sorry, I couldn't talk to your home server. Sign in or set an API token."})
 		return
 	}
@@ -72,7 +60,7 @@ func (h *Handler) AIAsk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if reply, handled := h.router.TryHomeIntent(r.Context(), prompt); handled {
+	if reply, handled := h.ai.TryHomeIntent(r.Context(), prompt); handled {
 		writeJSON(w, http.StatusOK, askResp{Reply: speakable(reply), Handler: "home"})
 		return
 	}
@@ -83,7 +71,7 @@ func (h *Handler) AIAsk(w http.ResponseWriter, r *http.Request) {
 	}
 	messages = append(messages, ai.Message{Role: "user", Content: prompt})
 
-	resp, err := h.router.Chat(r.Context(), uuid.New().String(), messages)
+	resp, err := h.ai.Chat(r.Context(), uuid.New().String(), messages)
 	if err != nil {
 		logger.Error("ai/ask chat: " + err.Error())
 		writeJSON(w, http.StatusBadGateway, askResp{Reply: "I had trouble reaching the model. Please try again in a moment."})
@@ -106,10 +94,7 @@ func (h *Handler) AIAsk(w http.ResponseWriter, r *http.Request) {
 // buildAskHomeContext renders the current home-device snapshot as a compact
 // system message the LLM can quote from. Returns "" when no devices known.
 func (h *Handler) buildAskHomeContext() string {
-	if h.homedev == nil {
-		return ""
-	}
-	devices := h.homedev.Devices()
+	devices := h.home.Devices()
 	if len(devices) == 0 {
 		return ""
 	}
@@ -337,42 +322,13 @@ func speakable(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// bearerToken extracts the token portion of an `Authorization: Bearer <tok>`
-// header, falling back to a `?token=…` query param so curl tests stay easy.
-func bearerToken(r *http.Request) string {
-	h := r.Header.Get("Authorization")
-	if strings.HasPrefix(strings.ToLower(h), "bearer ") {
-		return strings.TrimSpace(h[len("bearer "):])
+// askAllowed authorizes AIAsk: an API token (`Authorization: Bearer`, used
+// by Shortcuts and scripts) or a signed-in non-viewer session. Viewers are
+// refused because a home intent can switch devices.
+func (h *Handler) askAllowed(r *http.Request) bool {
+	if hdr := r.Header.Get("Authorization"); len(hdr) > 7 && strings.EqualFold(hdr[:7], "bearer ") {
+		return h.tokens.Verify(strings.TrimSpace(hdr[7:]))
 	}
-	return r.URL.Query().Get("token")
-}
-
-// askAuthOK is the auth gate for AIAsk. It accepts:
-//   - a session cookie or session-token bearer (logged-in user via the auth
-//     store) — used by the React Native app after username/password login;
-//   - a bearer API token from the apitokens store — used by the iPhone
-//     Shortcut and any curl/script integration.
-func (h *Handler) askAuthOK(r *http.Request) bool {
-	// Prefer session auth if available.
-	if h.auth != nil {
-		token := ""
-		if c, err := r.Cookie(auth.CookieName); err == nil {
-			token = c.Value
-		}
-		if token == "" {
-			token = bearerToken(r)
-		}
-		if token != "" {
-			if _, ok := h.auth.LookupSession(token); ok {
-				return true
-			}
-		}
-	}
-	// Fall back to API tokens.
-	if h.tokens != nil {
-		if _, ok := h.tokens.Verify(bearerToken(r)); ok {
-			return true
-		}
-	}
-	return false
+	u, ok := h.auth.FromRequest(r)
+	return ok && u.Role != auth.RoleViewer
 }

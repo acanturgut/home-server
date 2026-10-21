@@ -1,226 +1,225 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
-import { Circle } from 'lucide-react';
-import { settingsApi } from '@/features/settings/api';
-import type { NodeForm } from '@/features/settings/hooks/useSettings';
-import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
+import { toast } from '@/components/ui/toast';
+import type { NodeInput } from '@/features/settings/api';
+import { errorMessage } from '@/lib/format';
+import { nodesApi } from '@/lib/nodes';
 
-/** Inline node-editor form: identity fields + tier/model + temperature slider
- * + LM-Studio model load/eject controls when the node is online. */
+const TEXT_FIELDS = [
+  { key: 'name', label: 'Name', placeholder: 'My PC', required: true },
+  {
+    key: 'host',
+    label: 'Host',
+    placeholder: 'http://192.168.50.100:1234',
+    required: true,
+  },
+  { key: 'gpu', label: 'GPU', placeholder: 'RTX 4090' },
+  { key: 'mac', label: 'MAC (Wake-on-LAN)', placeholder: 'AA:BB:CC:DD:EE:FF' },
+] as const;
+
+/**
+ * Node fields: identity, tier, model and temperature. With `onlineNodeId`
+ * (editing a reachable node) it also lists the loaded models with eject,
+ * and loads another model by name.
+ */
 export function NodeFormInline({
   form,
   setForm,
   models,
-  nodeId,
-  online,
+  onlineNodeId,
 }: {
-  form: NodeForm;
-  setForm: Dispatch<SetStateAction<NodeForm>>;
+  form: NodeInput;
+  setForm: Dispatch<SetStateAction<NodeInput>>;
   models: string[];
-  nodeId?: string;
-  online?: boolean;
+  onlineNodeId?: string;
 }) {
-  const [loadingModel, setLoadingModel] = useState<string | null>(null);
-  // Local copy so load/eject can update the list optimistically; reset
-  // whenever the parent hands us a new `models` array.
-  const [localModels, setLocalModels] = useState<string[]>(models);
-  const [prevModels, setPrevModels] = useState(models);
-  if (models !== prevModels) {
-    setPrevModels(models);
-    setLocalModels(models);
-  }
-
-  const loadModel = async (model: string) => {
-    if (!nodeId) return;
-    setLoadingModel(model);
-    try {
-      await settingsApi.loadNodeModel(nodeId, model);
-      setLocalModels((prev) => [...new Set([...prev, model])]);
-    } catch {
-      // Ignore: keep current model list, surface error via parent if needed.
-    }
-    setLoadingModel(null);
-  };
-
-  const unloadModel = async (model: string) => {
-    if (!nodeId) return;
-    setLoadingModel(model);
-    try {
-      await settingsApi.unloadNodeModel(nodeId, model);
-      setLocalModels((prev) => prev.filter((m) => m !== model));
-    } catch {
-      // Ignore: leave optimistic UI alone.
-    }
-    setLoadingModel(null);
-  };
+  const set = (patch: Partial<NodeInput>) =>
+    setForm((prev) => ({ ...prev, ...patch }));
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2.5">
-        {(
-          [
-            { key: 'name', label: 'Name', placeholder: 'My PC' },
-            {
-              key: 'host',
-              label: 'Host',
-              placeholder: 'http://192.168.50.100:1234',
-            },
-            { key: 'gpu', label: 'GPU', placeholder: 'RTX 4090' },
-            { key: 'mac', label: 'MAC', placeholder: 'AA:BB:CC:DD:EE:FF' },
-          ] as const
-        ).map((f) => (
-          <div key={f.key} className="space-y-0.5">
-            <label className="text-xs text-muted-foreground/60">
-              {f.label}
-            </label>
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {TEXT_FIELDS.map((f) => (
+          <Field key={f.key} label={f.label}>
             <Input
-              inputSize="sm"
               value={form[f.key]}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, [f.key]: e.target.value }))
-              }
+              onChange={(e) => set({ [f.key]: e.target.value })}
               placeholder={f.placeholder}
+              required={'required' in f}
             />
-          </div>
+          </Field>
         ))}
-        <div className="space-y-0.5">
-          <label className="text-xs text-muted-foreground/60">Tier</label>
-          <select
+        <Field label="Tier">
+          <Select
             value={form.tier}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, tier: e.target.value }))
-            }
-            className="h-7 text-[0.8rem] w-full rounded-[min(var(--radius-md),12px)] border border-input bg-transparent px-2.5 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50">
+            onChange={(e) => set({ tier: e.target.value })}
+          >
             <option value="high-end">High-end</option>
             <option value="low-end">Low-end</option>
-          </select>
-        </div>
-        <div className="space-y-0.5">
-          <label className="text-xs text-muted-foreground/60">Model</label>
-          {localModels.length > 0 ? (
-            <select
+          </Select>
+        </Field>
+        <Field label="Model">
+          {models.length > 0 ? (
+            <Select
               value={form.model}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, model: e.target.value }))
-              }
-              className="h-7 text-[0.8rem] w-full rounded-[min(var(--radius-md),12px)] border border-input bg-transparent px-2.5 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50">
-              <option value="">Select...</option>
-              {localModels.map((m) => (
+              onChange={(e) => set({ model: e.target.value })}
+            >
+              <option value="">Select a model</option>
+              {models.map((m) => (
                 <option key={m} value={m}>
                   {m}
                 </option>
               ))}
-            </select>
+            </Select>
           ) : (
             <Input
-              inputSize="sm"
               value={form.model}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, model: e.target.value }))
-              }
+              onChange={(e) => set({ model: e.target.value })}
               placeholder="model-name"
             />
           )}
-        </div>
+        </Field>
       </div>
 
-      {/* Temperature */}
-      <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <label className="text-xs text-muted-foreground/60">
-            Temperature
-          </label>
-          <span className="text-xs font-mono text-muted-foreground">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-sm">
+          <span className="font-medium">Temperature</span>
+          <span className="font-mono text-muted-foreground tabular-nums">
             {form.temperature.toFixed(2)}
           </span>
         </div>
-        <input
-          type="range"
-          min="0"
-          max="2"
-          step="0.05"
+        <Slider
+          aria-label="Temperature"
           value={form.temperature}
-          onChange={(e) =>
-            setForm((prev) => ({
-              ...prev,
-              temperature: parseFloat(e.target.value),
-            }))
-          }
-          className="w-full h-1.5 rounded-full appearance-none bg-border/30 accent-blue-500"
+          min={0}
+          max={2}
+          step={0.05}
+          onValueChange={(temperature) => set({ temperature })}
         />
-        <div className="flex justify-between text-xs text-muted-foreground/65">
+        <div className="flex justify-between text-xs text-muted-foreground">
           <span>Precise</span>
           <span>Creative</span>
         </div>
       </div>
 
-      {/* Loaded models with eject */}
-      {nodeId && online && localModels.length > 0 && (
-        <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground/60">
-            Loaded Models
-          </label>
-          {localModels.map((m) => (
-            <div
-              key={m}
-              className="flex items-center justify-between py-1 px-2 rounded-md bg-muted/20 text-xs">
-              <span className="font-mono text-xs truncate">{m}</span>
-              <div className="flex items-center gap-1.5 shrink-0">
-                {form.model !== m && (
-                  <button
-                    onClick={() => setForm((prev) => ({ ...prev, model: m }))}
-                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
-                    Set Active
-                  </button>
-                )}
-                {form.model === m && (
-                  <span className="text-xs text-emerald-400 flex items-center gap-1">
-                    <Circle size={6} fill="currentColor" /> Active
-                  </span>
-                )}
-                <button
-                  onClick={() => unloadModel(m)}
-                  disabled={loadingModel === m}
-                  className="text-xs text-red-400/60 hover:text-red-400 disabled:opacity-50 transition-colors">
-                  {loadingModel === m ? '...' : '⏏ Eject'}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+      {onlineNodeId && (
+        <LoadedModels
+          nodeId={onlineNodeId}
+          models={models}
+          active={form.model}
+          onSetActive={(model) => set({ model })}
+        />
       )}
+    </div>
+  );
+}
 
-      {/* Load model by name */}
-      {nodeId && online && (
-        <div className="space-y-1">
-          <label className="text-xs text-muted-foreground/60">
-            Load Model
-          </label>
-          <div className="flex gap-1.5">
-            <Input
-              inputSize="sm"
-              id={`load-model-${nodeId}`}
-              placeholder="model-identifier"
-              className="flex-1 font-mono"
-            />
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                const el = document.getElementById(
-                  `load-model-${nodeId}`,
-                ) as HTMLInputElement;
-                if (el?.value) {
-                  loadModel(el.value);
-                  el.value = '';
-                }
-              }}
-              disabled={loadingModel !== null}>
-              {loadingModel ? '...' : 'Load'}
-            </Button>
-          </div>
-        </div>
+/** LM Studio models on a live node: set active, eject, or load by name. */
+function LoadedModels({
+  nodeId,
+  models,
+  active,
+  onSetActive,
+}: {
+  nodeId: string;
+  models: string[];
+  active: string;
+  onSetActive: (model: string) => void;
+}) {
+  // Local copy so load/eject update the list optimistically; reset when
+  // the parent hands over a new `models` array.
+  const [list, setList] = useState(models);
+  const [prevModels, setPrevModels] = useState(models);
+  if (models !== prevModels) {
+    setPrevModels(models);
+    setList(models);
+  }
+  const [pending, setPending] = useState<string | null>(null);
+  const [loadName, setLoadName] = useState('');
+
+  const run = async (model: string, load: boolean) => {
+    setPending(model);
+    try {
+      if (load) {
+        await nodesApi.loadModel(nodeId, model);
+        setList((prev) => [...new Set([...prev, model])]);
+        setLoadName('');
+      } else {
+        await nodesApi.unloadModel(nodeId, model);
+        setList((prev) => prev.filter((m) => m !== model));
+      }
+    } catch (e) {
+      toast(`${load ? 'Loading' : 'Ejecting'} ${model} failed`, {
+        tone: 'error',
+        description: errorMessage(e),
+      });
+    }
+    setPending(null);
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">Loaded models</p>
+      {list.length > 0 && (
+        <ul className="divide-y rounded-md border">
+          {list.map((m) => (
+            <li key={m} className="flex items-center gap-2 py-1 pr-1 pl-3">
+              <span className="min-w-0 flex-1 truncate font-mono text-sm">
+                {m}
+              </span>
+              {active === m ? (
+                <Badge tone="success">Active</Badge>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onSetActive(m)}
+                >
+                  Set active
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={pending === m}
+                disabled={pending !== null}
+                onClick={() => run(m, false)}
+              >
+                Eject
+              </Button>
+            </li>
+          ))}
+        </ul>
       )}
+      <div className="flex gap-2">
+        <Input
+          aria-label="Model to load"
+          placeholder="model-identifier"
+          value={loadName}
+          onChange={(e) => setLoadName(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter loads the model instead of submitting the node form.
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            if (loadName.trim() && pending === null)
+              void run(loadName.trim(), true);
+          }}
+          className="flex-1 font-mono"
+        />
+        <Button
+          variant="secondary"
+          loading={pending !== null && pending === loadName.trim()}
+          disabled={pending !== null || !loadName.trim()}
+          onClick={() => run(loadName.trim(), true)}
+        >
+          Load
+        </Button>
+      </div>
     </div>
   );
 }

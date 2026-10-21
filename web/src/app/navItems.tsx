@@ -21,11 +21,15 @@ export interface NavItem {
  * the "More" sheet on mobile.
  */
 export const NAV_ITEMS: NavItem[] = [
-  { id: 'dashboard', icon: <LayoutDashboard size={20} />, label: 'Home' },
-  { id: 'chat', icon: <MessageSquare size={20} />, label: 'Chat' },
-  { id: 'network', icon: <Network size={20} />, label: 'Network' },
-  { id: 'home', icon: <House size={20} />, label: 'Smart' },
-  { id: 'cluster', icon: <Server size={20} />, label: 'Cluster' },
-  { id: 'ai', icon: <Sparkles size={20} />, label: 'AI' },
-  { id: 'settings', icon: <Settings size={20} />, label: 'Settings' },
+  {
+    id: 'dashboard',
+    icon: <LayoutDashboard className="size-5" />,
+    label: 'Home',
+  },
+  { id: 'chat', icon: <MessageSquare className="size-5" />, label: 'Chat' },
+  { id: 'network', icon: <Network className="size-5" />, label: 'Network' },
+  { id: 'home', icon: <House className="size-5" />, label: 'Smart' },
+  { id: 'cluster', icon: <Server className="size-5" />, label: 'Cluster' },
+  { id: 'ai', icon: <Sparkles className="size-5" />, label: 'AI' },
+  { id: 'settings', icon: <Settings className="size-5" />, label: 'Settings' },
 ];

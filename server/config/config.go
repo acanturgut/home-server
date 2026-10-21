@@ -1,11 +1,15 @@
 package config
 
 import (
-	"encoding/json"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/acanturgut/home-server/jsonfile"
+	"github.com/acanturgut/home-server/logger"
 )
 
 type Tier string
@@ -23,14 +27,14 @@ type Node struct {
 	GPU         string   `json:"gpu,omitempty"`
 	MAC         string   `json:"mac,omitempty"`
 	Model       string   `json:"model,omitempty"`
-	SSHUser     string   `json:"ssh_user,omitempty"`
-	SSHPass     string   `json:"ssh_pass,omitempty"`
 	Temperature *float64 `json:"temperature,omitempty"`
 }
 
 type Config struct {
-	Port        string `json:"port"`
-	OllamaHost  string `json:"ollama_host"`
+	Port       string `json:"port"`
+	OllamaHost string `json:"ollama_host"`
+	// RouterModel is the env default for the intent classifier; the runtime
+	// value lives in assistant.Settings so it can change without a restart.
 	RouterModel string `json:"router_model"`
 	LogDir      string `json:"log_dir"`
 	DataDir     string `json:"data_dir"`
@@ -63,46 +67,20 @@ type NodeStore struct {
 }
 
 func NewNodeStore(dataDir string) *NodeStore {
-	os.MkdirAll(dataDir, 0755)
-	s := &NodeStore{path: filepath.Join(dataDir, "nodes.json")}
-	s.load()
+	s := &NodeStore{path: filepath.Join(dataDir, "nodes.json"), nodes: []Node{}}
+	if err := jsonfile.Load(s.path, &s.nodes); err != nil {
+		logger.Error("nodes: " + err.Error())
+	}
 	return s
 }
 
-func (s *NodeStore) load() {
-	data, err := os.ReadFile(s.path)
-	if err != nil {
-		s.nodes = []Node{}
-		return
-	}
-	json.Unmarshal(data, &s.nodes)
-}
-
-func (s *NodeStore) save() error {
-	data, err := json.MarshalIndent(s.nodes, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(s.path, data, 0644)
-}
+func (s *NodeStore) save() error { return jsonfile.Save(s.path, s.nodes) }
 
 func (s *NodeStore) All() []Node {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]Node, len(s.nodes))
 	copy(out, s.nodes)
-	return out
-}
-
-func (s *NodeStore) ByTier(tier Tier) []Node {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	var out []Node
-	for _, n := range s.nodes {
-		if n.Tier == tier {
-			out = append(out, n)
-		}
-	}
 	return out
 }
 
@@ -117,16 +95,29 @@ func (s *NodeStore) Get(id string) (Node, bool) {
 	return Node{}, false
 }
 
-// ByHost finds a node whose Host field contains the given IP or hostname.
-func (s *NodeStore) ByHost(ip string) (Node, bool) {
+// ByHost finds the node whose Host (a URL like http://10.0.0.5:1234, or a
+// bare host[:port]) points at exactly the given IP or hostname.
+func (s *NodeStore) ByHost(host string) (Node, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, n := range s.nodes {
-		if n.Host != "" && strings.Contains(n.Host, ip) {
+		if hostname(n.Host) == host {
 			return n, true
 		}
 	}
 	return Node{}, false
+}
+
+func hostname(hostport string) string {
+	if strings.Contains(hostport, "://") {
+		if u, err := url.Parse(hostport); err == nil {
+			return u.Hostname()
+		}
+	}
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		return h
+	}
+	return strings.Trim(hostport, "[]")
 }
 
 func (s *NodeStore) Add(n Node) error {

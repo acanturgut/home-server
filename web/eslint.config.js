@@ -55,6 +55,28 @@ export default defineConfig([
     },
   },
   ...featureBoundaryConfigs,
+  // Shared layers sit below the shell and features and never import them.
+  {
+    files: [
+      'src/lib/**/*.{ts,tsx}',
+      'src/hooks/**/*.{ts,tsx}',
+      'src/components/**/*.{ts,tsx}',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/app', '@/app/*', '@/features', '@/features/*'],
+              message:
+                'lib/, hooks/ and components/ are shared layers: they must not import from app/ or features/.',
+            },
+          ],
+        },
+      ],
+    },
+  },
   // The app shell may only consume features through their barrels.
   {
     files: ['src/app/**/*.{ts,tsx}'],

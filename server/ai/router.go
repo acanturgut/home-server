@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/acanturgut/home-server/assistant"
 	"github.com/acanturgut/home-server/config"
 	"github.com/acanturgut/home-server/logger"
 	"github.com/acanturgut/home-server/search"
@@ -30,7 +32,7 @@ You have access to web search results when they are provided — use them to giv
 }
 
 type RouteDecision struct {
-	Route             string // "local", node ID
+	Route             string // "local" or a node ID
 	NodeName          string
 	Tier              string
 	Reason            string
@@ -38,39 +40,48 @@ type RouteDecision struct {
 	ClassifierLatency string
 }
 
+// availabilityTTL bounds how stale the node-online snapshot may be; it saves
+// pinging every node on every chat message.
+const availabilityTTL = 10 * time.Second
+
 type Router struct {
-	client  *Client
-	cfg     *config.Config
-	nodes   *config.NodeStore
-	homedev HomeController // optional; nil = no home-control tool
+	client   *Client
+	cfg      *config.Config
+	nodes    *config.NodeStore
+	settings *assistant.SettingsStore
+	home     HomeController
+
+	availMu   sync.Mutex
+	availAt   time.Time
+	availHigh []config.Node
+	availLow  []config.Node
 }
 
-func NewRouter(cfg *config.Config, nodes *config.NodeStore) *Router {
+func NewRouter(cfg *config.Config, nodes *config.NodeStore, settings *assistant.SettingsStore, home HomeController) *Router {
 	return &Router{
-		client: NewClient(),
-		cfg:    cfg,
-		nodes:  nodes,
+		client:   NewClient(),
+		cfg:      cfg,
+		nodes:    nodes,
+		settings: settings,
+		home:     home,
 	}
 }
 
-// SetHomeController enables in-chat home-device control. When set, ChatStream
-// will pre-scan the user message for explicit device intents (e.g. "turn on
-// the living room lights") and execute them directly, bypassing the LLM.
-func (r *Router) SetHomeController(c HomeController) {
-	r.homedev = c
+// ClassifierModel is the on-device Ollama model used for routing and Quick
+// mode: the runtime setting if set, else the ROUTER_MODEL env default.
+func (r *Router) ClassifierModel() string {
+	if m := r.settings.Get().RouterModel; m != "" {
+		return m
+	}
+	return r.cfg.RouterModel
 }
 
 // TryHomeIntent attempts to handle the message as a home-control / status
 // command. Returns (reply, true) when handled; (_, false) lets the caller
-// fall through to a normal LLM call. Mirrors the streaming path in
-// ChatStream but collapses every event into the final reply text so it can
-// be returned over a one-shot HTTP request (Siri / Shortcuts).
+// fall through to a normal LLM call.
 func (r *Router) TryHomeIntent(ctx context.Context, msg string) (string, bool) {
-	if r.homedev == nil {
-		return "", false
-	}
 	var reply string
-	handled := tryHandleHomeIntent(ctx, r.homedev, msg, func(ev StreamEvent) {
+	handled := tryHandleHomeIntent(ctx, r.home, msg, func(ev StreamEvent) {
 		if ev.Step == "done" && ev.Content != "" {
 			reply = ev.Content
 		}
@@ -116,241 +127,133 @@ Your job: decide if a task is simple (LOW-END) or complex (HIGH-END).
 OUTPUT EXACTLY ONE WORD: LOW-END or HIGH-END
 Do not explain. Do not add anything else. Just the one word.`
 
-func (r *Router) Classify(ctx context.Context, userMessage string) RouteDecision {
+// Classify picks a node for userMessage among the online ones. With at most
+// two nodes online there is no real choice, so the classifier call is skipped.
+func (r *Router) Classify(ctx context.Context, userMessage string, highEnd, lowEnd []config.Node) RouteDecision {
 	start := time.Now()
-
-	highEnd := r.availableByTier(ctx, config.TierHighEnd)
-	lowEnd := r.availableByTier(ctx, config.TierLowEnd)
-
-	// No external nodes → always local
 	if len(highEnd) == 0 && len(lowEnd) == 0 {
-		logger.Log(logger.Entry{
-			Level:   "INFO",
-			Route:   "local",
-			Tier:    "local",
-			Message: "no external nodes available, routing locally",
-			Latency: time.Since(start).String(),
-		})
-		return RouteDecision{Route: "local", Tier: "local", Reason: "no external nodes available", ClassifierOutput: "skipped", ClassifierLatency: time.Since(start).String()}
+		return RouteDecision{Route: "local", Tier: "local", Reason: "no external nodes available", ClassifierOutput: "skipped"}
 	}
-
-	// Classification is only useful when there is a real choice to make.
-	// With ≤ 2 nodes online, just pick the best available and skip the
-	// (latency-adding) classifier call entirely.
 	if len(highEnd)+len(lowEnd) <= 2 {
-		latency := time.Since(start).String()
-		d := r.pickBestAvailable(highEnd, lowEnd, "classifier skipped (≤2 nodes online)")
+		d := pickNode(config.TierHighEnd, highEnd, lowEnd, "classifier skipped (≤2 nodes online)")
 		d.ClassifierOutput = "skipped"
-		d.ClassifierLatency = latency
-		logger.Log(logger.Entry{
-			Level:   "INFO",
-			Route:   d.Route,
-			Tier:    d.Tier,
-			Message: "classifier skipped: ≤2 nodes online",
-			Latency: latency,
-		})
 		return d
 	}
 
 	resp, err := r.client.CallOllama(ctx, r.cfg.OllamaHost, ChatRequest{
-		Model: r.cfg.RouterModel,
+		Model: r.ClassifierModel(),
 		Messages: []Message{
 			{Role: "system", Content: classifierSystemPrompt},
 			{Role: "user", Content: userMessage},
 		},
 	})
-
-	classifierLatency := time.Since(start).String()
-
+	latency := time.Since(start).String()
 	if err != nil {
-		logger.Log(logger.Entry{
-			Level:   "WARN",
-			Route:   "fallback",
-			Message: fmt.Sprintf("classifier failed: %v", err),
-			Latency: classifierLatency,
-		})
-		d := r.pickBestAvailable(highEnd, lowEnd, "classifier error fallback")
-		d.ClassifierOutput = fmt.Sprintf("error: %v", err)
-		d.ClassifierLatency = classifierLatency
+		logger.Log(logger.Entry{Level: "WARN", Route: "fallback", Message: fmt.Sprintf("classifier failed: %v", err), Latency: latency})
+		d := pickNode(config.TierHighEnd, highEnd, lowEnd, "classifier error fallback")
+		d.ClassifierOutput, d.ClassifierLatency = "error: "+err.Error(), latency
 		return d
 	}
 
-	rawOutput := strings.TrimSpace(resp.Message.Content)
-	answer := strings.ToUpper(rawOutput)
+	raw := strings.TrimSpace(resp.Message.Content)
+	answer := strings.ToUpper(raw)
+	logger.Log(logger.Entry{Level: "INFO", Message: fmt.Sprintf("classifier response: %q", answer), Latency: latency})
 
-	logger.Log(logger.Entry{
-		Level:   "INFO",
-		Message: fmt.Sprintf("classifier response: %q", answer),
-		Latency: classifierLatency,
-	})
-
-	makeDecision := func(route, nodeName, tier, reason string) RouteDecision {
-		return RouteDecision{
-			Route: route, NodeName: nodeName, Tier: tier, Reason: reason,
-			ClassifierOutput: rawOutput, ClassifierLatency: classifierLatency,
-		}
+	var d RouteDecision
+	switch {
+	case containsAny(answer, "HIGH", "COMPLEX", "HARD", "DIFFICULT"):
+		d = pickNode(config.TierHighEnd, highEnd, lowEnd, "classified as high-end task")
+	case containsAny(answer, "LOW", "SIMPLE", "EASY", "BASIC", "LOCAL"):
+		d = pickNode(config.TierLowEnd, highEnd, lowEnd, "classified as low-end task")
+	default:
+		d = pickNode(config.TierHighEnd, highEnd, lowEnd, "unrecognized classifier output")
 	}
-
-	if strings.Contains(answer, "LOCAL") {
-		// Classifier shouldn't say LOCAL, but treat as low-end
-		if len(lowEnd) > 0 {
-			n := lowEnd[0]
-			return makeDecision(n.ID, n.Name, "low-end", "reclassified LOCAL as low-end")
-		}
-		if len(highEnd) > 0 {
-			n := highEnd[0]
-			return makeDecision(n.ID, n.Name, "high-end", "reclassified LOCAL, using high-end")
-		}
-		return makeDecision("local", "", "local", "no nodes available (fallback)")
-	}
-
-	isHigh := strings.Contains(answer, "HIGH") || strings.Contains(answer, "COMPLEX") || strings.Contains(answer, "HARD") || strings.Contains(answer, "DIFFICULT")
-	isLow := strings.Contains(answer, "LOW") || strings.Contains(answer, "SIMPLE") || strings.Contains(answer, "EASY") || strings.Contains(answer, "BASIC")
-
-	if isHigh {
-		if len(highEnd) > 0 {
-			n := highEnd[0]
-			return makeDecision(n.ID, n.Name, "high-end", "classified as high-end task")
-		}
-		if len(lowEnd) > 0 {
-			n := lowEnd[0]
-			return makeDecision(n.ID, n.Name, "low-end", "high-end unavailable, falling back to low-end")
-		}
-		return makeDecision("local", "", "local", "no nodes available for high-end task (fallback)")
-	}
-
-	if isLow {
-		if len(lowEnd) > 0 {
-			n := lowEnd[0]
-			return makeDecision(n.ID, n.Name, "low-end", "classified as low-end task")
-		}
-		if len(highEnd) > 0 {
-			n := highEnd[0]
-			return makeDecision(n.ID, n.Name, "high-end", "low-end unavailable, falling back to high-end")
-		}
-		return makeDecision("local", "", "local", "no nodes available for low-end task (fallback)")
-	}
-
-	d := r.pickBestAvailable(highEnd, lowEnd, "unrecognized classifier output")
-	d.ClassifierOutput = rawOutput
-	d.ClassifierLatency = classifierLatency
+	d.ClassifierOutput, d.ClassifierLatency = raw, latency
 	return d
 }
 
-func (r *Router) pickBestAvailable(highEnd, lowEnd []config.Node, reason string) RouteDecision {
-	if len(highEnd) > 0 {
-		n := highEnd[0]
-		return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: "high-end", Reason: reason}
+// pickNode returns the first online node of the preferred tier, falling back
+// to the other tier, or "local" when none are online.
+func pickNode(prefer config.Tier, highEnd, lowEnd []config.Node, reason string) RouteDecision {
+	first, second := highEnd, lowEnd
+	if prefer == config.TierLowEnd {
+		first, second = lowEnd, highEnd
 	}
-	if len(lowEnd) > 0 {
-		n := lowEnd[0]
-		return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: "low-end", Reason: reason}
+	switch {
+	case len(first) > 0:
+		n := first[0]
+		return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: string(n.Tier), Reason: reason}
+	case len(second) > 0:
+		n := second[0]
+		return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: string(n.Tier), Reason: reason + " (preferred tier offline)"}
 	}
-	return RouteDecision{Route: "local", Tier: "local", Reason: reason}
+	return RouteDecision{Route: "local", Tier: "local", Reason: reason + " (no nodes online)"}
 }
 
-func (r *Router) availableByTier(ctx context.Context, tier config.Tier) []config.Node {
-	var available []config.Node
-	for _, node := range r.nodes.ByTier(tier) {
-		if r.client.Ping(ctx, node.Host, "lmstudio") {
-			available = append(available, node)
+// available returns the online nodes per tier, pinging all of them in
+// parallel at most once per availabilityTTL.
+func (r *Router) available(ctx context.Context) (highEnd, lowEnd []config.Node) {
+	r.availMu.Lock()
+	defer r.availMu.Unlock()
+	if time.Since(r.availAt) < availabilityTTL {
+		return r.availHigh, r.availLow
+	}
+	nodes := r.nodes.All()
+	for i, online := range r.pingAll(ctx, nodes) {
+		if !online {
+			continue
+		}
+		switch nodes[i].Tier {
+		case config.TierHighEnd:
+			highEnd = append(highEnd, nodes[i])
+		case config.TierLowEnd:
+			lowEnd = append(lowEnd, nodes[i])
 		}
 	}
-	return available
+	r.availAt, r.availHigh, r.availLow = time.Now(), highEnd, lowEnd
+	return highEnd, lowEnd
 }
 
+func (r *Router) pingAll(ctx context.Context, nodes []config.Node) []bool {
+	online := make([]bool, len(nodes))
+	var wg sync.WaitGroup
+	for i, n := range nodes {
+		wg.Go(func() { online[i] = r.client.Ping(ctx, n.Host, "lmstudio") })
+	}
+	wg.Wait()
+	return online
+}
+
+// Chat runs the ChatStream pipeline and returns its final reply. Node
+// failures come back as a friendly assistant message, not an error.
 func (r *Router) Chat(ctx context.Context, requestID string, messages []Message) (*ChatResponse, error) {
 	if len(messages) == 0 {
 		return nil, fmt.Errorf("no messages provided")
 	}
-
-	lastMsg := messages[len(messages)-1].Content
-	decision := r.Classify(ctx, lastMsg)
-
-	// No nodes available → return friendly error
-	if decision.Route == "local" {
-		logger.Log(logger.Entry{
-			Level:     "WARN",
-			RequestID: requestID,
-			Route:     "none",
-			Message:   "no external nodes available: " + decision.Reason,
-		})
-		return &ChatResponse{
-			Message:           Message{Role: "assistant", Content: "Hey, no external nodes are available right now! Add a compute node (machine running LM Studio) in the Nodes tab to start chatting."},
-			Node:              "none",
-			Tier:              "none",
-			Route:             "none",
-			Reason:            decision.Reason,
-			ClassifierOutput:  decision.ClassifierOutput,
-			ClassifierLatency: decision.ClassifierLatency,
-		}, nil
-	}
-
-	// Prepend system context
-	withSystem := append([]Message{{Role: "system", Content: chatSystemPrompt()}}, messages...)
-
-	// Web search if needed
-	chatMessages := r.maybeSearch(ctx, withSystem, lastMsg)
-
-	start := time.Now()
-	response, err := r.chatNode(ctx, decision.Route, chatMessages)
-
-	latency := time.Since(start).String()
-
-	if err != nil {
-		logger.Log(logger.Entry{
-			Level:     "ERROR",
-			RequestID: requestID,
-			Route:     decision.Route,
-			Tier:      decision.Tier,
-			Node:      decision.NodeName,
-			Message:   fmt.Sprintf("chat failed: %v", err),
-			Latency:   latency,
-		})
-		return &ChatResponse{
-			Message:           Message{Role: "assistant", Content: fmt.Sprintf("Node \"%s\" failed to respond. Make sure LM Studio is running and a model is loaded.", decision.NodeName)},
-			Node:              decision.NodeName,
-			Tier:              decision.Tier,
-			Route:             decision.Route,
-			Reason:            fmt.Sprintf("node error: %v", err),
-			ClassifierOutput:  decision.ClassifierOutput,
-			ClassifierLatency: decision.ClassifierLatency,
-		}, nil
-	}
-
-	response.Latency = latency
-	response.Route = decision.Route
-	response.Tier = decision.Tier
-	response.Node = decision.NodeName
-	response.Reason = decision.Reason
-	response.ClassifierOutput = decision.ClassifierOutput
-	response.ClassifierLatency = decision.ClassifierLatency
-
-	logger.Log(logger.Entry{
-		Level:            "INFO",
-		RequestID:        requestID,
-		Route:            decision.Route,
-		Tier:             decision.Tier,
-		Model:            response.Model,
-		Node:             decision.NodeName,
-		Message:          fmt.Sprintf("chat completed via %s (%s)", decision.NodeName, decision.Tier),
-		Latency:          latency,
-		PromptTokens:     response.PromptTokens,
-		CompletionTokens: response.CompletionTokens,
-		TotalTokens:      response.TotalTokens,
+	var last StreamEvent
+	r.ChatStream(ctx, requestID, messages, ChatStreamOpts{}, func(ev StreamEvent) {
+		if ev.Step == "done" || ev.Step == "error" {
+			last = ev
+		}
 	})
-
-	return response, nil
-}
-
-func (r *Router) chatNode(ctx context.Context, nodeID string, messages []Message) (*ChatResponse, error) {
-	return r.chatNodeOpts(ctx, nodeID, messages, nil)
-}
-
-// ChatOnNode is a public wrapper around chatNodeOpts so callers outside the
-// ai package (e.g. multi-node compare, scheduler) can target a specific node.
-func (r *Router) ChatOnNode(ctx context.Context, nodeID string, messages []Message, temperature *float64) (*ChatResponse, error) {
-	return r.chatNodeOpts(ctx, nodeID, messages, temperature)
+	content := last.Content
+	if last.Step == "error" {
+		content = last.Message
+	}
+	return &ChatResponse{
+		Model:             last.Model,
+		Message:           Message{Role: "assistant", Content: content},
+		Node:              last.Node,
+		Tier:              last.Tier,
+		Route:             last.Route,
+		Reason:            last.Reason,
+		ClassifierOutput:  last.ClassifierOutput,
+		ClassifierLatency: last.ClassifierLatency,
+		Latency:           last.Latency,
+		PromptTokens:      last.PromptTokens,
+		CompletionTokens:  last.CompletionTokens,
+		TotalTokens:       last.TotalTokens,
+	}, nil
 }
 
 func (r *Router) chatNodeOpts(ctx context.Context, nodeID string, messages []Message, temperature *float64) (*ChatResponse, error) {
@@ -409,71 +312,33 @@ func (r *Router) chatNodeOpts(ctx context.Context, nodeID string, messages []Mes
 	}, nil
 }
 
-// maybeSearch performs a web search and injects results into messages if needed.
-func (r *Router) maybeSearch(ctx context.Context, messages []Message, lastMsg string) []Message {
+// maybeSearch runs a web search when the message needs fresh facts and
+// prepends the results as a system message, reporting progress via emit.
+func (r *Router) maybeSearch(ctx context.Context, messages []Message, lastMsg string, emit func(StreamEvent)) []Message {
 	if !search.NeedsSearch(lastMsg) {
 		return messages
 	}
-
-	results, err := search.DuckDuckGo(ctx, lastMsg, 5)
-	if err != nil || len(results) == 0 {
-		logger.Info("web search: no results or error: " + fmt.Sprint(err))
-		return messages
-	}
-
-	logger.Info(fmt.Sprintf("web search: got %d results for %q", len(results), lastMsg))
-
-	results = search.Enrich(ctx, results, 3, 6000)
-
-	context := search.FormatResults(results)
-	injected := make([]Message, 0, len(messages)+1)
-	injected = append(injected, Message{
-		Role:    "system",
-		Content: context,
-	})
-	injected = append(injected, messages...)
-	return injected
-}
-
-// maybeSearchStream is like maybeSearch but emits a streaming step.
-func (r *Router) maybeSearchStream(ctx context.Context, messages []Message, lastMsg string, emit func(StreamEvent)) []Message {
-	if !search.NeedsSearch(lastMsg) {
-		return messages
-	}
-
 	emit(StreamEvent{Step: "searching", Message: "Searching the web…"})
-
-	results, err := search.DuckDuckGo(ctx, lastMsg, 5)
+	results, err := search.Search(ctx, lastMsg, 5)
 	if err != nil || len(results) == 0 {
 		logger.Info("web search: no results or error: " + fmt.Sprint(err))
 		emit(StreamEvent{Step: "search_done", Message: "No results found"})
 		return messages
 	}
-
 	logger.Info(fmt.Sprintf("web search: got %d results for %q", len(results), lastMsg))
 
-	// Build snippet for the UI
-	var titles []string
-	for _, r := range results {
-		titles = append(titles, r.Title)
+	titles := make([]string, 0, len(results))
+	for _, res := range results {
+		titles = append(titles, res.Title)
 	}
 	emit(StreamEvent{
 		Step:    "search_done",
 		Message: fmt.Sprintf("Found %d results", len(results)),
 		Content: strings.Join(titles, " · "),
 	})
-
 	emit(StreamEvent{Step: "searching", Message: "Reading top sources…"})
 	results = search.Enrich(ctx, results, 3, 6000)
-
-	context := search.FormatResults(results)
-	injected := make([]Message, 0, len(messages)+1)
-	injected = append(injected, Message{
-		Role:    "system",
-		Content: context,
-	})
-	injected = append(injected, messages...)
-	return injected
+	return append([]Message{{Role: "system", Content: search.FormatResults(results)}}, messages...)
 }
 
 // ChatStreamOpts lets the caller bypass the classifier or pin temperature.
@@ -486,7 +351,7 @@ type ChatStreamOpts struct {
 // resolveRouteOverride converts an opt.Route value into a RouteDecision when
 // the caller wants to bypass classification. Returns ok=false to fall through
 // to the classifier.
-func (r *Router) resolveRouteOverride(ctx context.Context, route string) (RouteDecision, bool) {
+func resolveRouteOverride(route string, highEnd, lowEnd []config.Node) (RouteDecision, bool) {
 	if route == "" || strings.EqualFold(route, "auto") {
 		return RouteDecision{}, false
 	}
@@ -496,49 +361,21 @@ func (r *Router) resolveRouteOverride(ctx context.Context, route string) (RouteD
 	if lc == "local" || lc == "ollama" || lc == "pi" {
 		return RouteDecision{Route: "local", Tier: "local", Reason: "forced local ollama by user"}, true
 	}
-	highEnd := r.availableByTier(ctx, config.TierHighEnd)
-	lowEnd := r.availableByTier(ctx, config.TierLowEnd)
-	if lc == "heavy" || lc == "high" || lc == "high-end" {
-		if len(highEnd) > 0 {
-			n := highEnd[0]
-			return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: "high-end", Reason: "forced heavy by user"}, true
-		}
-		if len(lowEnd) > 0 {
-			n := lowEnd[0]
-			return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: "low-end", Reason: "heavy unavailable, forced fallback"}, true
+	if len(highEnd)+len(lowEnd) > 0 {
+		switch lc {
+		case "heavy", "high", "high-end":
+			return pickNode(config.TierHighEnd, highEnd, lowEnd, "forced heavy by user"), true
+		case "light", "low", "low-end":
+			return pickNode(config.TierLowEnd, highEnd, lowEnd, "forced light by user"), true
 		}
 	}
-	if lc == "light" || lc == "low" || lc == "low-end" {
-		if len(lowEnd) > 0 {
-			n := lowEnd[0]
-			return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: "low-end", Reason: "forced light by user"}, true
-		}
-		if len(highEnd) > 0 {
-			n := highEnd[0]
-			return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: "high-end", Reason: "light unavailable, forced fallback"}, true
-		}
-	}
-	// Match by node name (case-insensitive)
+	// Match by node name or ID (case-insensitive)
 	for _, n := range append(append([]config.Node{}, highEnd...), lowEnd...) {
 		if strings.EqualFold(n.Name, route) || strings.EqualFold(n.ID, route) {
-			tier := "low-end"
-			if n.Tier == config.TierHighEnd {
-				tier = "high-end"
-			}
-			return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: tier, Reason: "forced node by user"}, true
+			return RouteDecision{Route: n.ID, NodeName: n.Name, Tier: string(n.Tier), Reason: "forced node by user"}, true
 		}
 	}
 	return RouteDecision{}, false
-}
-
-// ResolveRoute is a public wrapper around resolveRouteOverride. If route is
-// empty/auto, returns ("", false); otherwise returns the resolved node ID.
-func (r *Router) ResolveRoute(ctx context.Context, route string) (string, string, bool) {
-	d, ok := r.resolveRouteOverride(ctx, route)
-	if !ok {
-		return "", "", false
-	}
-	return d.Route, d.NodeName, true
 }
 
 func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Message, opts ChatStreamOpts, emit func(StreamEvent)) {
@@ -552,30 +389,24 @@ func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Me
 	// Home-control short-circuit. If the user message is an explicit device
 	// command we can satisfy entirely with a tool call ("turn on the lights"),
 	// execute it and return without invoking the LLM.
-	if r.homedev != nil && tryHandleHomeIntent(ctx, r.homedev, lastMsg, emit) {
+	if tryHandleHomeIntent(ctx, r.home, lastMsg, emit) {
 		return
 	}
 
+	highEnd, lowEnd := r.available(ctx)
 	var decision RouteDecision
 	userForcedLocal := false
-	if d, ok := r.resolveRouteOverride(ctx, opts.Route); ok {
+	if d, ok := resolveRouteOverride(opts.Route, highEnd, lowEnd); ok {
 		decision = d
-		if d.Route == "local" {
-			userForcedLocal = true
-		}
+		userForcedLocal = d.Route == "local"
 		emit(StreamEvent{Step: "classifying", Message: "Using user-selected route…"})
 	} else {
-		// Only emit the "classifying" step when an actual classifier call
-		// will be made. Classify() short-circuits when ≤2 nodes are online
-		// (sets ClassifierOutput="skipped"), so don't show a misleading
-		// "Analyzing your request..." flash in those cases.
-		highEnd := r.availableByTier(ctx, config.TierHighEnd)
-		lowEnd := r.availableByTier(ctx, config.TierLowEnd)
-		willClassify := len(highEnd)+len(lowEnd) > 2
-		if willClassify {
-			emit(StreamEvent{Step: "classifying", Message: "Analyzing your request with gemma3:1b..."})
+		// Classify skips the model call with ≤2 nodes online; only announce
+		// it when it will really run.
+		if len(highEnd)+len(lowEnd) > 2 {
+			emit(StreamEvent{Step: "classifying", Message: "Analyzing your request with " + r.ClassifierModel() + "…"})
 		}
-		decision = r.Classify(ctx, lastMsg)
+		decision = r.Classify(ctx, lastMsg, highEnd, lowEnd)
 	}
 
 	// Route == "local" can mean two things:
@@ -596,7 +427,7 @@ func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Me
 
 		start := time.Now()
 		resp, err := r.client.CallOllama(ctx, r.cfg.OllamaHost, ChatRequest{
-			Model:       r.cfg.RouterModel,
+			Model:       r.ClassifierModel(),
 			Messages:    withSystem,
 			Temperature: opts.Temperature,
 		})
@@ -648,7 +479,9 @@ func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Me
 	if decision.Route == "local" {
 		emit(StreamEvent{
 			Step:              "error",
-			Message:           "No compute nodes available. Add a node running LM Studio in the Nodes tab.",
+			Message:           "No compute nodes are online. Add or wake a node running LM Studio in Settings → Nodes.",
+			Route:             "none",
+			Reason:            decision.Reason,
 			ClassifierOutput:  decision.ClassifierOutput,
 			ClassifierLatency: decision.ClassifierLatency,
 		})
@@ -669,7 +502,7 @@ func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Me
 	withSystem := append([]Message{{Role: "system", Content: chatSystemPrompt()}}, messages...)
 
 	// Step 2.5: Web search if needed
-	chatMessages := r.maybeSearchStream(ctx, withSystem, lastMsg, emit)
+	chatMessages := r.maybeSearch(ctx, withSystem, lastMsg, emit)
 
 	// Step 3: Generating
 	emit(StreamEvent{
@@ -693,10 +526,14 @@ func (r *Router) ChatStream(ctx context.Context, requestID string, messages []Me
 			Latency:   latency,
 		})
 		emit(StreamEvent{
-			Step:    "error",
-			Message: fmt.Sprintf("Node \"%s\" failed to respond. Make sure LM Studio is running and a model is loaded.", decision.NodeName),
-			Node:    decision.NodeName,
-			Tier:    decision.Tier,
+			Step:              "error",
+			Message:           fmt.Sprintf("Node %q failed to respond. Make sure LM Studio is running and a model is loaded.", decision.NodeName),
+			Node:              decision.NodeName,
+			Tier:              decision.Tier,
+			Route:             decision.Route,
+			Reason:            "node error: " + err.Error(),
+			ClassifierOutput:  decision.ClassifierOutput,
+			ClassifierLatency: decision.ClassifierLatency,
 		})
 		return
 	}
@@ -746,10 +583,11 @@ type NodeStatus struct {
 
 func (r *Router) Status(ctx context.Context) map[string]any {
 	ollamaOnline := r.client.Ping(ctx, r.cfg.OllamaHost, "ollama")
-
-	var nodeStatuses []NodeStatus
-	for _, node := range r.nodes.All() {
-		nodeStatuses = append(nodeStatuses, NodeStatus{
+	nodes := r.nodes.All()
+	online := r.pingAll(ctx, nodes)
+	nodeStatuses := make([]NodeStatus, len(nodes))
+	for i, node := range nodes {
+		nodeStatuses[i] = NodeStatus{
 			ID:     node.ID,
 			Name:   node.Name,
 			Host:   node.Host,
@@ -757,8 +595,8 @@ func (r *Router) Status(ctx context.Context) map[string]any {
 			GPU:    node.GPU,
 			MAC:    node.MAC,
 			Model:  node.Model,
-			Online: r.client.Ping(ctx, node.Host, "lmstudio"),
-		})
+			Online: online[i],
+		}
 	}
 
 	return map[string]any{

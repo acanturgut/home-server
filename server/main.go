@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -29,43 +30,36 @@ var version = "dev"
 
 func main() {
 	cfg := config.Load()
-
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "data dir: %v\n", err)
+		os.Exit(1)
+	}
 	if err := logger.Init(cfg.LogDir); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not init file logger: %v\n", err)
 	}
 
 	nodes := config.NewNodeStore(cfg.DataDir)
-
 	logger.Info("starting home-server on :" + cfg.Port)
 	logger.Info(fmt.Sprintf("ollama: %s | classifier: %s", cfg.OllamaHost, cfg.RouterModel))
 	for _, node := range nodes.All() {
 		logger.Info(fmt.Sprintf("node: %s [%s] (%s) at %s", node.Name, node.Tier, node.GPU, node.Host))
 	}
 
-	router := ai.NewRouter(cfg, nodes)
+	// Auth: users + sessions. Bootstraps an "admin" account with a random
+	// one-time password (printed to stderr) on first run.
+	authStore, err := auth.NewStore(cfg.DataDir)
+	if err != nil {
+		logger.Error("auth init: " + err.Error())
+		os.Exit(1)
+	}
+
+	// Smart-home devices (Hue, DIRIGERA, webOS, HTTP), configured in the UI.
+	homeMgr := homedevices.NewManager(homedevices.NewStore(cfg.DataDir))
+	settings := assistant.NewSettingsStore(cfg.DataDir)
 	ns := nodestate.NewStore()
-	settingsStore := assistant.NewSettingsStore(cfg.DataDir)
-	handler := api.NewHandler(router, cfg, nodes, ns, settingsStore, version)
-	handler.StartSysCollector(5*time.Second, 60) // 5min of 5s samples
 
-	// Smart-home device manager (Hue, Dirigera, webOS, HTTP). Bridges are
-	// configured via the web UI; without any registered bridges this is a
-	// no-op poll loop.
-	hdStore := homedevices.NewStore(cfg.DataDir)
-	hdManager := homedevices.NewManager(hdStore)
-	handler.SetHomeDevices(hdManager)
-	router.SetHomeController(hdManager)
-
-	// Network device override store (per-MAC custom names).
-	network.AttachStore(network.NewStore(cfg.DataDir))
-
-	// ASUS router HTTP client (config persisted under DATA_DIR/asusrouter.json).
-	handler.SetRouter(asusrouter.NewManager(cfg.DataDir))
-
-	// Home DNS server. Binds UDP+TCP :53 (host networking required); records
-	// persisted to DATA_DIR/dns_records.json. On first run, auto-points
-	// canshome.com → the home-server's primary LAN IP so a freshly-pointed
-	// router immediately resolves the deployment hostname.
+	// Home DNS server. Binds UDP+TCP :53 (host networking required). On first
+	// run it points canshome.com and home.lan at this host's LAN IP.
 	dnsSrv := homedns.New(cfg.DataDir, ":53", nil)
 	if ip := network.PrimaryIP(); ip != "" {
 		dnsSrv.SeedDefault(homedns.Record{Name: "canshome.com.", Type: "A", Value: ip, TTL: 300})
@@ -76,43 +70,29 @@ func main() {
 	} else {
 		logger.Info("homedns: listening on :53")
 	}
-	handler.SetDNS(dnsSrv)
 
-	// Auth: users + sessions. Bootstraps an "admin" account with a random
-	// one-time password (logged to stderr) on first run.
-	authStore, err := auth.NewStore(cfg.DataDir)
-	if err != nil {
-		logger.Error("auth init: " + err.Error())
-		os.Exit(1)
-	}
-	handler.SetAuth(authStore)
+	handler := api.NewHandler(api.Deps{
+		AI:        ai.NewRouter(cfg, nodes, settings, homeMgr),
+		Config:    cfg,
+		Nodes:     nodes,
+		NodeState: ns,
+		Settings:  settings,
+		Chats:     assistant.NewChatStore(cfg.DataDir),
+		Home:      homeMgr,
+		Asus:      asusrouter.NewManager(cfg.DataDir),
+		LAN:       network.NewScanner(cfg.DataDir),
+		DNS:       dnsSrv,
+		Auth:      authStore,
+		Tokens:    apitokens.NewStore(cfg.DataDir),
+		Version:   version,
+	})
 
-	// API tokens (bearer auth for Shortcuts and scripts).
-	// On first run, an existing siri.json is migrated automatically.
-	tokenStore := apitokens.NewStore(cfg.DataDir)
-	handler.SetTokens(tokenStore)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	mux := api.NewRouter(handler)
-
-	// Start HomeKit bridge
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Start home devices polling loop.
-	go hdManager.Run(ctx, 15*time.Second)
-	// Periodic sensor-history compaction (drops samples older than 30 days).
-	go func() {
-		t := time.NewTicker(6 * time.Hour)
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				hdManager.History().Compact()
-			}
-		}
-	}()
+	go handler.RunSysCollector(ctx, 5*time.Second)
+	go homeMgr.Run(ctx, 15*time.Second)
+	go compactSensorHistory(ctx, homeMgr)
 
 	hkBridge, err := homekit.NewBridge(nodes, ns, cfg.DataDir, cfg.HomeKitPIN)
 	if err != nil {
@@ -126,21 +106,38 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr:    ":" + cfg.Port,
-		Handler: mux,
+		Addr:              ":" + cfg.Port,
+		Handler:           api.NewRouter(handler),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.ListenAndServe() }()
 
-	go func() {
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-		<-sig
-		logger.Info("shutting down...")
-		cancel()
-		server.Close()
-	}()
-
-	if err := server.ListenAndServe(); err != http.ErrServerClosed {
+	select {
+	case err := <-serveErr:
 		logger.Error("server error: " + err.Error())
 		os.Exit(1)
+	case <-ctx.Done():
+	}
+	logger.Info("shutting down...")
+	dnsSrv.Stop()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		logger.Error("shutdown: " + err.Error())
+	}
+}
+
+// compactSensorHistory drops sensor samples older than 30 days every 6h.
+func compactSensorHistory(ctx context.Context, m *homedevices.Manager) {
+	t := time.NewTicker(6 * time.Hour)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			m.History().Compact()
+		}
 	}
 }

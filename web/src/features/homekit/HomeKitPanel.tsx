@@ -1,247 +1,210 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import {
-  Home,
-  Monitor,
-  Power,
-  Package,
-  Download,
-  RefreshCw,
-} from 'lucide-react';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { homekitApi } from '@/features/homekit/api';
-import type { HKInfo, LogEntry } from '@/lib/types';
+import { Download, Home, Monitor, Package } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader } from '@/components/ui/card';
+import { Collapsible } from '@/components/ui/collapsible';
+import { EmptyState } from '@/components/ui/empty-state';
+import { RefreshButton } from '@/components/ui/refresh-button';
+import { Section } from '@/components/ui/section';
+import { SkeletonRows } from '@/components/ui/skeleton';
+import { Steps } from '@/components/ui/steps';
+import { toast } from '@/components/ui/toast';
+import { useAction } from '@/hooks/useAction';
+import { homekitApi, type HKInfo } from '@/features/homekit/api';
+import { LogLine } from '@/features/logs';
+import { errorMessage, plural } from '@/lib/format';
+import { nodesApi } from '@/lib/nodes';
+import type { LogEntry } from '@/lib/types';
 
-/** HomeKit bridge dashboard: pairing QR, accessory list with WoL, agent download, bridge logs. */
+/** Log messages that belong to the HomeKit bridge and its mDNS advertising. */
+const HK_WORDS = ['homekit', 'hap', 'bridge', 'mdns', 'dnssd'];
+
+/** HomeKit bridge: pairing code, accessories with Wake-on-LAN, agent download and bridge logs. */
 export function HomeKitPanel() {
-  const [info, setInfo] = useState<HKInfo | null>(null);
-  const [waking, setWaking] = useState<string | null>(null);
-  const [wakeResult, setWakeResult] = useState<Record<string, string>>({});
+  // undefined while loading, null when the request failed.
+  const [info, setInfo] = useState<HKInfo | null | undefined>(undefined);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [waking, setWaking] = useState<string | null>(null);
+
+  // `.then`, not `await`: the mount effect calls this, and the lint rule
+  // only allows setState from a callback there.
+  const fetchLogs = useCallback(
+    () =>
+      homekitApi.recentLogs(200).then((all) =>
+        setLogs(
+          (all ?? [])
+            .filter((l) => {
+              const msg = l.message.toLowerCase();
+              return HK_WORDS.some((w) => msg.includes(w));
+            })
+            .reverse(),
+        ),
+      ),
+    [],
+  );
+  const refreshLogs = useAction(fetchLogs);
 
   useEffect(() => {
-    homekitApi.info().then((d) => setInfo(d));
-    fetchLogs();
-  }, []);
-
-  const fetchLogs = () => {
-    homekitApi.recentLogs(200).then((all) => {
-      const hk = (all || []).filter(
-        (l) =>
-          l.message.toLowerCase().includes('homekit') ||
-          l.message.toLowerCase().includes('hap') ||
-          l.message.toLowerCase().includes('bridge') ||
-          l.message.toLowerCase().includes('mdns') ||
-          l.message.toLowerCase().includes('dnssd'),
-      );
-      setLogs(hk.reverse());
-    });
-  };
+    homekitApi.info().then(setInfo);
+    void fetchLogs();
+  }, [fetchLogs]);
 
   const wake = async (id: string, name: string) => {
     setWaking(id);
-    setWakeResult((prev) => ({ ...prev, [id]: '' }));
     try {
-      const res = await homekitApi.wakeNode(id);
-      if (res.ok) {
-        setWakeResult((prev) => ({ ...prev, [id]: `✓ WoL sent to ${name}` }));
-      } else {
-        const data = await res.json();
-        setWakeResult((prev) => ({
-          ...prev,
-          [id]: `✗ ${data.error || 'Failed'}`,
-        }));
-      }
+      await nodesApi.wake(id);
+      toast(`Wake-on-LAN sent to ${name}`, { tone: 'success' });
     } catch (e) {
-      setWakeResult((prev) => ({
-        ...prev,
-        [id]: `✗ ${e instanceof Error ? e.message : 'Error'}`,
-      }));
+      toast(`Couldn't wake ${name}`, {
+        tone: 'error',
+        description: errorMessage(e),
+      });
+    } finally {
+      setWaking(null);
     }
-    setWaking(null);
   };
 
-  if (!info) {
-    return (
-      <div className="rounded-lg border border-border/30 p-6 text-center text-sm text-muted-foreground">
-        Loading HomeKit bridge info...
-      </div>
-    );
-  }
+  if (info === undefined) return <SkeletonRows rows={4} />;
+  if (info === null)
+    return <Alert>Couldn't load the HomeKit bridge. Try again later.</Alert>;
+
+  const accessories = info.accessories ?? [];
 
   return (
     <div className="space-y-6">
-      {/* Bridge info */}
-      <div className="rounded-lg border border-border/30 p-4 space-y-4">
-        <div className="flex items-center gap-3">
-          <Home size={18} className="text-muted-foreground" />
-          <div>
-            <p className="text-sm font-medium">{info.bridge}</p>
-            <p className="text-xs text-muted-foreground">
-              HomeKit Bridge · Port {info.port}
-            </p>
-          </div>
-          <code className="ml-auto bg-muted/40 px-2 py-0.5 rounded font-mono text-xs tracking-widest">
-            {info.pin}
-          </code>
-        </div>
-        <details className="text-sm">
-          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors">
-            Setup QR Code (for initial hub pairing only)
-          </summary>
-          <div className="flex flex-col items-center gap-3 py-3">
-            <div className="bg-white p-3 rounded-lg">
-              <QRCodeSVG value={info.setup_uri} size={140} level="M" />
+      <Card className="space-y-3">
+        <CardHeader
+          icon={<Home />}
+          title={info.bridge}
+          description={`HomeKit bridge · port ${info.port}`}
+          actions={info.pin && <Badge mono>{info.pin}</Badge>}
+        />
+        {info.setup_uri ? (
+          <Collapsible trigger="Setup QR code (first pairing only)">
+            <div className="flex flex-col items-center gap-3 py-2">
+              <QRCodeSVG
+                value={info.setup_uri}
+                size={160}
+                marginSize={4}
+                level="M"
+                title="HomeKit setup code"
+                className="rounded-md"
+              />
+              <p className="max-w-sm text-center text-sm text-muted-foreground">
+                Scan with Apple Home to add this bridge. Devices appear
+                automatically after pairing.
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Scan with Apple Home to add this bridge for the first time.
-              Devices appear automatically after pairing.
-            </p>
-          </div>
-        </details>
-      </div>
-
-      {/* Accessories */}
-      {info.accessories && info.accessories.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">
-            {info.accessories.length} accessori
-            {info.accessories.length === 1 ? 'y' : 'es'}
+          </Collapsible>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Ask an admin for the pairing code.
           </p>
-          {info.accessories.map((acc) => (
-            <div
-              key={acc.id}
-              className="rounded-lg border border-border/30 p-3 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Monitor size={16} className="text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium">{acc.name}</p>
-                  <p className="text-xs text-muted-foreground font-mono">
+        )}
+      </Card>
+
+      {accessories.length > 0 && (
+        <Section
+          title="Accessories"
+          description={plural(accessories.length, 'accessory', 'accessories')}
+        >
+          <Card className="divide-y p-0">
+            {accessories.map((acc) => (
+              <div key={acc.id} className="flex items-center gap-3 px-4 py-3">
+                <Monitor
+                  aria-hidden
+                  className="size-4 shrink-0 text-muted-foreground"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{acc.name}</p>
+                  <p className="truncate font-mono text-xs text-muted-foreground">
                     {acc.mac} · {acc.host}
                   </p>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
+                  loading={waking === acc.id}
                   onClick={() => wake(acc.id, acc.name)}
-                  disabled={waking === acc.id}
-                  className="px-2.5 py-1 rounded-md text-xs text-violet-400 border border-violet-500/20 hover:bg-violet-500/10 disabled:opacity-50 transition-colors">
-                  {waking === acc.id ? (
-                    'Waking...'
-                  ) : (
-                    <>
-                      <Power size={12} className="inline" /> Wake
-                    </>
-                  )}
-                </button>
-                {wakeResult[acc.id] && (
-                  <span
-                    className={`text-xs ${wakeResult[acc.id].startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {wakeResult[acc.id]}
-                  </span>
-                )}
+                >
+                  Wake
+                </Button>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </Card>
+        </Section>
       )}
 
-      {/* Agent download */}
-      <div className="rounded-lg border border-border/30 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Package size={16} className="text-muted-foreground" />
-            <div>
-              <p className="text-sm font-medium">home-agent.exe</p>
-              <p className="text-xs text-muted-foreground">
-                Windows agent — reports stats & accepts commands
-              </p>
-            </div>
-          </div>
-          <a href="/home-agent.exe" download>
-            <button className="px-2.5 py-1 rounded-md text-xs text-blue-400 border border-blue-500/20 hover:bg-blue-500/10 transition-colors">
-              <Download size={12} className="inline mr-0.5" /> Download
-            </button>
-          </a>
-        </div>
-        <details className="text-sm">
-          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors">
-            Setup instructions
-          </summary>
-          <div className="mt-2 space-y-2 text-xs text-muted-foreground leading-relaxed">
-            <p>
-              <strong className="text-foreground/70">1.</strong> Download and
-              run{' '}
-              <code className="bg-muted/40 px-1 rounded text-xs">
-                home-agent.exe
-              </code>
-            </p>
-            <p>
-              <strong className="text-foreground/70">2.</strong> If Windows
-              blocks it: Properties → Unblock, or disable Smart App Control
-            </p>
-            <p>
-              <strong className="text-foreground/70">3.</strong> It
-              auto-installs to startup, detects your PC, connects to server.
-              Zero config.
-            </p>
-            <p className="text-xs">
-              Uninstall:{' '}
-              <code className="bg-muted/40 px-1 rounded">
-                home-agent.exe -uninstall
-              </code>
+      <Card className="space-y-3">
+        <CardHeader
+          icon={<Package />}
+          title="home-agent.exe"
+          description="Windows agent that reports stats and accepts commands"
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={<a href="/home-agent.exe" download />}
+            >
+              <Download />
+              Download
+            </Button>
+          }
+        />
+        <Collapsible trigger="Setup instructions">
+          <div className="space-y-3">
+            <Steps
+              items={[
+                {
+                  body: (
+                    <>
+                      Download and run <code>home-agent.exe</code>.
+                    </>
+                  ),
+                },
+                {
+                  body: 'If Windows blocks it, open Properties and choose Unblock, or turn off Smart App Control.',
+                },
+                {
+                  body: 'It installs itself to startup, detects your PC and connects to the server. No configuration needed.',
+                },
+              ]}
+            />
+            <p className="text-sm text-muted-foreground">
+              To uninstall, run{' '}
+              <code className="text-foreground">home-agent.exe -uninstall</code>
+              .
             </p>
           </div>
-        </details>
-      </div>
+        </Collapsible>
+      </Card>
 
-      {/* Bridge logs */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">Bridge Logs</p>
-          <button
-            onClick={fetchLogs}
-            className="text-xs text-muted-foreground hover:text-foreground">
-            <RefreshCw size={12} />
-          </button>
-        </div>
-        <div className="rounded-lg border border-border/30 overflow-hidden">
-          <ScrollArea className="max-h-[250px]">
-            {logs.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-4">
-                No HomeKit logs
-              </p>
-            ) : (
-              <div className="divide-y divide-border/10">
-                {logs.map((l, i) => (
-                  <div
-                    key={i}
-                    className="px-3 py-1 flex gap-2 text-xs font-mono">
-                    <span className="text-muted-foreground/70 shrink-0 w-[62px] tabular-nums">
-                      {l.timestamp
-                        ? new Date(l.timestamp).toLocaleTimeString()
-                        : ''}
-                    </span>
-                    <span
-                      className={`shrink-0 w-[38px] ${
-                        l.level === 'ERROR'
-                          ? 'text-red-400'
-                          : l.level === 'WARN'
-                            ? 'text-amber-400'
-                            : 'text-emerald-400/60'
-                      }`}>
-                      {l.level}
-                    </span>
-                    <span className="text-foreground/70 break-all">
-                      {l.message}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </ScrollArea>
-        </div>
-      </div>
+      <Section
+        title="Bridge logs"
+        toolbar={
+          <RefreshButton
+            onClick={refreshLogs.run}
+            busy={refreshLogs.busy}
+            label="Refresh bridge logs"
+          />
+        }
+      >
+        <Card className="max-h-64 overflow-y-auto p-0">
+          {logs.length === 0 ? (
+            <EmptyState title="No HomeKit logs" className="py-6" />
+          ) : (
+            <ul className="divide-y">
+              {logs.map((l, i) => (
+                <LogLine key={i} entry={l} />
+              ))}
+            </ul>
+          )}
+        </Card>
+      </Section>
     </div>
   );
 }

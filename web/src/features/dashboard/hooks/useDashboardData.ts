@@ -1,9 +1,7 @@
 import { createContext, useContext } from 'react';
-import type {
-  SystemHistoryPoint,
-  NodeRow,
-} from '@/features/dashboard/api';
-import type { LogEntry, NodeStats } from '@/lib/types';
+import type { SystemHistoryPoint, NodeRow } from '@/features/dashboard/api';
+import type { LogEntry } from '@/lib/types';
+import type { NodeStats } from '@/lib/nodes';
 
 /**
  * Shared dashboard data, filled by `DashboardDataProvider`. Components select

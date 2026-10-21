@@ -4,50 +4,42 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/acanturgut/home-server/network"
 )
 
 // Dashboard overview = location, public IP, weather, host LAN IP. Cached for
 // 10 min so we don't hammer external APIs on every dashboard tick.
 type overviewCache struct {
-	mu       sync.RWMutex
+	mu       sync.Mutex
 	cached   time.Time
 	overview map[string]any
 }
-
-var ovr = &overviewCache{}
 
 const overviewTTL = 10 * time.Minute
 
 // GET /api/dashboard/overview
 func (h *Handler) DashboardOverview(w http.ResponseWriter, r *http.Request) {
-	ovr.mu.RLock()
-	fresh := !ovr.cached.IsZero() && time.Since(ovr.cached) < overviewTTL
-	cached := ovr.overview
-	ovr.mu.RUnlock()
-	if fresh && cached != nil {
-		writeJSON(w, http.StatusOK, cached)
-		return
+	c := &h.overview
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.overview == nil || time.Since(c.cached) >= overviewTTL {
+		c.overview = buildOverview(r.Context())
+		c.cached = time.Now()
 	}
-
-	out := buildOverview(r.Context())
-	ovr.mu.Lock()
-	ovr.overview = out
-	ovr.cached = time.Now()
-	ovr.mu.Unlock()
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, c.overview)
 }
 
 func buildOverview(ctx context.Context) map[string]any {
 	hn, _ := os.Hostname()
 	out := map[string]any{
 		"hostname":  hn,
-		"local_ip":  localIP(),
+		"local_ip":  network.PrimaryIP(),
 		"public_ip": "",
 		"location":  nil,
 		"weather":   nil,
@@ -71,25 +63,16 @@ func buildOverview(ctx context.Context) map[string]any {
 	return out
 }
 
-func localIP() string {
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err != nil {
-		return ""
-	}
-	defer conn.Close()
-	if a, ok := conn.LocalAddr().(*net.UDPAddr); ok {
-		return a.IP.String()
-	}
-	return ""
-}
-
 // publicIPAndGeo fetches the host's public IP and approximate location
 // using ip-api.com (free, no key, 45 req/min) — returns both in one call.
 func publicIPAndGeo(ctx context.Context) (string, map[string]any) {
 	cctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(cctx, http.MethodGet,
+	req, err := http.NewRequestWithContext(cctx, http.MethodGet,
 		"http://ip-api.com/json/?fields=status,query,country,regionName,city,lat,lon,timezone,isp", nil)
+	if err != nil {
+		return "", nil
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", nil
@@ -129,7 +112,10 @@ func fetchWeather(ctx context.Context, lat, lon float64) map[string]any {
 	url := "https://api.open-meteo.com/v1/forecast?current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m&forecast_days=1&timezone=auto" +
 		"&latitude=" + strconv.FormatFloat(lat, 'f', 4, 64) +
 		"&longitude=" + strconv.FormatFloat(lon, 'f', 4, 64)
-	req, _ := http.NewRequestWithContext(cctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(cctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil

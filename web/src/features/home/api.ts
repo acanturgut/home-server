@@ -1,4 +1,4 @@
-import { apiJsonSafe, API_BASE } from '@/lib/api';
+import { apiJson, apiJsonSafe } from '@/lib/api';
 
 export type HomeBridgeKind = 'hue' | 'dirigera' | 'webos' | 'http';
 
@@ -7,6 +7,8 @@ export interface HomeBridge {
   kind: HomeBridgeKind;
   name: string;
   host: string;
+  /** Write-only: sent on create/update, never returned by the server. On
+   * update an empty token keeps the stored one. */
   token?: string;
   config?: Record<string, string>;
   added: string;
@@ -15,14 +17,7 @@ export interface HomeBridge {
 }
 
 export type HomeDeviceType =
-  | 'light'
-  | 'plug'
-  | 'sensor'
-  | 'blind'
-  | 'remote'
-  | 'tv'
-  | 'speaker'
-  | 'other';
+  'light' | 'plug' | 'sensor' | 'blind' | 'remote' | 'tv' | 'speaker' | 'other';
 
 export interface HomeDevice {
   id: string;
@@ -70,106 +65,64 @@ export interface SensorSample {
   battery?: number;
 }
 
-export interface SensorHistory {
+export type HistoryRange = '24h' | '7d' | '30d';
+
+/** User overrides on top of what the bridge reports. Empty name clears it. */
+export interface DeviceOverride {
+  name?: string;
+  room?: string;
+  type?: HomeDeviceType;
+  hidden?: boolean;
+}
+
+interface SensorHistory {
   device_id: string;
   range: string;
   since: string;
   samples: SensorSample[];
 }
 
+const json = (method: string, body?: unknown): RequestInit => ({
+  method,
+  body: body === undefined ? undefined : JSON.stringify(body),
+});
+
+const device = (id: string) => `/api/home/devices/${encodeURIComponent(id)}`;
+
+/** Exchanges a pairing handshake for a long-lived bridge token. */
+const pair = (path: string, body: unknown, signal?: AbortSignal) =>
+  apiJson<{ access_token?: string }>(path, {
+    ...json('POST', body),
+    signal,
+  }).then((j) => {
+    if (!j?.access_token) throw new Error('no access_token in response');
+    return j.access_token;
+  });
+
 export const homeApi = {
   list: () => apiJsonSafe<HomeSnapshot>('/api/home/devices'),
-  bridges: () => apiJsonSafe<HomeBridge[]>('/api/home/bridges'),
-  addBridge: async (b: Partial<HomeBridge>) => {
-    const r = await fetch(`${API_BASE}/api/home/bridges`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(b),
-    });
-    if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
-    return (await r.json()) as HomeBridge;
-  },
-  updateBridge: async (id: string, b: Partial<HomeBridge>) => {
-    const r = await fetch(`${API_BASE}/api/home/bridges/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(b),
-    });
-    if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
-  },
-  deleteBridge: async (id: string) => {
-    const r = await fetch(`${API_BASE}/api/home/bridges/${id}`, {
-      method: 'DELETE',
-    });
-    if (!r.ok && r.status !== 204) throw new Error(`HTTP ${r.status}`);
-  },
-  apply: async (deviceId: string, action: HomeAction) => {
-    const r = await fetch(
-      `${API_BASE}/api/home/devices/${encodeURIComponent(deviceId)}/action`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(action),
-      },
-    );
-    if (!r.ok) {
-      const t = await r.text();
-      throw new Error(t || `HTTP ${r.status}`);
-    }
-  },
-  setDeviceOverride: async (
-    deviceId: string,
-    o: { name?: string; room?: string; type?: string; hidden?: boolean },
-  ) => {
-    const r = await fetch(
-      `${API_BASE}/api/home/devices/${encodeURIComponent(deviceId)}/override`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(o),
-      },
-    );
-    if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
-  },
-  refresh: async () => {
-    await fetch(`${API_BASE}/api/home/refresh`, { method: 'POST' });
-  },
-  history: (deviceId: string, range: '24h' | '7d' | '30d' = '24h') =>
-    apiJsonSafe<SensorHistory>(
-      `/api/home/devices/${encodeURIComponent(deviceId)}/history?range=${range}`,
-    ),
+  // Bridge CRUD and pairing are admin-only (viewers get 403).
+  addBridge: (b: Partial<HomeBridge>) =>
+    apiJson<HomeBridge>('/api/home/bridges', json('POST', b)),
+  updateBridge: (id: string, b: Partial<HomeBridge>) =>
+    apiJson<unknown>(`/api/home/bridges/${id}`, json('PUT', b)),
+  deleteBridge: (id: string) =>
+    apiJson<void>(`/api/home/bridges/${id}`, json('DELETE')),
+  apply: (deviceId: string, action: HomeAction) =>
+    apiJson<unknown>(`${device(deviceId)}/action`, json('POST', action)),
+  setDeviceOverride: (deviceId: string, o: DeviceOverride) =>
+    apiJson<unknown>(`${device(deviceId)}/override`, json('PUT', o)),
+  refresh: () => apiJson<unknown>('/api/home/refresh', json('POST')),
+  history: (deviceId: string, range: HistoryRange) =>
+    apiJsonSafe<SensorHistory>(`${device(deviceId)}/history?range=${range}`),
   /**
    * Long-poll DIRIGERA pairing handshake. The server keeps the connection
    * open until the user presses the action button on the hub (or ~90s
    * timeout). Returns the long-lived access token on success.
    */
-  pairDirigera: async (
-    host: string,
-    name = 'home-server',
-    signal?: AbortSignal,
-  ) => {
-    const r = await fetch(`${API_BASE}/api/home/dirigera/pair`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ host, name }),
-      signal,
-    });
-    if (!r.ok) {
-      let msg = `HTTP ${r.status}`;
-      try {
-        const j = (await r.json()) as { error?: string };
-        if (j.error) msg = j.error;
-      } catch {
-        try {
-          msg = (await r.text()) || msg;
-        } catch {
-          /* ignore */
-        }
-      }
-      throw new Error(msg);
-    }
-    const j = (await r.json()) as { access_token?: string };
-    if (!j.access_token) throw new Error('no access_token in response');
-    return j.access_token;
-  },
+  pairDirigera: (host: string, name = 'home-server', signal?: AbortSignal) =>
+    pair('/api/home/dirigera/pair', { host, name }, signal),
+  /** Hue: press the bridge's link button first, then call this. */
+  pairHue: (host: string, signal?: AbortSignal) =>
+    pair('/api/home/hue/pair', { host }, signal),
 };

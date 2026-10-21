@@ -3,8 +3,8 @@ package homedevices
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,21 +12,49 @@ import (
 	"time"
 )
 
-// HueProvider talks to the Philips Hue Bridge v1 REST API. The user must
-// supply Bridge.Host (LAN IP) and Bridge.Token (the application key, created
-// once via POST /api after pressing the bridge link button).
+// HueProvider talks to the Philips Hue Bridge v1 REST API (plain HTTP on the
+// LAN). Bridge.Host is the bridge IP and Bridge.Token the application key
+// minted by Pair.
 type HueProvider struct {
 	client *http.Client
 }
 
 func NewHueProvider() *HueProvider {
-	return &HueProvider{
-		client: &http.Client{
-			Timeout: 5 * time.Second,
-			// Hue v2 uses a self-signed cert; v1 (used here) is plain HTTP. Be lenient.
-			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
-		},
+	return &HueProvider{client: &http.Client{Timeout: 5 * time.Second}}
+}
+
+// Pair mints an application key on the bridge at host. The bridge's link
+// button must have been pressed within the last 30 seconds.
+func (p *HueProvider) Pair(ctx context.Context, host string) (string, error) {
+	body := strings.NewReader(`{"devicetype":"home-server#dashboard"}`)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+host+"/api", body)
+	if err != nil {
+		return "", err
 	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("hue: %w", err)
+	}
+	defer resp.Body.Close()
+	var res []struct {
+		Success *struct {
+			Username string `json:"username"`
+		} `json:"success"`
+		Error *struct {
+			Description string `json:"description"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil || len(res) == 0 {
+		return "", errors.New("hue: unexpected response from bridge")
+	}
+	if s := res[0].Success; s != nil && s.Username != "" {
+		return s.Username, nil
+	}
+	if e := res[0].Error; e != nil {
+		return "", errors.New("hue: " + e.Description)
+	}
+	return "", errors.New("hue: pairing failed")
 }
 
 func (p *HueProvider) Kind() Kind { return KindHue }
@@ -43,7 +71,10 @@ type hueLight struct {
 
 func (p *HueProvider) Discover(ctx context.Context, b Bridge) ([]Device, error) {
 	url := fmt.Sprintf("http://%s/api/%s/lights", b.Host, b.Token)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -126,7 +157,10 @@ func (p *HueProvider) Apply(ctx context.Context, b Bridge, localID string, a Act
 		return fmt.Errorf("hue: unknown action %s", a.Action)
 	}
 	buf, _ := json.Marshal(body)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(buf))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(buf))
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.client.Do(req)
 	if err != nil {

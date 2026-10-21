@@ -6,6 +6,7 @@ package network
 
 import (
 	"bufio"
+	"context"
 	"net"
 	"os"
 	"sort"
@@ -34,80 +35,70 @@ type Result struct {
 	ScannedAt time.Time `json:"scanned_at"`
 }
 
-var (
-	cache      Result
-	cacheMu    sync.Mutex
-	cacheTTL   = 30 * time.Second
-	storeRef   *Store
-	storeRefMu sync.RWMutex
-)
+const cacheTTL = 30 * time.Second
 
-// AttachStore wires a persistent override store to enrich scan results.
-// Pass nil to detach (mostly for tests).
-func AttachStore(s *Store) {
-	storeRefMu.Lock()
-	storeRef = s
-	storeRefMu.Unlock()
+// Scanner discovers LAN neighbours and applies user-set names to them. A
+// 30-second cache prevents reverse-DNS storms from polling UIs.
+type Scanner struct {
+	names   *Store
+	cacheMu sync.Mutex
+	cache   Result
 }
 
-// LookupName returns the user-set custom display name for `mac`, or "".
-// Safe to call from any package; uses the store registered via AttachStore.
-func LookupName(mac string) string {
-	storeRefMu.RLock()
-	s := storeRef
-	storeRefMu.RUnlock()
-	if s == nil {
+func NewScanner(dataDir string) *Scanner {
+	return &Scanner{names: NewStore(dataDir)}
+}
+
+// LookupName returns the user-set display name for mac, or "".
+func (s *Scanner) LookupName(mac string) string {
+	o, _ := s.names.Get(mac)
+	return o.Name
+}
+
+// SetName stores a custom display name; an empty name removes it.
+func (s *Scanner) SetName(mac, name string) error {
+	if err := s.names.Set(mac, name); err != nil {
+		return err
+	}
+	s.cacheMu.Lock()
+	s.cache = Result{}
+	s.cacheMu.Unlock()
+	return nil
+}
+
+// PrimaryIP is this host's LAN address: the source IP the kernel picks for
+// the default route. Dialing UDP sends no packets.
+func PrimaryIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
 		return ""
 	}
-	if o, ok := s.Get(mac); ok {
-		return o.Name
+	defer conn.Close()
+	if a, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+		return a.IP.String()
 	}
 	return ""
 }
 
-// PrimaryIP returns the first non-loopback IPv4 address on the host.
-// Safe for callers in other packages that need to know our LAN address.
-func PrimaryIP() string { return primaryIP() }
-
-// Scan returns a (possibly cached) snapshot of LAN neighbours. A 30-second
-// cache prevents reverse-DNS storms from polling UIs.
-func Scan() Result {
-	cacheMu.Lock()
-	if time.Since(cache.ScannedAt) < cacheTTL && len(cache.Devices) > 0 {
-		out := cache
-		cacheMu.Unlock()
-		return out
+// Scan returns a (possibly cached) snapshot of LAN neighbours.
+func (s *Scanner) Scan() Result {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	if time.Since(s.cache.ScannedAt) < cacheTTL && len(s.cache.Devices) > 0 {
+		return s.cache
 	}
-	cacheMu.Unlock()
-
 	devs := readArp()
 	enrich(devs)
-	applyOverrides(devs)
-
-	r := Result{
+	for i := range devs {
+		devs[i].CustomName = s.LookupName(devs[i].MAC)
+	}
+	s.cache = Result{
 		Devices:   devs,
 		Gateway:   defaultGateway(),
-		SelfIP:    primaryIP(),
+		SelfIP:    PrimaryIP(),
 		ScannedAt: time.Now(),
 	}
-	cacheMu.Lock()
-	cache = r
-	cacheMu.Unlock()
-	return r
-}
-
-func applyOverrides(devs []Device) {
-	storeRefMu.RLock()
-	s := storeRef
-	storeRefMu.RUnlock()
-	if s == nil {
-		return
-	}
-	for i := range devs {
-		if o, ok := s.Get(devs[i].MAC); ok {
-			devs[i].CustomName = o.Name
-		}
-	}
+	return s.cache
 }
 
 // defaultGateway parses /proc/net/route for the default route. Returns "" on
@@ -147,35 +138,6 @@ func defaultGateway() string {
 			b[3-i] = byte(n)
 		}
 		return net.IPv4(b[0], b[1], b[2], b[3]).String()
-	}
-	return ""
-}
-
-// primaryIP picks the first non-loopback IPv4 address bound to a UP iface.
-// Best-effort identification of "this server" on the LAN.
-func primaryIP() string {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return ""
-	}
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, a := range addrs {
-			ipnet, ok := a.(*net.IPNet)
-			if !ok || ipnet.IP.To4() == nil {
-				continue
-			}
-			if ipnet.IP.IsLoopback() || ipnet.IP.IsLinkLocalUnicast() {
-				continue
-			}
-			return ipnet.IP.String()
-		}
 	}
 	return ""
 }
@@ -250,12 +212,11 @@ func enrich(devs []Device) {
 	var wg sync.WaitGroup
 	resolver := &net.Resolver{}
 	for i := range devs {
-		i := i
 		sem <- struct{}{}
 		wg.Add(1)
 		go func() {
 			defer func() { <-sem; wg.Done() }()
-			ctx, cancel := contextWithTimeout(600 * time.Millisecond)
+			ctx, cancel := context.WithTimeout(context.Background(), 600*time.Millisecond)
 			defer cancel()
 			names, err := resolver.LookupAddr(ctx, devs[i].IP)
 			if err == nil && len(names) > 0 {

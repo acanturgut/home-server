@@ -63,7 +63,10 @@ func (p *DirigeraProvider) doRequest(ctx context.Context, method, url, token str
 	if body != nil {
 		rd = bytes.NewReader(body)
 	}
-	req, _ := http.NewRequestWithContext(ctx, method, url, rd)
+	req, err := http.NewRequestWithContext(ctx, method, url, rd)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -243,7 +246,10 @@ func (p *DirigeraProvider) dirigeraStartPair(ctx context.Context, host string) (
 		"code_challenge_method": {"S256"},
 	}
 	u := fmt.Sprintf("https://%s:8443/v1/oauth/authorize?%s", host, form.Encode())
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return "", "", err
+	}
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("dirigera authorize: %w", err)
@@ -273,7 +279,10 @@ func (p *DirigeraProvider) dirigeraExchange(ctx context.Context, host, code, ver
 		"code_verifier": {verifier},
 	}
 	u := fmt.Sprintf("https://%s:8443/v1/oauth/token", host)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := p.client.Do(req)
 	if err != nil {

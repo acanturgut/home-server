@@ -1,88 +1,54 @@
 import { useState, type FormEvent } from 'react';
-import { ArrowRight, CircleAlert, Loader2, Server } from 'lucide-react';
+import { Server } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/features/auth/useAuth';
+import { useAction } from '@/hooks/useAction';
 
-const FIELD = 'h-11 rounded-xl border-0 bg-muted/50 px-4 text-sm';
-
-/**
- * Full-screen sign-in page rendered when no session is active: the server
- * mark, two fields, and a submit arrow inside the password field.
- */
+/** Full-screen sign-in, shown while there is no session. */
 export function LoginPage() {
   const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const { run, busy, error } = useAction(login);
 
-  const onSubmit = async (e: FormEvent) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault();
-    setBusy(true);
-    setErr(null);
-    try {
-      await login(username.trim(), password);
-    } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Login failed');
-    } finally {
-      setBusy(false);
-    }
+    void run(username.trim(), password);
   };
 
   return (
-    <div className="min-h-dvh w-full bg-background text-foreground flex items-center justify-center p-6">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-xs flex flex-col items-center gap-3">
-        <h1 className="sr-only">Home Server sign in</h1>
-        <Server size={28} className="mb-8" aria-hidden />
-
-        <Input
-          autoFocus
-          aria-label="Username"
-          placeholder="Username"
-          autoComplete="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          disabled={busy}
-          required
-          className={FIELD}
-        />
-
-        <div className="relative w-full">
+    <main className="flex min-h-dvh items-center justify-center bg-background p-6">
+      <form onSubmit={submit} className="w-full max-w-xs space-y-4">
+        <div className="flex flex-col items-center gap-3 pb-4">
+          <Server className="size-7" aria-hidden />
+          <h1 className="text-base font-medium">Home Server</h1>
+        </div>
+        <Field label="Username">
+          <Input
+            autoFocus
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+        </Field>
+        <Field label="Password">
           <Input
             type="password"
-            aria-label="Password"
-            placeholder="Password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            disabled={busy}
             required
-            className={`${FIELD} pr-14`}
           />
-          <button
-            type="submit"
-            aria-label="Sign in"
-            disabled={busy || !username.trim() || !password}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 size-8 rounded-lg bg-foreground text-background flex items-center justify-center transition-opacity disabled:opacity-25">
-            {busy ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <ArrowRight size={16} />
-            )}
-          </button>
-        </div>
-
-        {err && (
-          <p
-            role="alert"
-            className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <CircleAlert size={13} />
-            {err}
-          </p>
-        )}
+        </Field>
+        {error && <Alert>{error}</Alert>}
+        <Button type="submit" className="w-full" loading={busy}>
+          Sign in
+        </Button>
       </form>
-    </div>
+    </main>
   );
 }

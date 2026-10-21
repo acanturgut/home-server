@@ -2,7 +2,9 @@
 //
 // Records are persisted to <DATA_DIR>/dns_records.json. Anything we can answer
 // from the local store is served as authoritative; everything else is
-// forwarded to the configured upstreams (default 1.1.1.1, 9.9.9.9).
+// forwarded to the configured upstreams (default 1.1.1.1, 9.9.9.9). Only
+// clients on private, loopback, link-local or CGNAT addresses get answers, so
+// the server can't be abused as an open resolver if :53 is ever exposed.
 //
 // Designed for a home network with the ASUS router pointing DHCP DNS at the
 // home-server LAN IP. The container runs in `network_mode: host`, so the Go
@@ -10,17 +12,20 @@
 package homedns
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
 	"net"
-	"os"
+	"net/netip"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/acanturgut/home-server/jsonfile"
+	"github.com/acanturgut/home-server/logger"
 	"github.com/miekg/dns"
 )
 
@@ -48,22 +53,28 @@ type Status struct {
 	RecordCount int       `json:"record_count"`
 }
 
+// cgnat is 100.64.0.0/10 (Tailscale and carrier-grade NAT clients).
+var cgnat = netip.MustParsePrefix("100.64.0.0/10")
+
 // Server is a UDP+TCP DNS server with a JSON-backed record store.
 //
-// All public methods are safe for concurrent use.
+// All public methods are safe for concurrent use. records is copy-on-write:
+// mutations swap in a new slice, so readers may iterate a snapshot unlocked.
 type Server struct {
 	mu        sync.RWMutex
 	path      string
 	records   []Record
 	upstreams []string
 	bindAddr  string
+	client    *dns.Client
 	udp       *dns.Server
 	tcp       *dns.Server
 	startedAt time.Time
 	lastErr   atomic.Value // string
 
 	blocklist *blocklist
-	stop      chan struct{}
+	ctx       context.Context // cancelled by Stop
+	cancel    context.CancelFunc
 
 	cQueries     atomic.Uint64
 	cLocalHits   atomic.Uint64
@@ -82,19 +93,21 @@ func New(dataDir, bindAddr string, upstreams []string) *Server {
 	if len(upstreams) == 0 {
 		upstreams = []string{"1.1.1.1:53", "9.9.9.9:53"}
 	}
-	_ = os.MkdirAll(dataDir, 0755)
+	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{
 		path:      filepath.Join(dataDir, "dns_records.json"),
 		bindAddr:  bindAddr,
 		upstreams: upstreams,
-		stop:      make(chan struct{}),
+		client:    &dns.Client{Timeout: 3 * time.Second},
+		ctx:       ctx,
+		cancel:    cancel,
+		blocklist: newBlocklist(
+			filepath.Join(dataDir, "dns_blocklist_sources.json"),
+			filepath.Join(dataDir, "dns_blocklist_cache.json"),
+		),
 	}
 	s.lastErr.Store("")
 	s.load()
-	s.blocklist = newBlocklist(
-		filepath.Join(dataDir, "dns_blocklist_sources.json"),
-		filepath.Join(dataDir, "dns_blocklist_cache.json"),
-	)
 	return s
 }
 
@@ -102,9 +115,7 @@ func New(dataDir, bindAddr string, upstreams []string) *Server {
 func (s *Server) Records() []Record {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Record, len(s.records))
-	copy(out, s.records)
-	return out
+	return append([]Record(nil), s.records...)
 }
 
 // SetRecords replaces the entire record set, persists to disk, and applies it.
@@ -118,9 +129,8 @@ func (s *Server) SetRecords(records []Record) error {
 		cleaned = append(cleaned, nr)
 	}
 	s.mu.Lock()
-	s.records = cleaned
-	s.mu.Unlock()
-	return s.save()
+	defer s.mu.Unlock()
+	return s.replaceLocked(cleaned)
 }
 
 // AddRecord appends a new record. Duplicates (same name+type+value) are ignored.
@@ -130,15 +140,13 @@ func (s *Server) AddRecord(r Record) error {
 		return err
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, existing := range s.records {
 		if existing.Name == nr.Name && existing.Type == nr.Type && existing.Value == nr.Value {
-			s.mu.Unlock()
 			return nil
 		}
 	}
-	s.records = append(s.records, nr)
-	s.mu.Unlock()
-	return s.save()
+	return s.replaceLocked(append(append([]Record(nil), s.records...), nr))
 }
 
 // DeleteRecord removes the first record matching name+type (+value if non-empty).
@@ -150,11 +158,39 @@ func (s *Server) DeleteRecord(name, typ, value string) error {
 	defer s.mu.Unlock()
 	for i, r := range s.records {
 		if r.Name == name && r.Type == typ && (value == "" || r.Value == value) {
-			s.records = append(s.records[:i], s.records[i+1:]...)
-			return s.saveLocked()
+			next := append(append([]Record(nil), s.records[:i]...), s.records[i+1:]...)
+			return s.replaceLocked(next)
 		}
 	}
 	return errors.New("not found")
+}
+
+// SeedDefault adds a record only if no record currently exists for that name.
+// Used on first run to point canshome.com → the home-server LAN IP.
+func (s *Server) SeedDefault(r Record) {
+	nr, err := normaliseRecord(r)
+	if err != nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, existing := range s.records {
+		if existing.Name == nr.Name {
+			return
+		}
+	}
+	if err := s.replaceLocked(append(append([]Record(nil), s.records...), nr)); err != nil {
+		logger.Error("homedns: " + err.Error())
+	}
+}
+
+// replaceLocked persists next, then makes it the live record set.
+func (s *Server) replaceLocked(next []Record) error {
+	if err := jsonfile.Save(s.path, next); err != nil {
+		return err
+	}
+	s.records = next
+	return nil
 }
 
 // Status returns a snapshot for the UI.
@@ -170,10 +206,8 @@ func (s *Server) Status() Status {
 		LocalHits:   s.cLocalHits.Load(),
 		Forwarded:   s.cForwarded.Load(),
 		UpstreamErr: s.cUpstreamErr.Load(),
+		BlockedHits: s.blocklist.hits.Load(),
 		RecordCount: len(s.records),
-	}
-	if s.blocklist != nil {
-		st.BlockedHits = s.blocklist.hits.Load()
 	}
 	if v, ok := s.lastErr.Load().(string); ok {
 		st.LastError = v
@@ -232,36 +266,30 @@ func (s *Server) Start() error {
 	s.startedAt = time.Now()
 	s.mu.Unlock()
 
-	// Kick off an initial blocklist refresh in the background, then auto-
-	// refresh every 24h.
-	go s.blocklist.refresh(context{cancel: s.stop})
 	go s.blocklistRefreshLoop()
 	return nil
 }
 
+// blocklistRefreshLoop refreshes the ad-block lists now and every 24h.
 func (s *Server) blocklistRefreshLoop() {
 	t := time.NewTicker(24 * time.Hour)
 	defer t.Stop()
 	for {
+		s.blocklist.refresh(s.ctx)
 		select {
-		case <-s.stop:
+		case <-s.ctx.Done():
 			return
 		case <-t.C:
-			s.blocklist.refresh(context{cancel: s.stop})
 		}
 	}
 }
 
-// Stop shuts down both listeners.
+// Stop shuts down both listeners and any running blocklist refresh.
 func (s *Server) Stop() {
+	s.cancel()
 	s.mu.Lock()
 	udp, tcp := s.udp, s.tcp
 	s.udp, s.tcp = nil, nil
-	select {
-	case <-s.stop:
-	default:
-		close(s.stop)
-	}
 	s.mu.Unlock()
 	if udp != nil {
 		_ = udp.Shutdown()
@@ -275,6 +303,10 @@ func (s *Server) Stop() {
 
 func (s *Server) handle(w dns.ResponseWriter, r *dns.Msg) {
 	s.cQueries.Add(1)
+	if !allowedClient(w.RemoteAddr()) {
+		_ = w.WriteMsg(emptyReply(r, dns.RcodeRefused))
+		return
+	}
 	if len(r.Question) == 0 {
 		_ = w.WriteMsg(emptyReply(r, dns.RcodeFormatError))
 		return
@@ -283,30 +315,26 @@ func (s *Server) handle(w dns.ResponseWriter, r *dns.Msg) {
 	name := strings.ToLower(q.Name)
 
 	// Ad-blocker: short-circuit with NXDOMAIN.
-	if s.blocklist != nil && s.blocklist.isBlocked(name) {
+	if s.blocklist.isBlocked(name) {
 		s.blocklist.hits.Add(1)
-		m := new(dns.Msg)
-		m.SetReply(r)
-		m.Rcode = dns.RcodeNameError
-		_ = w.WriteMsg(m)
+		_ = w.WriteMsg(emptyReply(r, dns.RcodeNameError))
 		return
 	}
 
-	if local := s.answerLocal(q, name); local != nil {
+	// A name we hold records for is answered locally even when no record
+	// matches the type (NODATA), so e.g. an AAAA lookup for an A-only name
+	// doesn't come back NXDOMAIN from upstream.
+	if answer, owned := s.answerLocal(q, name); owned {
 		s.cLocalHits.Add(1)
-		m := new(dns.Msg)
-		m.SetReply(r)
+		m := emptyReply(r, dns.RcodeSuccess)
 		m.Authoritative = true
-		m.Answer = local
+		m.Answer = answer
 		_ = w.WriteMsg(m)
 		return
 	}
 
-	// Forward.
 	for _, up := range s.upstreams {
-		c := new(dns.Client)
-		c.Timeout = 3 * time.Second
-		resp, _, err := c.Exchange(r, up)
+		resp, _, err := s.client.Exchange(r, up)
 		if err == nil && resp != nil {
 			s.cForwarded.Add(1)
 			_ = w.WriteMsg(resp)
@@ -317,99 +345,82 @@ func (s *Server) handle(w dns.ResponseWriter, r *dns.Msg) {
 	_ = w.WriteMsg(emptyReply(r, dns.RcodeServerFailure))
 }
 
-// answerLocal returns RRs from the store that match the question, or nil.
-// Includes simple CNAME chasing within the local store for one level.
-func (s *Server) answerLocal(q dns.Question, name string) []dns.RR {
+func allowedClient(addr net.Addr) bool {
+	ap, err := netip.ParseAddrPort(addr.String())
+	if err != nil {
+		return false
+	}
+	ip := ap.Addr().Unmap()
+	return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || cgnat.Contains(ip)
+}
+
+// answerLocal returns RRs from the store that match the question and whether
+// any local record exists for name. Chases CNAMEs one level within the store.
+func (s *Server) answerLocal(q dns.Question, name string) (answer []dns.RR, owned bool) {
 	s.mu.RLock()
-	recs := s.records
+	recs := s.records // copy-on-write snapshot
 	s.mu.RUnlock()
 
 	wanted := dns.TypeToString[q.Qtype]
-	var out []dns.RR
 	for _, r := range recs {
 		if r.Name != name {
 			continue
 		}
-		if wanted == r.Type ||
-			(wanted == "A" && r.Type == "CNAME") ||
-			(wanted == "AAAA" && r.Type == "CNAME") {
-			rr, err := buildRR(r)
-			if err == nil {
-				out = append(out, rr)
-				// One-level CNAME chase for matching A/AAAA below the alias.
-				if r.Type == "CNAME" {
-					target := canonicalName(r.Value)
-					for _, r2 := range recs {
-						if r2.Name == target && r2.Type == wanted {
-							if rr2, err := buildRR(r2); err == nil {
-								out = append(out, rr2)
-							}
-						}
-					}
+		owned = true
+		isAddr := wanted == "A" || wanted == "AAAA"
+		if r.Type != wanted && !(isAddr && r.Type == "CNAME") {
+			continue
+		}
+		answer = append(answer, buildRR(r))
+		if r.Type == "CNAME" {
+			target := canonicalName(r.Value)
+			for _, r2 := range recs {
+				if r2.Name == target && r2.Type == wanted {
+					answer = append(answer, buildRR(r2))
 				}
 			}
 		}
 	}
-	return out
+	return answer, owned
 }
 
 func emptyReply(r *dns.Msg, rcode int) *dns.Msg {
 	m := new(dns.Msg)
-	m.SetReply(r)
-	m.Rcode = rcode
+	m.SetRcode(r, rcode)
 	return m
 }
 
-func buildRR(r Record) (dns.RR, error) {
-	ttl := r.TTL
-	if ttl == 0 {
-		ttl = 300
-	}
+// buildRR converts a normalised record (see normaliseRecord) into an RR.
+func buildRR(r Record) dns.RR {
+	hdr := dns.RR_Header{Name: r.Name, Class: dns.ClassINET, Ttl: r.TTL}
 	switch r.Type {
 	case "A":
-		return dns.NewRR(fmt.Sprintf("%s %d IN A %s", r.Name, ttl, r.Value))
+		hdr.Rrtype = dns.TypeA
+		return &dns.A{Hdr: hdr, A: net.ParseIP(r.Value).To4()}
 	case "AAAA":
-		return dns.NewRR(fmt.Sprintf("%s %d IN AAAA %s", r.Name, ttl, r.Value))
-	case "CNAME":
-		return dns.NewRR(fmt.Sprintf("%s %d IN CNAME %s", r.Name, ttl, canonicalName(r.Value)))
+		hdr.Rrtype = dns.TypeAAAA
+		return &dns.AAAA{Hdr: hdr, AAAA: net.ParseIP(r.Value)}
+	default: // CNAME
+		hdr.Rrtype = dns.TypeCNAME
+		return &dns.CNAME{Hdr: hdr, Target: r.Value}
 	}
-	return nil, fmt.Errorf("unsupported type %q", r.Type)
 }
 
 // ── Persistence ─────────────────────────────────────────────────────────
 
 func (s *Server) load() {
-	data, err := os.ReadFile(s.path)
-	if err != nil {
-		return
-	}
 	var recs []Record
-	if json.Unmarshal(data, &recs) != nil {
-		return
+	if err := jsonfile.Load(s.path, &recs); err != nil {
+		logger.Error("homedns: " + err.Error())
 	}
-	cleaned := make([]Record, 0, len(recs))
 	for _, r := range recs {
 		nr, err := normaliseRecord(r)
 		if err != nil {
+			logger.Error(fmt.Sprintf("homedns: dropping invalid record %s %s: %v", r.Name, r.Type, err))
 			continue
 		}
-		cleaned = append(cleaned, nr)
+		s.records = append(s.records, nr)
 	}
-	s.records = cleaned
-}
-
-func (s *Server) save() error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.saveLocked()
-}
-
-func (s *Server) saveLocked() error {
-	data, err := json.MarshalIndent(s.records, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(s.path, data, 0644)
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -419,10 +430,26 @@ func canonicalName(n string) string {
 	if n == "" {
 		return ""
 	}
-	if !strings.HasSuffix(n, ".") {
-		n += "."
+	return dns.Fqdn(n)
+}
+
+// labelRE is one hostname label (letters, digits, hyphens; underscores for
+// service names like _sip).
+var labelRE = regexp.MustCompile(`^[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?$`)
+
+// validName reports whether a canonical (lowercase, trailing-dot) name is a
+// well-formed hostname.
+func validName(fqdn string) bool {
+	n := strings.TrimSuffix(fqdn, ".")
+	if n == "" || len(n) > 253 {
+		return false
 	}
-	return n
+	for _, label := range strings.Split(n, ".") {
+		if !labelRE.MatchString(label) {
+			return false
+		}
+	}
+	return true
 }
 
 func normaliseRecord(r Record) (Record, error) {
@@ -432,22 +459,25 @@ func normaliseRecord(r Record) (Record, error) {
 	if r.Name == "" || r.Name == "." {
 		return r, errors.New("name required")
 	}
+	if !validName(r.Name) {
+		return r, fmt.Errorf("%q is not a valid domain name", r.Name)
+	}
 	switch r.Type {
 	case "A":
 		ip := net.ParseIP(r.Value)
 		if ip == nil || ip.To4() == nil {
-			return r, fmt.Errorf("A record value %q is not an IPv4 address", r.Value)
+			return r, fmt.Errorf("value %q for A record is not an IPv4 address", r.Value)
 		}
 	case "AAAA":
 		ip := net.ParseIP(r.Value)
 		if ip == nil || ip.To4() != nil {
-			return r, fmt.Errorf("AAAA record value %q is not an IPv6 address", r.Value)
+			return r, fmt.Errorf("value %q for AAAA record is not an IPv6 address", r.Value)
 		}
 	case "CNAME":
-		if r.Value == "" {
-			return r, errors.New("CNAME value required")
-		}
 		r.Value = canonicalName(r.Value)
+		if !validName(r.Value) {
+			return r, errors.New("CNAME target must be a valid domain name")
+		}
 	default:
 		return r, fmt.Errorf("unsupported record type %q (use A, AAAA, CNAME)", r.Type)
 	}
@@ -455,23 +485,4 @@ func normaliseRecord(r Record) (Record, error) {
 		r.TTL = 300
 	}
 	return r, nil
-}
-
-// SeedDefault adds a record only if no record currently exists for that name.
-// Used on first run to point canshome.com → the home-server LAN IP.
-func (s *Server) SeedDefault(r Record) {
-	nr, err := normaliseRecord(r)
-	if err != nil {
-		return
-	}
-	s.mu.Lock()
-	for _, existing := range s.records {
-		if existing.Name == nr.Name {
-			s.mu.Unlock()
-			return
-		}
-	}
-	s.records = append(s.records, nr)
-	s.mu.Unlock()
-	_ = s.save()
 }

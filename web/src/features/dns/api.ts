@@ -21,7 +21,7 @@ export interface DNSStatus {
   record_count: number;
 }
 
-export interface BlocklistSource {
+interface BlocklistSource {
   name: string;
   url: string;
   enabled: boolean;
@@ -41,6 +41,11 @@ export interface BlocklistStatus {
 }
 
 export const dnsApi = {
+  /** This host's LAN IP, for the router setup guide ('' when unknown). */
+  hostIp: () =>
+    apiJsonSafe<{ local_ip?: string }>('/api/dashboard/overview').then(
+      (d) => d?.local_ip ?? '',
+    ),
   status: () => apiJsonSafe<DNSStatus>('/api/dns/status'),
   records: () => apiJsonSafe<DNSRecord[]>('/api/dns/records'),
   add: (rec: DNSRecord) =>
@@ -52,11 +57,6 @@ export const dnsApi = {
     apiJson<{ ok: boolean }>('/api/dns/records', {
       method: 'DELETE',
       body: JSON.stringify(rec),
-    }),
-  replace: (records: DNSRecord[]) =>
-    apiJson<{ ok: boolean; count: number }>('/api/dns/records', {
-      method: 'PUT',
-      body: JSON.stringify(records),
     }),
   blocklist: {
     status: () => apiJsonSafe<BlocklistStatus>('/api/dns/blocklist'),

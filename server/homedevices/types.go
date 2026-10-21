@@ -2,6 +2,9 @@ package homedevices
 
 import (
 	"context"
+	"fmt"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -28,6 +31,43 @@ type Bridge struct {
 	// Runtime status (not persisted)
 	Status string `json:"status,omitempty"` // "ok" | "error" | "..."
 	Error  string `json:"error,omitempty"`
+}
+
+// Validate checks user-supplied fields before a bridge is saved, so a bad
+// host or URL can't break every later poll.
+func (b Bridge) Validate() error {
+	switch b.Kind {
+	case KindHue, KindDirigera, KindWebOS, KindHTTP:
+	default:
+		return fmt.Errorf("unknown bridge kind %q", b.Kind)
+	}
+	if b.Kind != KindHTTP || b.Host != "" {
+		if !validHost(b.Host) {
+			return fmt.Errorf("host %q must be an IP or hostname, optionally with :port", b.Host)
+		}
+	}
+	if b.Kind == KindHTTP {
+		for _, key := range []string{"on_url", "off_url", "status_url"} {
+			if v := b.Config[key]; v != "" {
+				u, err := url.Parse(v)
+				if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+					return fmt.Errorf("%s must be an http(s) URL", key)
+				}
+			}
+		}
+		if m := strings.ToUpper(b.Config["method"]); m != "" && m != "GET" && m != "POST" {
+			return fmt.Errorf("method must be GET or POST")
+		}
+	}
+	return nil
+}
+
+func validHost(h string) bool {
+	if h == "" || strings.ContainsAny(h, " /\\?#@") {
+		return false
+	}
+	u, err := url.Parse("http://" + h)
+	return err == nil && u.Host == h && u.Hostname() != ""
 }
 
 // DeviceType classifies the underlying physical device.

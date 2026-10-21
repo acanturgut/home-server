@@ -6,25 +6,13 @@ import (
 	"strings"
 )
 
-// GET /api/tokens — list all API tokens (cookie-authed admin endpoint).
-// Returns the secret in full for the convenience of the settings UI; the
-// home server is single-tenant so there's no need to mask.
+// GET /api/tokens
 func (h *Handler) ListTokens(w http.ResponseWriter, r *http.Request) {
-	if h.tokens == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: "token store disabled"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"tokens": h.tokens.List(),
-	})
+	writeJSON(w, http.StatusOK, map[string]any{"tokens": h.tokens.List()})
 }
 
 // POST /api/tokens — create a new token. Body: { "name": "iPhone Shortcut" }
 func (h *Handler) CreateToken(w http.ResponseWriter, r *http.Request) {
-	if h.tokens == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: "token store disabled"})
-		return
-	}
 	var req struct {
 		Name string `json:"name"`
 	}
@@ -39,11 +27,6 @@ func (h *Handler) CreateToken(w http.ResponseWriter, r *http.Request) {
 
 // PATCH /api/tokens/{id} — rename. Body: { "name": "..." }
 func (h *Handler) RenameToken(w http.ResponseWriter, r *http.Request) {
-	if h.tokens == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: "token store disabled"})
-		return
-	}
-	id := r.PathValue("id")
 	var req struct {
 		Name string `json:"name"`
 	}
@@ -51,7 +34,7 @@ func (h *Handler) RenameToken(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid json"})
 		return
 	}
-	if err := h.tokens.Rename(id, strings.TrimSpace(req.Name)); err != nil {
+	if err := h.tokens.Rename(r.PathValue("id"), strings.TrimSpace(req.Name)); err != nil {
 		writeJSON(w, http.StatusNotFound, errorResp{Error: err.Error()})
 		return
 	}
@@ -60,12 +43,7 @@ func (h *Handler) RenameToken(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/tokens/{id}/rotate — replace the secret in place.
 func (h *Handler) RotateToken(w http.ResponseWriter, r *http.Request) {
-	if h.tokens == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: "token store disabled"})
-		return
-	}
-	id := r.PathValue("id")
-	tok, err := h.tokens.Rotate(id)
+	tok, err := h.tokens.Rotate(r.PathValue("id"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, errorResp{Error: err.Error()})
 		return
@@ -75,10 +53,9 @@ func (h *Handler) RotateToken(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /api/tokens/{id}
 func (h *Handler) DeleteToken(w http.ResponseWriter, r *http.Request) {
-	if h.tokens == nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: "token store disabled"})
+	if err := h.tokens.Delete(r.PathValue("id")); err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResp{Error: err.Error()})
 		return
 	}
-	h.tokens.Delete(r.PathValue("id"))
 	w.WriteHeader(http.StatusNoContent)
 }

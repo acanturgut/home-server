@@ -1,27 +1,24 @@
 import { Section } from '@/components/ui/section';
-import { HostGraphs } from '@/features/dashboard/components/HostGraphs';
-import { NodeMicroCards } from '@/features/dashboard/components/NodeMicroCards';
+import { ClusterNodes } from '@/features/dashboard/components/ClusterNodes';
 import { DashboardDataProvider } from '@/features/dashboard/components/DashboardDataProvider';
+import { HostGraphs } from '@/features/dashboard/components/HostGraphs';
 
-/**
- * Cluster page: live charts for the home server (Pi) and per-node compute
- * cards (CPU/RAM/GPU/VRAM). Uses Section for grouping and the upstream
- * components for the actual rendering.
- */
+/** Cluster page: the home server's own load, then each compute node. */
 export function ClusterPage() {
   return (
-    <DashboardDataProvider>
+    <DashboardDataProvider cluster>
       <div className="space-y-6">
         <Section
-          title="Home Server"
-          description="Live CPU, memory, and disk on the Raspberry Pi.">
+          title="Home server"
+          description="Live CPU, memory and disk on the Raspberry Pi."
+        >
           <HostGraphs />
         </Section>
-
         <Section
-          title="Cluster Nodes"
-          description="Inference workers, their hardware, and currently loaded models.">
-          <NodeMicroCards />
+          title="Cluster nodes"
+          description="Inference workers, their hardware and loaded models."
+        >
+          <ClusterNodes />
         </Section>
       </div>
     </DashboardDataProvider>

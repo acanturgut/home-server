@@ -1,23 +1,15 @@
-import * as React from "react"
-import * as RechartsPrimitive from "recharts"
+import * as React from 'react';
+import * as RechartsPrimitive from 'recharts';
 
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils';
 
-// Format: { THEME_NAME: CSS_SELECTOR }
-const THEMES = { light: "", dark: ".dark" } as const
+const INITIAL_DIMENSION = { width: 320, height: 200 } as const;
 
-const INITIAL_DIMENSION = { width: 320, height: 200 } as const
-
+/** Series key → label + colour (prefer `var(--chart-n)`, in slot order). */
 export type ChartConfig = Record<
   string,
-  {
-    label?: React.ReactNode
-    icon?: React.ComponentType
-  } & (
-    | { color?: string; theme?: never }
-    | { color?: never; theme: Record<keyof typeof THEMES, string> }
-  )
->
+  { label?: React.ReactNode; color?: string }
+>;
 
 function ChartContainer({
   id,
@@ -26,18 +18,18 @@ function ChartContainer({
   config,
   initialDimension = INITIAL_DIMENSION,
   ...props
-}: React.ComponentProps<"div"> & {
-  config: ChartConfig
+}: React.ComponentProps<'div'> & {
+  config: ChartConfig;
   children: React.ComponentProps<
     typeof RechartsPrimitive.ResponsiveContainer
-  >["children"]
+  >['children'];
   initialDimension?: {
-    width: number
-    height: number
-  }
+    width: number;
+    height: number;
+  };
 }) {
-  const uniqueId = React.useId()
-  const chartId = `chart-${id ?? uniqueId.replace(/:/g, "")}`
+  const uniqueId = React.useId();
+  const chartId = `chart-${id ?? uniqueId.replace(/:/g, '')}`;
 
   return (
     <div
@@ -45,7 +37,7 @@ function ChartContainer({
       data-chart={chartId}
       className={cn(
         "flex aspect-video justify-center text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden",
-        className
+        className,
       )}
       {...props}
     >
@@ -56,40 +48,115 @@ function ChartContainer({
         {children}
       </RechartsPrimitive.ResponsiveContainer>
     </div>
-  )
+  );
 }
 
-const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
-  const colorConfig = Object.entries(config).filter(
-    ([, config]) => config.theme ?? config.color
-  )
-
-  if (!colorConfig.length) {
-    return null
-  }
-
+/** Exposes each series colour as `--color-<key>` inside the chart. */
+function ChartStyle({ id, config }: { id: string; config: ChartConfig }) {
+  const vars = Object.entries(config)
+    .filter(([, c]) => c.color)
+    .map(([key, c]) => `--color-${key}: ${c.color};`)
+    .join(' ');
+  if (!vars) return null;
   return (
     <style
-      dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
-${colorConfig
-  .map(([key, itemConfig]) => {
-    const color =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ??
-      itemConfig.color
-    return color ? `  --color-${key}: ${color};` : null
-  })
-  .join("\n")}
-}
-`
-          )
-          .join("\n"),
-      }}
+      dangerouslySetInnerHTML={{ __html: `[data-chart=${id}] { ${vars} }` }}
     />
-  )
+  );
 }
 
-export { ChartContainer }
+/**
+ * Tooltip body for Recharts' `<Tooltip content={<ChartTooltipContent />} />`:
+ * a flat popover listing each series (label from `config`, value through
+ * `formatValue`). The Tooltip's `labelFormatter` formats the heading.
+ */
+function ChartTooltipContent({
+  active,
+  payload,
+  label,
+  labelFormatter,
+  config,
+  formatValue = (v) => String(v),
+}: Partial<
+  Pick<
+    RechartsPrimitive.TooltipContentProps,
+    'active' | 'payload' | 'label' | 'labelFormatter'
+  >
+> & {
+  config?: ChartConfig;
+  formatValue?: (value: number) => string;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="min-w-32 rounded-md border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground">
+      {label !== undefined && (
+        <div className="mb-1 text-muted-foreground">
+          {labelFormatter ? labelFormatter(label, payload) : label}
+        </div>
+      )}
+      {payload.map((item) => {
+        const key = String(item.dataKey ?? item.name);
+        return (
+          <div key={key} className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className="size-2 shrink-0 rounded-full"
+              style={{ background: item.color }}
+            />
+            <span className="text-muted-foreground">
+              {config?.[key]?.label ?? item.name}
+            </span>
+            <span className="ml-auto pl-3 font-medium tabular-nums">
+              {formatValue(Number(item.value))}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Tiny decorative area chart for stat tiles. Sits beside the number it
+ * illustrates, so it is hidden from assistive tech.
+ */
+function Sparkline({
+  data,
+  color = 'var(--chart-1)',
+  max,
+  className,
+}: {
+  data: number[];
+  color?: string;
+  /** Fixed y-axis maximum (e.g. 100 for percentages); auto otherwise. */
+  max?: number;
+  className?: string;
+}) {
+  const points = data.map((v, i) => ({ i, v }));
+  return (
+    <div aria-hidden className={cn('h-10 w-full', className)}>
+      <RechartsPrimitive.ResponsiveContainer
+        initialDimension={{ width: 120, height: 40 }}
+      >
+        <RechartsPrimitive.AreaChart
+          data={points}
+          margin={{ top: 2, right: 0, bottom: 0, left: 0 }}
+        >
+          <RechartsPrimitive.YAxis hide domain={[0, max ?? 'auto']} />
+          <RechartsPrimitive.Area
+            type="monotone"
+            dataKey="v"
+            stroke={color}
+            strokeWidth={1.5}
+            fill={color}
+            fillOpacity={0.12}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </RechartsPrimitive.AreaChart>
+      </RechartsPrimitive.ResponsiveContainer>
+    </div>
+  );
+}
+
+export { ChartContainer, ChartTooltipContent, Sparkline };

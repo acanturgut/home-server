@@ -27,6 +27,8 @@ type Entry struct {
 
 type Logger struct {
 	mu      sync.Mutex
+	dir     string
+	day     string // date of the open file; a new file starts each day
 	file    *os.File
 	entries []Entry
 }
@@ -38,8 +40,11 @@ var instance *Logger
 const maxBuffered = 10000
 
 func Init(logDir string) error {
-	os.MkdirAll(logDir, 0755)
-	path := filepath.Join(logDir, time.Now().Format("2006-01-02")+".jsonl")
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		return err
+	}
+	day := time.Now().Format(time.DateOnly)
+	path := filepath.Join(logDir, day+".jsonl")
 	// Hydrate today's entries from disk so the dashboard's "AI Activity"
 	// (token usage, latency timeline, model leaderboard, errors) survives a
 	// container restart / redeploy. Without this, every redeploy wipes the
@@ -59,12 +64,26 @@ func Init(logDir string) error {
 			preloaded = preloaded[len(preloaded)-maxBuffered:]
 		}
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
-	instance = &Logger{file: f, entries: preloaded}
+	instance = &Logger{dir: logDir, day: day, file: f, entries: preloaded}
 	return nil
+}
+
+// rotateLocked switches to a new day's file after midnight.
+func (l *Logger) rotateLocked(now time.Time) {
+	day := now.Format(time.DateOnly)
+	if day == l.day {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(l.dir, day+".jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return // keep writing to the old file
+	}
+	l.file.Close()
+	l.file, l.day = f, day
 }
 
 func Log(e Entry) {
@@ -72,9 +91,11 @@ func Log(e Entry) {
 		fmt.Fprintf(os.Stderr, "[%s] %s\n", e.Level, e.Message)
 		return
 	}
-	e.Timestamp = time.Now().UTC().Format(time.RFC3339)
+	now := time.Now()
+	e.Timestamp = now.UTC().Format(time.RFC3339)
 	instance.mu.Lock()
 	defer instance.mu.Unlock()
+	instance.rotateLocked(now)
 
 	instance.entries = append(instance.entries, e)
 	if len(instance.entries) > maxBuffered {
@@ -82,7 +103,7 @@ func Log(e Entry) {
 	}
 
 	data, _ := json.Marshal(e)
-	instance.file.Write(append(data, '\n'))
+	_, _ = instance.file.Write(append(data, '\n'))
 
 	fmt.Fprintf(os.Stderr, "[%s] %s %s\n", e.Level, e.Message, e.Latency)
 }

@@ -7,14 +7,10 @@ import (
 	"time"
 )
 
-// WebOSProvider talks to LG webOS TVs over the LAN. Full control normally
-// requires a websocket "ssap://" pairing flow with a per-app client key, which
-// is too involved for first-pass — here we expose:
-//   - reachability ping (TCP dial port 3000),
-//   - on/off intent: "off" sends ssap power-off (TODO: needs paired key),
-//     "on"  is a no-op placeholder (use Wake-on-LAN node).
-//
-// The TV is surfaced as a single Device (Type: TypeTV) per Bridge.
+// WebOSProvider surfaces an LG webOS TV as a single Device (TypeTV) whose
+// on/reachable state comes from a TCP probe of the ssap port (3000). Control
+// would need the websocket pairing flow with a per-app client key, so Apply
+// reports that it isn't supported.
 type WebOSProvider struct{}
 
 func NewWebOSProvider() *WebOSProvider { return &WebOSProvider{} }
@@ -50,7 +46,5 @@ func (p *WebOSProvider) Discover(ctx context.Context, b Bridge) ([]Device, error
 }
 
 func (p *WebOSProvider) Apply(ctx context.Context, b Bridge, localID string, a Action) error {
-	// Real ssap power/volume control requires the websocket pairing flow.
-	// Until that's implemented we surface a clear error so the UI can show it.
-	return fmt.Errorf("webos: control not implemented yet — pair via the LG remote app, then add the client key here")
+	return fmt.Errorf("webos: TV control isn't supported, only on/off status")
 }

@@ -3,19 +3,18 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"strings"
 	"time"
 )
 
-// CookieName is exported so the API package can clear it on logout.
+// CookieName is exported so the API package can read and clear it.
 const CookieName = cookieName
 
 type ctxKey int
 
-const (
-	ctxUserKey ctxKey = iota
-)
+const ctxUserKey ctxKey = iota
 
 // FromContext returns the authenticated user attached to ctx (set by Middleware).
 func FromContext(ctx context.Context) (User, bool) {
@@ -23,60 +22,41 @@ func FromContext(ctx context.Context) (User, bool) {
 	return u, ok
 }
 
-// Middleware returns an http.Handler middleware that:
-//   - reads the session cookie,
-//   - looks up the user,
-//   - rejects unauthenticated requests to protected paths,
-//   - enforces role checks on mutating verbs for "viewer".
-//
-// `publicPrefixes` is a list of path prefixes that bypass auth entirely
-// (e.g. login endpoint, static UI, root index — those still get served so the
-// browser can render the login page).
-func (s *Store) Middleware(publicPrefixes []string) func(http.Handler) http.Handler {
+// Middleware authenticates API requests by session cookie and makes viewers
+// read-only. publicPaths (exact matches) bypass it; non-API paths (the SPA)
+// are always served so the login page can render.
+func (s *Store) Middleware(publicPaths ...string) func(http.Handler) http.Handler {
+	public := make(map[string]bool, len(publicPaths))
+	for _, p := range publicPaths {
+		public[p] = true
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			path := r.URL.Path
-
-			for _, p := range publicPrefixes {
-				if strings.HasPrefix(path, p) {
-					next.ServeHTTP(w, r)
-					return
-				}
-			}
-
-			// Identify the caller (cookie or Authorization: Bearer token).
-			var token string
-			if c, err := r.Cookie(cookieName); err == nil {
-				token = c.Value
-			}
-			if token == "" {
-				if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-					token = strings.TrimPrefix(h, "Bearer ")
-				}
-			}
-
-			user, ok := s.LookupSession(token)
-			isAPI := strings.HasPrefix(path, "/api/")
-			if !ok {
-				if isAPI {
-					writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
-					return
-				}
-				// Non-API (the SPA itself) is allowed through so the login page can render.
+			if public[r.URL.Path] || !strings.HasPrefix(r.URL.Path, "/api/") {
 				next.ServeHTTP(w, r)
 				return
 			}
-
-			// Viewer: deny mutating verbs on the API.
-			if isAPI && user.Role == RoleViewer && isMutating(r.Method) {
+			user, ok := s.FromRequest(r)
+			if !ok {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
+				return
+			}
+			if user.Role == RoleViewer && isMutating(r.Method) {
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": "viewer role: read-only"})
 				return
 			}
-
-			ctx := context.WithValue(r.Context(), ctxUserKey, user)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxUserKey, user)))
 		})
 	}
+}
+
+// FromRequest resolves the session cookie on r.
+func (s *Store) FromRequest(r *http.Request) (User, bool) {
+	c, err := r.Cookie(cookieName)
+	if err != nil {
+		return User{}, false
+	}
+	return s.LookupSession(c.Value)
 }
 
 // RequireAdmin is a per-handler guard for endpoints that must run as admin.
@@ -93,13 +73,13 @@ func RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // SetCookie writes the session cookie on a response.
-func SetCookie(w http.ResponseWriter, token string, secure bool) {
+func SetCookie(w http.ResponseWriter, r *http.Request, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   isHTTPS(r),
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(defaultSessionTTL),
 	})
@@ -115,6 +95,37 @@ func ClearCookie(w http.ResponseWriter) {
 		MaxAge:   -1,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// ClientIP returns the caller's IP. X-Forwarded-For is honoured only from a
+// loopback peer (Caddy on the same host), using the hop Caddy appended.
+func ClientIP(r *http.Request) string {
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		ip = r.RemoteAddr
+	}
+	if fromLocalProxy(r) {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			hops := strings.Split(xff, ",")
+			return strings.TrimSpace(hops[len(hops)-1])
+		}
+	}
+	return ip
+}
+
+// isHTTPS reports whether the browser reached us over TLS, directly or via
+// the local reverse proxy that terminates it.
+func isHTTPS(r *http.Request) bool {
+	return r.TLS != nil || (fromLocalProxy(r) && r.Header.Get("X-Forwarded-Proto") == "https")
+}
+
+func fromLocalProxy(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func isMutating(method string) bool {

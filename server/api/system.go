@@ -51,7 +51,7 @@ func (h *Handler) System(w http.ResponseWriter, r *http.Request) {
 		Arch:     runtime.GOARCH,
 		CPU: cpuStats{
 			Cores:   runtime.NumCPU(),
-			UsedPct: cpuUsage(),
+			UsedPct: h.sysHist.latestCPU(),
 		},
 		Memory: memoryUsage(),
 		Disk:   diskUsage("/"),

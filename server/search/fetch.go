@@ -37,7 +37,6 @@ func Enrich(ctx context.Context, results []Result, fetchN, maxBytesPerPage int) 
 	copy(out, results)
 
 	for i := 0; i < fetchN; i++ {
-		i := i
 		if out[i].URL == "" {
 			continue
 		}

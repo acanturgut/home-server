@@ -1,6 +1,6 @@
-import { apiFetch, apiJson, apiJsonSafe } from '@/lib/api';
+import { apiJson, apiJsonSafe } from '@/lib/api';
 
-/** Persisted compute-node configuration row. */
+/** Persisted compute-node configuration row (GET /api/nodes). */
 export interface NodeConfig {
   id: string;
   name: string;
@@ -9,8 +9,18 @@ export interface NodeConfig {
   gpu?: string;
   mac?: string;
   model?: string;
-  online?: boolean;
-  temperature?: number | null;
+  temperature?: number;
+}
+
+/** Body of POST /api/nodes and PUT /api/nodes/{id} (PUT merges). */
+export interface NodeInput {
+  name: string;
+  host: string;
+  tier: string;
+  gpu: string;
+  mac: string;
+  model: string;
+  temperature: number;
 }
 
 export interface SystemConfigDTO {
@@ -26,53 +36,62 @@ export interface SystemConfigDTO {
   nodes_count: number;
 }
 
+/** User-editable runtime settings (GET/PUT /api/settings). */
+export interface RuntimeSettings {
+  defaultTemperature: number;
+  routerModel?: string;
+}
+
+export interface ApiToken {
+  id: string;
+  name: string;
+  token: string;
+  created_at: string;
+  /** Go zero time ("0001-01-01…") until first use. */
+  last_used_at?: string;
+}
+
 interface HealthDTO {
   backends?: {
     ollama?: boolean;
-    nodes?: NodeConfig[];
+    nodes?: { id: string; online: boolean }[];
   };
 }
 
-/** Settings page HTTP calls. */
+const send = <T>(method: string, path: string, body?: unknown) =>
+  apiJson<T>(path, {
+    method,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+/** Settings page HTTP calls. Mutations throw on failure. */
 export const settingsApi = {
   // config / health
   getConfig: () => apiJson<SystemConfigDTO>('/api/config'),
   getHealth: () => apiJson<HealthDTO>('/api/health'),
   putConfig: (body: { router_model: string }) =>
-    apiJson<SystemConfigDTO>('/api/config', {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    }),
+    send<{ router_model: string }>('PUT', '/api/config', body),
 
   // runtime settings
-  getSettings: () => apiJsonSafe<Record<string, unknown>>('/api/settings'),
-  putSettings: (body: unknown) =>
-    apiJson<Record<string, unknown>>('/api/settings', {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    }),
-  resetSettings: () =>
-    apiJson<Record<string, unknown>>('/api/settings/reset', { method: 'POST' }),
+  getSettings: () => apiJsonSafe<RuntimeSettings>('/api/settings'),
+  putSettings: (body: RuntimeSettings) =>
+    send<RuntimeSettings>('PUT', '/api/settings', body),
+  resetSettings: () => send<RuntimeSettings>('POST', '/api/settings/reset'),
 
-  // nodes
+  // nodes (power and model load/unload live in lib/nodes)
+  listNodes: () => apiJson<NodeConfig[] | null>('/api/nodes'),
   getNodeModels: (id: string) =>
     apiJsonSafe<{ models?: string[] }>(`/api/nodes/${id}/models`),
-  loadNodeModel: (nodeId: string, model: string) =>
-    apiJson<unknown>(`/api/nodes/${nodeId}/models/load`, {
-      method: 'POST',
-      body: JSON.stringify({ model }),
-    }),
-  unloadNodeModel: (nodeId: string, model: string) =>
-    apiJson<unknown>(`/api/nodes/${nodeId}/models/unload`, {
-      method: 'POST',
-      body: JSON.stringify({ model }),
-    }),
-  updateNode: (id: string, body: unknown) =>
-    apiFetch(`/api/nodes/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  deleteNode: (id: string) =>
-    apiFetch(`/api/nodes/${id}`, { method: 'DELETE' }),
-  addNode: (body: unknown) =>
-    apiFetch('/api/nodes', { method: 'POST', body: JSON.stringify(body) }),
-  wakeNode: (id: string) =>
-    apiFetch(`/api/nodes/${id}/wake`, { method: 'POST' }),
+  addNode: (body: NodeInput) => send<NodeConfig>('POST', '/api/nodes', body),
+  updateNode: (id: string, body: NodeInput) =>
+    send<NodeConfig>('PUT', `/api/nodes/${id}`, body),
+  deleteNode: (id: string) => send<unknown>('DELETE', `/api/nodes/${id}`),
+
+  // API tokens (admin only)
+  listTokens: () => apiJson<{ tokens: ApiToken[] | null }>('/api/tokens'),
+  createToken: (name: string) =>
+    send<ApiToken>('POST', '/api/tokens', { name }),
+  rotateToken: (id: string) =>
+    send<ApiToken>('POST', `/api/tokens/${id}/rotate`),
+  deleteToken: (id: string) => send<void>('DELETE', `/api/tokens/${id}`),
 };

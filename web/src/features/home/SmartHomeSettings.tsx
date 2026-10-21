@@ -1,299 +1,212 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, RefreshCcw, Edit3, Check, X } from 'lucide-react';
+import { useState } from 'react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { useAuth } from '@/features/auth';
 import { HomeKitPanel } from '@/features/homekit';
 import {
   homeApi,
   type HomeBridge,
-  type HomeBridgeKind,
   type HomeSnapshot,
 } from '@/features/home/api';
-import { AddBridgeWizard } from '@/features/home/AddBridgeWizard';
-import { relTime } from '@/lib/format';
+import { BRIDGE_KINDS } from '@/features/home/bridgeKinds';
+import { AddBridgeWizard } from '@/features/home/components/AddBridgeWizard';
+import { EditBridgeDialog } from '@/features/home/components/EditBridgeDialog';
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { IconButton } from '@/components/ui/icon-button';
+import { RefreshButton } from '@/components/ui/refresh-button';
+import { Section } from '@/components/ui/section';
+import { SkeletonRows } from '@/components/ui/skeleton';
+import { StatusDot } from '@/components/ui/status-dot';
+import { toast } from '@/components/ui/toast';
+import { useAction } from '@/hooks/useAction';
+import { useConfirm } from '@/hooks/useConfirm';
+import { usePolling } from '@/hooks/usePolling';
+import { errorMessage, plural, relTime } from '@/lib/format';
 
-const KIND_LABEL: Record<HomeBridgeKind, string> = {
-  hue: 'Philips Hue',
-  dirigera: 'IKEA DIRIGERA',
-  webos: 'LG webOS',
-  http: 'HTTP',
-};
-
-/** Combined Smart Home + HomeKit settings tab. */
+/** Settings → Smart Home: bridges, then the HomeKit bridge. */
 export function SmartHomeSettings() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <BridgesSection />
-      <div className="border-t border-border/30 pt-6">
-        <div className="mb-3">
-          <h2 className="text-sm font-semibold text-foreground/90">
-            HomeKit bridge
-          </h2>
-          <p className="text-xs text-muted-foreground/70">
-            Expose your nodes (and home-server actions) to Apple Home for Siri /
-            iPhone control.
-          </p>
-        </div>
+      <Section
+        title="HomeKit bridge"
+        description="Expose your nodes and home-server actions to Apple Home for Siri and iPhone control."
+      >
         <HomeKitPanel />
-      </div>
+      </Section>
     </div>
   );
 }
 
 function BridgesSection() {
-  const [snap, setSnap] = useState<HomeSnapshot>({
-    devices: [],
-    bridges: [],
-    last_updated: '',
-  });
-  const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
+  // Bridge CRUD and pairing are admin-only on the server.
+  const isAdmin = user?.role === 'admin';
+  const confirm = useConfirm();
+  const [snap, setSnap] = useState<HomeSnapshot | null>(null);
   const [adding, setAdding] = useState(false);
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditing] = useState<HomeBridge | null>(null);
 
-  const load = useCallback(
-    () =>
-      homeApi.list().then((d) => {
-        if (d) setSnap(d);
-      }),
-    [],
-  );
-
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 10000);
-    return () => clearInterval(id);
-  }, [load]);
-
-  const refresh = async () => {
-    setLoading(true);
-    try {
-      await homeApi.refresh();
-      await load();
-    } finally {
-      setLoading(false);
-    }
+  const load = async () => {
+    const next = await homeApi.list();
+    if (next) setSnap(next);
   };
+  usePolling(load, 10_000);
+  const refresh = useAction(async () => {
+    await homeApi.refresh();
+    await load();
+  });
 
-  const remove = async (id: string) => {
-    if (
-      !confirm('Remove this bridge? Devices will disappear from the dashboard.')
-    )
-      return;
-    await homeApi.deleteBridge(id);
+  const remove = async (b: HomeBridge) => {
+    const ok = await confirm({
+      title: `Remove ${b.name}?`,
+      body: 'Its devices disappear from the dashboard.',
+      confirmLabel: 'Remove',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await homeApi.deleteBridge(b.id);
+      toast(`Removed ${b.name}`);
+    } catch (e) {
+      toast(`Couldn't remove ${b.name}`, {
+        tone: 'error',
+        description: errorMessage(e),
+      });
+    }
     await load();
   };
 
-  const deviceCounts = useMemo(() => {
-    const c: Record<string, number> = {};
-    snap.devices.forEach((d) => {
-      c[d.bridge_id] = (c[d.bridge_id] || 0) + 1;
-    });
-    return c;
-  }, [snap.devices]);
+  const counts = new Map<string, number>();
+  snap?.devices.forEach((d) =>
+    counts.set(d.bridge_id, (counts.get(d.bridge_id) ?? 0) + 1),
+  );
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground/90">
-            Smart Home bridges
-          </h2>
-          <p className="text-xs text-muted-foreground/70">
-            Connect Philips Hue, IKEA DIRIGERA, LG webOS TVs, or any HTTP-based
-            switch. Devices show up on the dashboard as on/off + brightness
-            tiles.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={refresh}
-            disabled={loading}
-            className="text-xs flex items-center gap-1 px-2 py-1 rounded border border-border/30 hover:border-border/60 text-muted-foreground/80 disabled:opacity-50">
-            <RefreshCcw size={11} className={loading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
-          {!adding && (
-            <button
-              onClick={() => setAdding(true)}
-              className="text-xs flex items-center gap-1 px-2 py-1 rounded border border-primary/30 bg-primary/10 hover:bg-primary/15 text-primary">
-              <Plus size={11} />
+    <Section
+      title="Bridges"
+      description="Philips Hue, IKEA DIRIGERA, LG webOS TVs and HTTP switches. Their devices show up on the Smart Home page."
+      toolbar={
+        <div className="flex items-center gap-1">
+          <RefreshButton
+            label="Refresh devices"
+            onClick={() => void refresh.run()}
+            busy={refresh.busy}
+          />
+          {isAdmin && !adding && (
+            <Button size="sm" onClick={() => setAdding(true)}>
+              <Plus />
               Add bridge
-            </button>
+            </Button>
           )}
         </div>
-      </div>
-
+      }
+    >
+      {!isAdmin && (
+        <Alert tone="info">Only admins can add, edit or remove bridges.</Alert>
+      )}
+      {refresh.error && <Alert>{refresh.error}</Alert>}
       {adding && (
         <AddBridgeWizard
           onAdded={() => {
             setAdding(false);
-            load();
+            toast('Bridge added', { tone: 'success' });
+            void load();
           }}
           onCancel={() => setAdding(false)}
         />
       )}
 
-      {snap.bridges.length === 0 && !adding ? (
-        <div className="rounded-lg border border-dashed border-border/30 px-4 py-6 text-center">
-          <p className="text-sm text-muted-foreground/70">
-            No bridges yet — click "Add bridge" to start with a step-by-step
-            pairing flow.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-2">
+      {!snap ? (
+        <SkeletonRows rows={2} block />
+      ) : snap.bridges.length > 0 ? (
+        <Card className="divide-y p-0">
           {snap.bridges.map((b) => (
             <BridgeRow
               key={b.id}
-              b={b}
-              count={deviceCounts[b.id] || 0}
-              editing={editing === b.id}
-              onEdit={() => setEditing(b.id)}
-              onCancelEdit={() => setEditing(null)}
-              onSaved={() => {
-                setEditing(null);
-                load();
-              }}
-              onRemove={() => remove(b.id)}
+              bridge={b}
+              count={counts.get(b.id) ?? 0}
+              onEdit={isAdmin ? () => setEditing(b) : undefined}
+              onRemove={isAdmin ? () => void remove(b) : undefined}
             />
           ))}
-        </div>
+        </Card>
+      ) : (
+        !adding && (
+          <EmptyState
+            dashed
+            title="No bridges yet"
+            description={
+              isAdmin
+                ? 'Add a bridge to start with a step-by-step pairing flow.'
+                : 'Ask an admin to add one.'
+            }
+          />
+        )
       )}
-    </div>
+
+      {editing && (
+        <EditBridgeDialog
+          key={editing.id}
+          bridge={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            void load();
+          }}
+        />
+      )}
+    </Section>
   );
 }
 
 function BridgeRow({
-  b,
+  bridge: b,
   count,
-  editing,
   onEdit,
-  onCancelEdit,
-  onSaved,
   onRemove,
 }: {
-  b: HomeBridge;
+  bridge: HomeBridge;
   count: number;
-  editing: boolean;
-  onEdit: () => void;
-  onCancelEdit: () => void;
-  onSaved: () => void;
-  onRemove: () => void;
+  onEdit?: () => void;
+  onRemove?: () => void;
 }) {
   const ok = b.status === 'ok' || (!b.status && count > 0);
-  const lastSeen = relTime(b.added ? new Date(b.added).getTime() : undefined);
-
+  const kind = BRIDGE_KINDS[b.kind];
+  const meta = [
+    kind.hostPlaceholder && b.host,
+    plural(count, 'device'),
+    b.added && `added ${relTime(new Date(b.added).getTime())}`,
+  ].filter(Boolean);
   return (
-    <div className="rounded-xl border border-border/40 bg-card/40 p-3">
-      <div className="flex items-center gap-2 flex-wrap">
-        <span
-          className={`inline-block w-1.5 h-1.5 rounded-full ${
-            ok ? 'bg-emerald-400' : 'bg-amber-400'
-          }`}
+    <div className="flex items-center gap-3 px-4 py-3">
+      <StatusDot status={ok ? 'online' : 'warning'} />
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+          <span className="font-medium">{b.name}</span>
+          <span className="text-xs text-muted-foreground">{kind.label}</span>
+        </p>
+        <p className="truncate text-xs text-muted-foreground">
+          {meta.join(' · ')}
+        </p>
+        {b.error && <p className="mt-1 text-xs text-warning">{b.error}</p>}
+      </div>
+      {onEdit && (
+        <IconButton
+          icon={<Pencil />}
+          label={`Edit ${b.name}`}
+          onClick={onEdit}
         />
-        <span className="text-sm font-medium text-foreground/90">
-          {b.name}
-        </span>
-        <span className="text-xs uppercase tracking-wider text-muted-foreground/60">
-          {KIND_LABEL[b.kind]}
-        </span>
-        {b.host && (
-          <span className="text-xs text-muted-foreground/60 font-mono">
-            · {b.host}
-          </span>
-        )}
-        <span className="text-xs text-muted-foreground/70 ml-auto">
-          {count} device{count === 1 ? '' : 's'} · added {lastSeen}
-        </span>
-        {!editing && (
-          <div className="flex items-center gap-1">
-            <button
-              onClick={onEdit}
-              title="Edit"
-              className="p-1 rounded hover:bg-muted/40 text-muted-foreground/70 hover:text-foreground">
-              <Edit3 size={12} />
-            </button>
-            <button
-              onClick={onRemove}
-              title="Remove"
-              className="p-1 rounded hover:bg-red-500/10 text-muted-foreground/70 hover:text-red-400">
-              <Trash2 size={12} />
-            </button>
-          </div>
-        )}
-      </div>
-      {b.error && !editing && (
-        <p className="mt-1 text-xs text-amber-400/85">{b.error}</p>
       )}
-      {editing && (
-        <EditBridge b={b} onCancel={onCancelEdit} onSaved={onSaved} />
+      {onRemove && (
+        <IconButton
+          icon={<Trash2 />}
+          label={`Remove ${b.name}`}
+          onClick={onRemove}
+        />
       )}
-    </div>
-  );
-}
-
-function EditBridge({
-  b,
-  onCancel,
-  onSaved,
-}: {
-  b: HomeBridge;
-  onCancel: () => void;
-  onSaved: () => void;
-}) {
-  const [name, setName] = useState(b.name);
-  const [host, setHost] = useState(b.host);
-  const [token, setToken] = useState(b.token || '');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-
-  const save = async () => {
-    setBusy(true);
-    setErr('');
-    try {
-      await homeApi.updateBridge(b.id, { name, host, token });
-      onSaved();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Name"
-        className="text-sm h-8 px-2 rounded border border-border/30 bg-background"
-      />
-      <input
-        value={host}
-        onChange={(e) => setHost(e.target.value)}
-        placeholder="Host"
-        className="text-sm h-8 px-2 rounded border border-border/30 bg-background font-mono"
-      />
-      <input
-        value={token}
-        onChange={(e) => setToken(e.target.value)}
-        placeholder="Token"
-        className="text-sm h-8 px-2 rounded border border-border/30 bg-background font-mono"
-      />
-      {err && <p className="sm:col-span-3 text-xs text-red-400">{err}</p>}
-      <div className="sm:col-span-3 flex justify-end gap-2">
-        <button
-          onClick={onCancel}
-          className="text-xs flex items-center gap-1 px-2 py-1 rounded border border-border/30 text-muted-foreground/80">
-          <X size={11} />
-          Cancel
-        </button>
-        <button
-          onClick={save}
-          disabled={busy}
-          className="text-xs flex items-center gap-1 px-2 py-1 rounded border border-primary/30 bg-primary/10 text-primary disabled:opacity-50">
-          <Check size={11} />
-          Save
-        </button>
-      </div>
     </div>
   );
 }

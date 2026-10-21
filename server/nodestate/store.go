@@ -44,11 +44,22 @@ func NewStore() *Store {
 	}
 }
 
+// staleAfter is how long an agent may stay silent before it is forgotten.
+// It also bounds the maps, since heartbeats are unauthenticated.
+const staleAfter = 10 * time.Minute
+
 // Update stores the latest stats and returns any pending commands for the node.
 func (s *Store) Update(st Stats) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st.LastSeen = time.Now()
+	now := time.Now()
+	for id, old := range s.stats {
+		if now.Sub(old.LastSeen) > staleAfter {
+			delete(s.stats, id)
+			delete(s.commands, id)
+		}
+	}
+	st.LastSeen = now
 	s.stats[st.NodeID] = &st
 	cmds := s.commands[st.NodeID]
 	delete(s.commands, st.NodeID)

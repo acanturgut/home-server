@@ -2,10 +2,9 @@ package api
 
 import (
 	"encoding/json"
-	"io"
+	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/acanturgut/home-server/ai"
@@ -18,45 +17,66 @@ import (
 	"github.com/acanturgut/home-server/homedns"
 	"github.com/acanturgut/home-server/homekit"
 	"github.com/acanturgut/home-server/logger"
+	"github.com/acanturgut/home-server/network"
 	"github.com/acanturgut/home-server/nodestate"
 	"github.com/acanturgut/home-server/wol"
 	"github.com/google/uuid"
 )
 
-type Handler struct {
-	router    *ai.Router
-	cfg       *config.Config
-	nodes     *config.NodeStore
-	ns        *nodestate.Store
-	sysHist   *sysHistory
-	settings  *assistant.SettingsStore
-	chats     *assistant.ChatStore
-	snippets  *assistant.SnippetStore
-	schedules *assistant.ScheduleStore
-	homedev   *homedevices.Manager
-	router4   *asusrouter.Manager
-	dns       *homedns.Server
-	auth      *auth.Store
-	tokens    *apitokens.Store
-	version   string
-	started   time.Time
+// Deps are the services the HTTP API is built on. Every field is required.
+type Deps struct {
+	AI        *ai.Router
+	Config    *config.Config
+	Nodes     *config.NodeStore
+	NodeState *nodestate.Store
+	Settings  *assistant.SettingsStore
+	Chats     *assistant.ChatStore
+	Home      *homedevices.Manager
+	Asus      *asusrouter.Manager
+	LAN       *network.Scanner
+	DNS       *homedns.Server
+	Auth      *auth.Store
+	Tokens    *apitokens.Store
+	Version   string
 }
 
-func NewHandler(router *ai.Router, cfg *config.Config, nodes *config.NodeStore, ns *nodestate.Store, settings *assistant.SettingsStore, version string) *Handler {
-	h := &Handler{
-		router:    router,
-		cfg:       cfg,
-		nodes:     nodes,
-		ns:        ns,
-		settings:  settings,
-		chats:     assistant.NewChatStore(cfg.DataDir),
-		snippets:  assistant.NewSnippetStore(cfg.DataDir),
-		schedules: assistant.NewScheduleStore(cfg.DataDir),
-		version:   version,
-		started:   time.Now(),
+type Handler struct {
+	ai       *ai.Router
+	cfg      *config.Config
+	nodes    *config.NodeStore
+	ns       *nodestate.Store
+	settings *assistant.SettingsStore
+	chats    *assistant.ChatStore
+	home     *homedevices.Manager
+	asus     *asusrouter.Manager
+	lan      *network.Scanner
+	dns      *homedns.Server
+	auth     *auth.Store
+	tokens   *apitokens.Store
+	version  string
+	started  time.Time
+	sysHist  *sysHistory
+	overview overviewCache
+}
+
+func NewHandler(d Deps) *Handler {
+	return &Handler{
+		ai:       d.AI,
+		cfg:      d.Config,
+		nodes:    d.Nodes,
+		ns:       d.NodeState,
+		settings: d.Settings,
+		chats:    d.Chats,
+		home:     d.Home,
+		asus:     d.Asus,
+		lan:      d.LAN,
+		dns:      d.DNS,
+		auth:     d.Auth,
+		tokens:   d.Tokens,
+		version:  d.Version,
+		started:  time.Now(),
+		sysHist:  newSysHistory(60),
 	}
-	h.startScheduler()
-	return h
 }
 
 type chatReq struct {
@@ -69,40 +89,71 @@ type errorResp struct {
 	Error string `json:"error"`
 }
 
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func isAdmin(r *http.Request) bool {
+	u, ok := auth.FromContext(r.Context())
+	return ok && u.Role == auth.RoleAdmin
+}
+
 // POST /api/chat
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, errorResp{Error: "method not allowed"})
-		return
-	}
-
 	var req chatReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid json"})
 		return
 	}
-
 	if len(req.Messages) == 0 {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "messages required"})
 		return
 	}
-
-	requestID := uuid.New().String()
-	resp, err := h.router.Chat(r.Context(), requestID, req.Messages)
+	resp, err := h.ai.Chat(r.Context(), uuid.New().String(), req.Messages)
 	if err != nil {
 		logger.Error("chat error: " + err.Error())
 		writeJSON(w, http.StatusInternalServerError, errorResp{Error: "ai request failed"})
 		return
 	}
-
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// GET /api/homekit
+// POST /api/chat/stream
+func (h *Handler) ChatStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, errorResp{Error: "streaming not supported"})
+		return
+	}
+	var req chatReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid json"})
+		return
+	}
+	if len(req.Messages) == 0 {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "messages required"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	enc := json.NewEncoder(w)
+	opts := ai.ChatStreamOpts{Route: req.Route, Temperature: req.Temperature}
+	h.ai.ChatStream(r.Context(), uuid.New().String(), req.Messages, opts, func(event ai.StreamEvent) {
+		_ = enc.Encode(event)
+		flusher.Flush()
+	})
+}
+
+// GET /api/homekit — the pairing code is admin-only.
 func (h *Handler) HomeKit(w http.ResponseWriter, r *http.Request) {
-	nodes := h.nodes.All()
 	var accessories []map[string]any
-	for _, n := range nodes {
+	for _, n := range h.nodes.All() {
 		if n.MAC == "" {
 			continue
 		}
@@ -113,39 +164,38 @@ func (h *Handler) HomeKit(w http.ResponseWriter, r *http.Request) {
 			"host": n.Host,
 		})
 	}
-	pin := h.cfg.HomeKitPIN
-	displayPin := pin
-	if len(pin) == 8 {
-		displayPin = pin[:3] + "-" + pin[3:5] + "-" + pin[5:]
+	pin, setupURI := "", ""
+	if isAdmin(r) {
+		pin = h.cfg.HomeKitPIN
+		if len(pin) == 8 {
+			pin = pin[:3] + "-" + pin[3:5] + "-" + pin[5:]
+		}
+		setupURI = homekit.SetupURI(h.cfg.HomeKitPIN)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"bridge":      "Home Server",
-		"pin":         displayPin,
+		"pin":         pin,
 		"port":        51826,
-		"setup_uri":   homekit.SetupURI(h.cfg.HomeKitPIN),
+		"setup_uri":   setupURI,
 		"accessories": accessories,
 	})
 }
 
 // GET /api/health
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
-	status := h.router.Status(r.Context())
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":   "ok",
-		"backends": status,
+		"backends": h.ai.Status(r.Context()),
 	})
 }
 
 // GET /api/logs?n=50
 func (h *Handler) Logs(w http.ResponseWriter, r *http.Request) {
 	n := 50
-	if q := r.URL.Query().Get("n"); q != "" {
-		if parsed, err := strconv.Atoi(q); err == nil && parsed > 0 && parsed <= 1000 {
-			n = parsed
-		}
+	if parsed, err := strconv.Atoi(r.URL.Query().Get("n")); err == nil && parsed > 0 && parsed <= 1000 {
+		n = parsed
 	}
-	entries := logger.Recent(n)
-	writeJSON(w, http.StatusOK, entries)
+	writeJSON(w, http.StatusOK, logger.Recent(n))
 }
 
 // GET /api/nodes
@@ -164,7 +214,7 @@ func (h *Handler) AddNode(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "name, host, and tier are required"})
 		return
 	}
-	if node.Tier != config.TierHighEnd && node.Tier != config.TierLowEnd {
+	if !validTier(node.Tier) {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "tier must be 'high-end' or 'low-end'"})
 		return
 	}
@@ -179,20 +229,20 @@ func (h *Handler) AddNode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, node)
 }
 
-// PUT /api/nodes/{id}
+// PUT /api/nodes/{id} — fields missing from the body keep their stored value.
 func (h *Handler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if id == "" {
-		writeJSON(w, http.StatusBadRequest, errorResp{Error: "node id required"})
+	node, ok := h.nodes.Get(id)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, errorResp{Error: "node not found"})
 		return
 	}
-	var node config.Node
 	if err := json.NewDecoder(r.Body).Decode(&node); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid json"})
 		return
 	}
 	node.ID = id
-	if node.Tier != "" && node.Tier != config.TierHighEnd && node.Tier != config.TierLowEnd {
+	if !validTier(node.Tier) {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "tier must be 'high-end' or 'low-end'"})
 		return
 	}
@@ -204,13 +254,13 @@ func (h *Handler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, node)
 }
 
+func validTier(t config.Tier) bool {
+	return t == config.TierHighEnd || t == config.TierLowEnd
+}
+
 // DELETE /api/nodes/{id}
 func (h *Handler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if id == "" {
-		writeJSON(w, http.StatusBadRequest, errorResp{Error: "node id required"})
-		return
-	}
 	if err := h.nodes.Delete(id); err != nil {
 		writeJSON(w, http.StatusNotFound, errorResp{Error: "node not found"})
 		return
@@ -221,12 +271,7 @@ func (h *Handler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/nodes/{id}/wake
 func (h *Handler) WakeNode(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if id == "" {
-		writeJSON(w, http.StatusBadRequest, errorResp{Error: "node id required"})
-		return
-	}
-	node, ok := h.nodes.Get(id)
+	node, ok := h.nodes.Get(r.PathValue("id"))
 	if !ok {
 		writeJSON(w, http.StatusNotFound, errorResp{Error: "node not found"})
 		return
@@ -244,47 +289,26 @@ func (h *Handler) WakeNode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "sent", "node": node.Name, "mac": node.MAC})
 }
 
-// POST /api/chat/stream
-func (h *Handler) ChatStream(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
+// POST /api/nodes/{id}/shutdown — queues a shutdown for the node's agent,
+// which picks it up on its next heartbeat.
+func (h *Handler) ShutdownNode(w http.ResponseWriter, r *http.Request) {
+	node, ok := h.nodes.Get(r.PathValue("id"))
 	if !ok {
-		writeJSON(w, http.StatusInternalServerError, errorResp{Error: "streaming not supported"})
+		writeJSON(w, http.StatusNotFound, errorResp{Error: "node not found"})
 		return
 	}
-
-	var req chatReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid json"})
+	if !h.ns.IsOnline(node.ID) {
+		writeJSON(w, http.StatusConflict, errorResp{Error: "node agent is offline"})
 		return
 	}
-	if len(req.Messages) == 0 {
-		writeJSON(w, http.StatusBadRequest, errorResp{Error: "messages required"})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/x-ndjson")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-
-	requestID := uuid.New().String()
-
-	opts := ai.ChatStreamOpts{Route: req.Route, Temperature: req.Temperature}
-	h.router.ChatStream(r.Context(), requestID, req.Messages, opts, func(event ai.StreamEvent) {
-		json.NewEncoder(w).Encode(event)
-		flusher.Flush()
-	})
+	h.ns.Enqueue(node.ID, "shutdown")
+	logger.Info("shutdown queued for " + node.Name)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "queued", "node": node.Name})
 }
 
 // GET /api/nodes/{id}/models
 func (h *Handler) ListNodeModels(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if id == "" {
-		writeJSON(w, http.StatusBadRequest, errorResp{Error: "node id required"})
-		return
-	}
-	models, err := h.router.ListNodeModels(r.Context(), id)
+	models, err := h.ai.ListNodeModels(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: err.Error()})
 		return
@@ -292,38 +316,30 @@ func (h *Handler) ListNodeModels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"models": models})
 }
 
-// GET /api/nodes/{id}/models/status — returns every model on the node along
-// with whether it is currently loaded. Used by the dashboard to show a model
-// picker + Load button per node.
+// GET /api/nodes/{id}/models/status — every model on the node and whether it
+// is currently loaded.
 func (h *Handler) NodeModelsStatus(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if id == "" {
-		writeJSON(w, http.StatusBadRequest, errorResp{Error: "node id required"})
-		return
-	}
-	models, err := h.router.ListAllNodeModels(r.Context(), id)
+	models, err := h.ai.ListAllNodeModels(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"models": models})
+}
+
+type modelReq struct {
+	Model string `json:"model"`
 }
 
 // POST /api/nodes/{id}/models/load
 func (h *Handler) LoadNodeModel(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if id == "" {
-		writeJSON(w, http.StatusBadRequest, errorResp{Error: "node id required"})
-		return
-	}
-	var req struct {
-		Model string `json:"model"`
-	}
+	var req modelReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Model == "" {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "model name required"})
 		return
 	}
-	if err := h.router.LoadNodeModel(r.Context(), id, req.Model); err != nil {
+	if err := h.ai.LoadNodeModel(r.Context(), id, req.Model); err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: err.Error()})
 		return
 	}
@@ -334,18 +350,12 @@ func (h *Handler) LoadNodeModel(w http.ResponseWriter, r *http.Request) {
 // POST /api/nodes/{id}/models/unload
 func (h *Handler) UnloadNodeModel(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if id == "" {
-		writeJSON(w, http.StatusBadRequest, errorResp{Error: "node id required"})
-		return
-	}
-	var req struct {
-		Model string `json:"model"`
-	}
+	var req modelReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Model == "" {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "model name required"})
 		return
 	}
-	if err := h.router.UnloadNodeModel(r.Context(), id, req.Model); err != nil {
+	if err := h.ai.UnloadNodeModel(r.Context(), id, req.Model); err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, errorResp{Error: err.Error()})
 		return
 	}
@@ -360,7 +370,7 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 		homekitPin = homekitPin[:3] + "···" + homekitPin[len(homekitPin)-2:]
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"router_model":   h.cfg.RouterModel,
+		"router_model":   h.ai.ClassifierModel(),
 		"ollama_host":    h.cfg.OllamaHost,
 		"version":        h.version,
 		"started_at":     h.started.Format(time.RFC3339),
@@ -373,7 +383,7 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// PUT /api/config
+// PUT /api/config — changes the classifier model (persisted in settings).
 func (h *Handler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		RouterModel string `json:"router_model"`
@@ -383,12 +393,13 @@ func (h *Handler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.RouterModel != "" {
-		h.cfg.RouterModel = req.RouterModel
+		if err := h.settings.Update(assistant.Settings{RouterModel: req.RouterModel}); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResp{Error: err.Error()})
+			return
+		}
 		logger.Info("router model changed to: " + req.RouterModel)
 	}
-	writeJSON(w, http.StatusOK, map[string]string{
-		"router_model": h.cfg.RouterModel,
-	})
+	writeJSON(w, http.StatusOK, map[string]string{"router_model": h.ai.ClassifierModel()})
 }
 
 // GET /api/settings — return user-editable runtime settings
@@ -399,7 +410,7 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 // PUT /api/settings — update settings (partial)
 func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	var req assistant.Settings
-	if err := json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid json"})
 		return
 	}
@@ -419,13 +430,7 @@ func (h *Handler) ResetSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.settings.Get())
 }
 
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(v)
-}
-
-// POST /api/agent/heartbeat
+// POST /api/agent/heartbeat — unauthenticated by design (LAN agents).
 func (h *Handler) AgentHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var stats nodestate.Stats
 	if err := json.NewDecoder(r.Body).Decode(&stats); err != nil {
@@ -436,23 +441,14 @@ func (h *Handler) AgentHeartbeat(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "node_id required"})
 		return
 	}
-
-	// Try to match the agent's source IP to a configured node.
-	// This ensures commands (shutdown etc.) route correctly.
-	remoteIP := r.RemoteAddr
-	if idx := strings.LastIndex(remoteIP, ":"); idx != -1 {
-		remoteIP = remoteIP[:idx]
+	// Map the agent to its configured node by source IP so queued commands
+	// (shutdown) reach the right machine.
+	if ip, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		if node, ok := h.nodes.ByHost(ip); ok {
+			stats.NodeID = node.ID
+		}
 	}
-	remoteIP = strings.Trim(remoteIP, "[]") // strip IPv6 brackets
-
-	if node, ok := h.nodes.ByHost(remoteIP); ok {
-		stats.NodeID = node.ID // use config node ID
-	}
-
-	cmds := h.ns.Update(stats)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"commands": cmds,
-	})
+	writeJSON(w, http.StatusOK, map[string]any{"commands": h.ns.Update(stats)})
 }
 
 // GET /api/nodes/stats

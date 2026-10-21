@@ -190,19 +190,6 @@ func executeCommand(cmd string) {
 				log.Printf("shutdown failed: %v — %s", err, string(out))
 			}
 		}
-	case "restart":
-		log.Println("received restart command, restarting in 5 seconds...")
-		if runtime.GOOS == "windows" {
-			out, err := exec.Command("shutdown", "/r", "/t", "5").CombinedOutput()
-			if err != nil {
-				log.Printf("restart failed: %v — %s", err, string(out))
-			}
-		} else {
-			out, err := exec.Command("sudo", "reboot").CombinedOutput()
-			if err != nil {
-				log.Printf("restart failed: %v — %s", err, string(out))
-			}
-		}
 	default:
 		log.Printf("unknown command: %s", cmd)
 	}

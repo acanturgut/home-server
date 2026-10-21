@@ -21,46 +21,61 @@ export const API_BASE: string = (() => {
 })();
 
 /** Build a full URL from an API path (e.g. `/api/foo`). */
-export const apiUrl = (path: string): string => `${API_BASE}${path}`;
+const apiUrl = (path: string): string => `${API_BASE}${path}`;
+
+/** Event name dispatched on `window` whenever the API responds 401. */
+export const AUTH_UNAUTHORIZED_EVENT = 'auth:unauthorized';
 
 /**
- * Thin `fetch` wrapper that prepends `API_BASE` and sets a JSON
- * `Content-Type` when a body is provided. Returns the raw `Response`
- * so streaming consumers can read the body. Does NOT throw on non-2xx.
+ * Thin `fetch` wrapper that prepends `API_BASE`, sends the session cookie and
+ * sets a JSON `Content-Type` when a body is provided. Returns the raw
+ * `Response` so streaming consumers can read the body. Does NOT throw on
+ * non-2xx, but every 401 still fires `AUTH_UNAUTHORIZED_EVENT`.
  */
-export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+export async function apiFetch(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
   const headers: Record<string, string> = {
     ...(init?.body && !(init.body instanceof FormData)
       ? { 'Content-Type': 'application/json' }
       : {}),
     ...((init?.headers as Record<string, string>) || {}),
   };
-  return fetch(apiUrl(path), { ...init, headers, credentials: 'include' });
+  const r = await fetch(apiUrl(path), {
+    ...init,
+    headers,
+    credentials: 'include',
+  });
+  if (r.status === 401) {
+    window.dispatchEvent(new CustomEvent(AUTH_UNAUTHORIZED_EVENT));
+  }
+  return r;
 }
 
-/** Event name dispatched on `window` whenever the API responds 401. */
-export const AUTH_UNAUTHORIZED_EVENT = 'auth:unauthorized';
-
-/** Same as `apiFetch` but parses JSON. Throws on non-2xx. */
+/**
+ * Same as `apiFetch` but parses JSON (`undefined` for an empty body, e.g.
+ * 204). Throws on non-2xx with the server's `{ error }` message, its
+ * plain-text body, or the status.
+ */
 export async function apiJson<T = unknown>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
   const r = await apiFetch(path, init);
-  if (r.status === 401) {
-    window.dispatchEvent(new CustomEvent(AUTH_UNAUTHORIZED_EVENT));
-  }
   if (!r.ok) {
-    let msg = `HTTP ${r.status}`;
+    const body = await r.text().catch(() => '');
+    let msg = body.trim() || `HTTP ${r.status}`;
     try {
-      const data = await r.json();
+      const data = JSON.parse(body);
       if (data?.error) msg = data.error;
     } catch {
-      /* ignore */
+      /* plain-text error body */
     }
     throw new Error(msg);
   }
-  return r.json() as Promise<T>;
+  const text = await r.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 /** Same as `apiJson` but never throws — returns `null` on any failure. */

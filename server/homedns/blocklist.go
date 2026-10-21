@@ -2,17 +2,20 @@ package homedns
 
 import (
 	"bufio"
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/acanturgut/home-server/jsonfile"
+	"github.com/acanturgut/home-server/logger"
 )
 
 // BlocklistSource is one upstream hosts-format URL feeding the ad-blocker.
@@ -67,8 +70,7 @@ var DefaultAllowlist = []string{
 	"gstatic.com",
 }
 
-// DefaultBlocklistSources is the seed list applied when no sources are
-// configured. Conservative pick of well-maintained lists.
+// DefaultBlocklistSources is the seed list for a fresh install.
 var DefaultBlocklistSources = []BlocklistSource{
 	{
 		Name:    "StevenBlack unified",
@@ -81,7 +83,6 @@ func newBlocklist(sourcesPath, cachePath string) *blocklist {
 	bl := &blocklist{
 		path:      sourcesPath,
 		cachePath: cachePath,
-		enabled:   true,
 		blocked:   map[string]struct{}{},
 		allowlist: map[string]struct{}{},
 	}
@@ -92,28 +93,25 @@ func newBlocklist(sourcesPath, cachePath string) *blocklist {
 // isBlocked reports whether name (FQDN with or without trailing dot) matches
 // the merged set, walking parent suffixes. Allowlisted suffixes always win.
 func (b *blocklist) isBlocked(name string) bool {
-	if !b.enabled {
-		return false
-	}
 	n := strings.TrimSuffix(strings.ToLower(name), ".")
 	if n == "" {
 		return false
 	}
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	// Allowlist takes precedence: walk parent suffixes too.
-	for cur := n; cur != ""; {
-		if _, ok := b.allowlist[cur]; ok {
-			return false
-		}
-		i := strings.IndexByte(cur, '.')
-		if i < 0 {
-			break
-		}
-		cur = cur[i+1:]
+	if !b.enabled {
+		return false
 	}
+	if matchSuffix(b.allowlist, n) {
+		return false
+	}
+	return matchSuffix(b.blocked, n)
+}
+
+// matchSuffix reports whether n or any parent domain of n is in set.
+func matchSuffix(set map[string]struct{}, n string) bool {
 	for {
-		if _, ok := b.blocked[n]; ok {
+		if _, ok := set[n]; ok {
 			return true
 		}
 		i := strings.IndexByte(n, '.')
@@ -121,9 +119,6 @@ func (b *blocklist) isBlocked(name string) bool {
 			return false
 		}
 		n = n[i+1:]
-		if n == "" {
-			return false
-		}
 	}
 }
 
@@ -131,11 +126,6 @@ func (b *blocklist) isBlocked(name string) bool {
 func (b *blocklist) status() BlocklistStatus {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	allow := make([]string, 0, len(b.allowlist))
-	for d := range b.allowlist {
-		allow = append(allow, d)
-	}
-	sort.Strings(allow)
 	return BlocklistStatus{
 		Enabled:       b.enabled,
 		BlockedCount:  len(b.blocked),
@@ -143,99 +133,100 @@ func (b *blocklist) status() BlocklistStatus {
 		LastRefreshed: b.lastRefresh,
 		Sources:       append([]BlocklistSource(nil), b.sources...),
 		Refreshing:    b.refreshing.Load(),
-		Allowlist:     allow,
+		Allowlist:     b.allowlistLocked(),
 	}
+}
+
+func (b *blocklist) allowlistLocked() []string {
+	allow := make([]string, 0, len(b.allowlist))
+	for d := range b.allowlist {
+		allow = append(allow, d)
+	}
+	sort.Strings(allow)
+	return allow
+}
+
+func normaliseDomain(domain string) string {
+	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(domain), "."))
 }
 
 func (b *blocklist) addAllow(domain string) error {
-	d := strings.ToLower(strings.TrimSpace(strings.TrimSuffix(domain, ".")))
-	if d == "" || !strings.ContainsRune(d, '.') {
+	d := normaliseDomain(domain)
+	if !strings.ContainsRune(d, '.') {
 		return errors.New("invalid domain")
 	}
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.allowlist[d] = struct{}{}
-	b.mu.Unlock()
-	return b.saveSources()
+	return b.saveSourcesLocked()
 }
 
 func (b *blocklist) removeAllow(domain string) error {
-	d := strings.ToLower(strings.TrimSpace(strings.TrimSuffix(domain, ".")))
+	d := normaliseDomain(domain)
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	if _, ok := b.allowlist[d]; !ok {
-		b.mu.Unlock()
 		return errors.New("not allowlisted")
 	}
 	delete(b.allowlist, d)
-	b.mu.Unlock()
-	return b.saveSources()
+	return b.saveSourcesLocked()
 }
 
 func (b *blocklist) setEnabled(v bool) error {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.enabled = v
-	b.mu.Unlock()
-	return b.saveSources()
+	return b.saveSourcesLocked()
 }
 
-func (b *blocklist) addSource(name, url string) error {
-	url = strings.TrimSpace(url)
-	if url == "" {
-		return errors.New("url required")
+func (b *blocklist) addSource(name, rawURL string) error {
+	rawURL = strings.TrimSpace(rawURL)
+	if u, err := url.Parse(rawURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return errors.New("url must be an http(s) URL")
 	}
 	if name == "" {
-		name = url
+		name = rawURL
 	}
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	for _, s := range b.sources {
-		if s.URL == url {
-			b.mu.Unlock()
+		if s.URL == rawURL {
 			return errors.New("source already exists")
 		}
 	}
-	b.sources = append(b.sources, BlocklistSource{Name: name, URL: url, Enabled: true})
-	b.mu.Unlock()
-	return b.saveSources()
+	b.sources = append(b.sources, BlocklistSource{Name: name, URL: rawURL, Enabled: true})
+	return b.saveSourcesLocked()
 }
 
-func (b *blocklist) removeSource(url string) error {
+func (b *blocklist) removeSource(rawURL string) error {
 	b.mu.Lock()
-	out := b.sources[:0]
-	found := false
-	for _, s := range b.sources {
-		if s.URL == url {
-			found = true
-			continue
+	defer b.mu.Unlock()
+	for i, s := range b.sources {
+		if s.URL == rawURL {
+			b.sources = append(b.sources[:i:i], b.sources[i+1:]...)
+			return b.saveSourcesLocked()
 		}
-		out = append(out, s)
 	}
-	b.sources = out
-	b.mu.Unlock()
-	if !found {
-		return errors.New("source not found")
-	}
-	return b.saveSources()
+	return errors.New("source not found")
 }
 
-func (b *blocklist) toggleSource(url string, enabled bool) error {
+func (b *blocklist) toggleSource(rawURL string, enabled bool) error {
 	b.mu.Lock()
-	found := false
+	defer b.mu.Unlock()
 	for i := range b.sources {
-		if b.sources[i].URL == url {
+		if b.sources[i].URL == rawURL {
 			b.sources[i].Enabled = enabled
-			found = true
-			break
+			return b.saveSourcesLocked()
 		}
 	}
-	b.mu.Unlock()
-	if !found {
-		return errors.New("source not found")
-	}
-	return b.saveSources()
+	return errors.New("source not found")
 }
 
-// refresh pulls every enabled source and rebuilds the merged set.
-// Safe to call concurrently; only one refresh runs at a time.
-func (b *blocklist) refresh(ctx context) {
+// refresh downloads every enabled source and rebuilds the merged set. If any
+// download fails, the previous set stays active (stale beats empty when the
+// network is down at boot); the errors show on the sources. Only one refresh
+// runs at a time.
+func (b *blocklist) refresh(ctx context.Context) {
 	if !b.refreshing.CompareAndSwap(false, true) {
 		return
 	}
@@ -247,40 +238,54 @@ func (b *blocklist) refresh(ctx context) {
 
 	merged := map[string]struct{}{}
 	client := &http.Client{Timeout: 30 * time.Second}
-
-	for i := range sources {
-		s := &sources[i]
+	failed := false
+	results := map[string]BlocklistSource{} // by URL
+	for _, s := range sources {
 		if !s.Enabled {
-			s.Entries = 0
-			s.LastError = ""
 			continue
 		}
-		if ctx.cancelled() {
+		count, err := fetchAndParse(ctx, client, s.URL, merged)
+		if ctx.Err() != nil {
 			return
 		}
-		count, err := fetchAndParse(client, s.URL, merged)
-		s.LastUpdated = time.Now()
-		s.Entries = count
+		s.LastUpdated, s.Entries, s.LastError = time.Now(), count, ""
 		if err != nil {
-			s.LastError = err.Error()
-		} else {
-			s.LastError = ""
+			failed = true
+			s.Entries, s.LastError = 0, err.Error()
 		}
+		results[s.URL] = s
 	}
 
 	b.mu.Lock()
-	b.sources = sources
+	defer b.mu.Unlock()
+	// Merge metadata into the current list so edits made during the download
+	// aren't lost.
+	for i := range b.sources {
+		if r, ok := results[b.sources[i].URL]; ok {
+			b.sources[i].LastUpdated, b.sources[i].Entries, b.sources[i].LastError = r.LastUpdated, r.Entries, r.LastError
+		}
+	}
+	if err := b.saveSourcesLocked(); err != nil {
+		logger.Error("blocklist: " + err.Error())
+	}
+	if failed {
+		return
+	}
 	b.blocked = merged
 	b.lastRefresh = time.Now()
-	b.mu.Unlock()
-	_ = b.saveSources()
-	_ = b.saveCache()
+	domains := make([]string, 0, len(merged))
+	for d := range merged {
+		domains = append(domains, d)
+	}
+	if err := jsonfile.Save(b.cachePath, domains); err != nil {
+		logger.Error("blocklist cache: " + err.Error())
+	}
 }
 
 // fetchAndParse downloads one hosts-format file and merges its domains into
 // `into`. Returns the number of unique domains contributed by this source.
-func fetchAndParse(client *http.Client, url string, into map[string]struct{}) (int, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func fetchAndParse(ctx context.Context, client *http.Client, rawURL string, into map[string]struct{}) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -317,37 +322,20 @@ func parseHostsLine(line string) (string, bool) {
 	if i := strings.IndexByte(line, '#'); i >= 0 {
 		line = line[:i]
 	}
-	line = strings.TrimSpace(line)
-	if line == "" {
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
 		return "", false
 	}
-	fields := strings.Fields(line)
-	var domain string
-	switch len(fields) {
-	case 1:
-		domain = fields[0]
-	case 2:
-		// "0.0.0.0 ads.example.com" or "127.0.0.1 ads.example.com"
-		domain = fields[1]
-	default:
-		domain = fields[len(fields)-1]
-	}
-	domain = strings.ToLower(strings.TrimSuffix(domain, "."))
+	domain := strings.ToLower(strings.TrimSuffix(fields[len(fields)-1], "."))
 	// Skip loopback / localhost / broadcast entries some lists ship with.
 	switch domain {
-	case "", "localhost", "localhost.localdomain", "local",
+	case "localhost", "localhost.localdomain", "local",
 		"broadcasthost", "ip6-localhost", "ip6-loopback",
 		"ip6-localnet", "ip6-mcastprefix", "ip6-allnodes",
 		"ip6-allrouters", "ip6-allhosts", "0.0.0.0":
 		return "", false
 	}
-	// Reject anything with whitespace or invalid chars.
-	for _, c := range domain {
-		if c == ' ' || c == '\t' || c == '/' || c == '\\' {
-			return "", false
-		}
-	}
-	if !strings.ContainsRune(domain, '.') {
+	if strings.ContainsAny(domain, "/\\") || !strings.ContainsRune(domain, '.') {
 		return "", false
 	}
 	return domain, true
@@ -356,92 +344,49 @@ func parseHostsLine(line string) (string, bool) {
 // ── Persistence ────────────────────────────────────────────────────────
 
 type blocklistFile struct {
-	Enabled   bool              `json:"enabled"`
-	Sources   []BlocklistSource `json:"sources"`
-	Allowlist []string          `json:"allowlist,omitempty"`
+	Enabled bool              `json:"enabled"`
+	Sources []BlocklistSource `json:"sources"`
+	// Allowlist is nil in files written before the allowlist existed.
+	Allowlist []string `json:"allowlist"`
 }
 
+// load reads the sources file, seeding defaults only on a fresh install (or
+// the allowlist for a file that predates it), then the cached merged set.
 func (b *blocklist) load() {
-	loaded := false
-	if data, err := os.ReadFile(b.path); err == nil {
-		var f blocklistFile
-		if json.Unmarshal(data, &f) == nil {
-			loaded = true
-			b.enabled = f.Enabled
-			b.sources = f.Sources
-			for _, d := range f.Allowlist {
-				b.allowlist[strings.ToLower(strings.TrimSuffix(strings.TrimSpace(d), "."))] = struct{}{}
-			}
+	var f *blocklistFile
+	if err := jsonfile.Load(b.path, &f); err != nil {
+		logger.Error("blocklist: " + err.Error())
+	}
+	seeded := f == nil || f.Allowlist == nil
+	if f == nil {
+		f = &blocklistFile{Enabled: true, Sources: append([]BlocklistSource(nil), DefaultBlocklistSources...)}
+	}
+	if f.Allowlist == nil {
+		f.Allowlist = DefaultAllowlist
+	}
+	b.enabled, b.sources = f.Enabled, f.Sources
+	for _, d := range f.Allowlist {
+		b.allowlist[normaliseDomain(d)] = struct{}{}
+	}
+	if seeded {
+		if err := b.saveSourcesLocked(); err != nil {
+			logger.Error("blocklist: " + err.Error())
 		}
 	}
-	if len(b.sources) == 0 {
-		// First-run defaults.
-		b.enabled = true
-		b.sources = append([]BlocklistSource(nil), DefaultBlocklistSources...)
+
+	var domains []string
+	if err := jsonfile.Load(b.cachePath, &domains); err != nil {
+		logger.Error("blocklist cache: " + err.Error())
 	}
-	// Seed default allowlist on first run, OR top up an older file that
-	// pre-dates the allowlist feature.
-	if !loaded || len(b.allowlist) == 0 {
-		for _, d := range DefaultAllowlist {
-			b.allowlist[d] = struct{}{}
-		}
-	}
-	_ = b.saveSources()
-	if data, err := os.ReadFile(b.cachePath); err == nil {
-		var domains []string
-		if json.Unmarshal(data, &domains) == nil {
-			set := make(map[string]struct{}, len(domains))
-			for _, d := range domains {
-				set[d] = struct{}{}
-			}
-			b.blocked = set
-		}
+	for _, d := range domains {
+		b.blocked[d] = struct{}{}
 	}
 }
 
-func (b *blocklist) saveSources() error {
-	b.mu.RLock()
-	allow := make([]string, 0, len(b.allowlist))
-	for d := range b.allowlist {
-		allow = append(allow, d)
-	}
-	sort.Strings(allow)
-	f := blocklistFile{
+func (b *blocklist) saveSourcesLocked() error {
+	return jsonfile.Save(b.path, blocklistFile{
 		Enabled:   b.enabled,
-		Sources:   append([]BlocklistSource(nil), b.sources...),
-		Allowlist: allow,
-	}
-	b.mu.RUnlock()
-	data, err := json.MarshalIndent(f, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(b.path, data, 0644)
-}
-
-func (b *blocklist) saveCache() error {
-	b.mu.RLock()
-	domains := make([]string, 0, len(b.blocked))
-	for d := range b.blocked {
-		domains = append(domains, d)
-	}
-	b.mu.RUnlock()
-	data, err := json.Marshal(domains)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(b.cachePath, data, 0644)
-}
-
-// context is a minimal cancellation token to avoid pulling context.Context
-// into the hot path; refresh goroutines are short-lived anyway.
-type context struct{ cancel <-chan struct{} }
-
-func (c context) cancelled() bool {
-	select {
-	case <-c.cancel:
-		return true
-	default:
-		return false
-	}
+		Sources:   b.sources,
+		Allowlist: b.allowlistLocked(),
+	})
 }

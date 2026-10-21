@@ -1,37 +1,32 @@
 import { Section } from '@/components/ui/section';
-import { TokenUsage } from '@/features/dashboard/components/TokenUsage';
+import { DashboardDataProvider } from '@/features/dashboard/components/DashboardDataProvider';
 import { ErrorsPanel } from '@/features/dashboard/components/ErrorsPanel';
 import { LatencyTimeline } from '@/features/dashboard/components/LatencyTimeline';
 import { ModelLeaderboard } from '@/features/dashboard/components/ModelLeaderboard';
-import { DashboardDataProvider } from '@/features/dashboard/components/DashboardDataProvider';
+import { TokenUsage } from '@/features/dashboard/components/TokenUsage';
 
-/**
- * AI activity page. Two stacked sections: throughput (tokens + errors) and
- * performance (latency + model leaderboard). All grids collapse to a single
- * column on mobile.
- */
+/** AI activity from the recent server logs: throughput, errors, latency, models. */
 export function AIPage() {
   return (
-    <DashboardDataProvider>
+    <DashboardDataProvider logs>
       <div className="space-y-6">
         <Section
           title="Throughput"
-          description="Tokens, requests, and errors over the last hour.">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          description="Tokens, requests and errors in the recent logs."
+        >
+          <div className="grid gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2">
               <TokenUsage />
             </div>
             <ErrorsPanel />
           </div>
         </Section>
-
         <Section
           title="Performance"
-          description="Latency timeline and the most-used models.">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2">
-              <LatencyTimeline />
-            </div>
+          description="Latency over time and the most-used models."
+        >
+          <div className="space-y-4">
+            <LatencyTimeline />
             <ModelLeaderboard />
           </div>
         </Section>

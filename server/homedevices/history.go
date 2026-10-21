@@ -2,6 +2,7 @@ package homedevices
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/acanturgut/home-server/jsonfile"
 )
 
 // SensorSample is one point of sensor history.
@@ -38,6 +41,7 @@ type SensorSample struct {
 //     `retention` (default 30 days).
 type HistoryStore struct {
 	dir         string
+	fileMu      sync.Mutex // serializes appends with Compact's rewrites
 	mu          sync.RWMutex
 	mem         map[string][]SensorSample // deviceID → recent samples
 	lastWrite   map[string]time.Time
@@ -100,8 +104,10 @@ func (h *HistoryStore) Record(d Device, now time.Time) bool {
 	h.lastWrite[d.ID] = now
 	h.mu.Unlock()
 
-	// File append outside the lock — slow disk shouldn't block other devices.
+	// File append outside mu — slow disk shouldn't block queries.
+	h.fileMu.Lock()
 	_ = h.appendToFile(d.ID, sample)
+	h.fileMu.Unlock()
 	return true
 }
 
@@ -138,28 +144,34 @@ func (h *HistoryStore) Compact() {
 		return
 	}
 	for _, ent := range entries {
-		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".jsonl") {
-			continue
+		if !ent.IsDir() && strings.HasSuffix(ent.Name(), ".jsonl") {
+			h.compactFile(filepath.Join(h.dir, ent.Name()), cutoff)
 		}
-		id := strings.TrimSuffix(ent.Name(), ".jsonl")
-		// Decode safeID back is not critical — we just operate on the file.
-		path := filepath.Join(h.dir, ent.Name())
-		samples, err := readAllFile(path)
-		if err != nil {
-			continue
-		}
-		kept := samples[:0]
-		for _, s := range samples {
-			if s.T.After(cutoff) {
-				kept = append(kept, s)
-			}
-		}
-		if len(kept) == len(samples) {
-			continue // nothing to drop
-		}
-		_ = atomicRewrite(path, kept)
-		_ = id
 	}
+}
+
+func (h *HistoryStore) compactFile(path string, cutoff time.Time) {
+	h.fileMu.Lock()
+	defer h.fileMu.Unlock()
+	samples, err := readAllFile(path)
+	if err != nil {
+		return
+	}
+	kept := samples[:0]
+	for _, s := range samples {
+		if s.T.After(cutoff) {
+			kept = append(kept, s)
+		}
+	}
+	if len(kept) == len(samples) {
+		return
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	for _, s := range kept {
+		_ = enc.Encode(s)
+	}
+	_ = jsonfile.Write(path, buf.Bytes())
 }
 
 // ---- internal -----------------------------------------------------------
@@ -214,25 +226,6 @@ func readAllFile(path string) ([]SensorSample, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].T.Before(out[j].T) })
 	return out, nil
-}
-
-func atomicRewrite(path string, samples []SensorSample) error {
-	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
-	if err != nil {
-		return err
-	}
-	enc := json.NewEncoder(f)
-	for _, s := range samples {
-		if err := enc.Encode(s); err != nil {
-			f.Close()
-			return err
-		}
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
 }
 
 func filterSince(samples []SensorSample, since time.Time) []SensorSample {

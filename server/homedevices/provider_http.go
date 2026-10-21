@@ -35,17 +35,7 @@ func (p *HTTPProvider) Discover(ctx context.Context, b Bridge) ([]Device, error)
 	reachable := true
 	var on *bool
 	if statusURL := b.Config["status_url"]; statusURL != "" {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, statusURL, nil)
-		resp, err := p.client.Do(req)
-		if err != nil {
-			reachable = false
-		} else {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			s := strings.ToLower(strings.TrimSpace(string(body)))
-			v := s == "on" || s == "true" || s == "1" || strings.Contains(s, "\"on\":true")
-			on = &v
-		}
+		on, reachable = p.status(ctx, statusURL)
 	}
 	dev := Device{
 		ID:         b.ID + ":1",
@@ -59,6 +49,24 @@ func (p *HTTPProvider) Discover(ctx context.Context, b Bridge) ([]Device, error)
 		Updated:    time.Now(),
 	}
 	return []Device{dev}, nil
+}
+
+// status reads status_url: a body of on/true/1 (or JSON with "on":true)
+// means on.
+func (p *HTTPProvider) status(ctx context.Context, statusURL string) (on *bool, reachable bool) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, statusURL, nil)
+	if err != nil {
+		return nil, false
+	}
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, false
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	s := strings.ToLower(strings.TrimSpace(string(body)))
+	v := s == "on" || s == "true" || s == "1" || strings.Contains(s, `"on":true`)
+	return &v, true
 }
 
 func (p *HTTPProvider) Apply(ctx context.Context, b Bridge, localID string, a Action) error {
@@ -86,7 +94,10 @@ func (p *HTTPProvider) Apply(ctx context.Context, b Bridge, localID string, a Ac
 	if url == "" {
 		return fmt.Errorf("http: %s_url not configured", a.Action)
 	}
-	req, _ := http.NewRequestWithContext(ctx, method, url, nil)
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
+	if err != nil {
+		return err
+	}
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return err

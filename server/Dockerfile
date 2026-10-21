@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.7
-FROM golang:1.25-alpine AS builder
+FROM golang:1.27-alpine AS builder
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /home-server .
 
-FROM alpine:3.19
+FROM alpine:3.24
 
 # Layer 1: system packages. ca-certificates for outbound HTTPS (weather,
 # web search, router/bridge APIs); tzdata so Go's time.LoadLocation resolves
