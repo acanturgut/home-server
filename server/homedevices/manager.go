@@ -101,12 +101,17 @@ func (m *Manager) PollOnce(ctx context.Context) {
 			cctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 			defer cancel()
 			devs, err := prov.Discover(cctx, b)
+			// Log state changes only: a flaky hub would otherwise log an
+			// error every poll. The bridge status shows the current state.
 			if err != nil {
-				m.store.SetBridgeStatus(b.ID, "error", err.Error())
-				logger.Error(fmt.Sprintf("homedevices: %s (%s) discover failed: %v", b.Name, b.Kind, err))
+				if m.store.SetBridgeStatus(b.ID, "error", err.Error()) != "error" {
+					logger.Error(fmt.Sprintf("homedevices: %s (%s) discover failed: %v", b.Name, b.Kind, err))
+				}
 				return
 			}
-			m.store.SetBridgeStatus(b.ID, "ok", "")
+			if m.store.SetBridgeStatus(b.ID, "ok", "") == "error" {
+				logger.Info(fmt.Sprintf("homedevices: %s (%s) reachable again", b.Name, b.Kind))
+			}
 			m.store.ReplaceDevices(b.ID, devs)
 		}()
 	}

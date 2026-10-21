@@ -8,9 +8,20 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
+
+// noURL drops the request URL from a transport error. Hue puts the app key
+// in the URL path, so it must never reach the logs or the UI.
+func noURL(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return fmt.Errorf("hue: %s request failed: %w", ue.Op, ue.Err)
+	}
+	return err
+}
 
 // HueProvider talks to the Philips Hue Bridge v1 REST API (plain HTTP on the
 // LAN). Bridge.Host is the bridge IP and Bridge.Token the application key
@@ -77,7 +88,7 @@ func (p *HueProvider) Discover(ctx context.Context, b Bridge) ([]Device, error) 
 	}
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, noURL(err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
@@ -164,7 +175,7 @@ func (p *HueProvider) Apply(ctx context.Context, b Bridge, localID string, a Act
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return err
+		return noURL(err)
 	}
 	defer resp.Body.Close()
 	rb, _ := io.ReadAll(resp.Body)

@@ -109,17 +109,20 @@ func (s *Store) DeleteBridge(id string) error {
 	return fmt.Errorf("bridge %s not found", id)
 }
 
-// SetBridgeStatus updates runtime status fields without persisting.
-func (s *Store) SetBridgeStatus(id, status, errMsg string) {
+// SetBridgeStatus updates runtime status fields without persisting and
+// returns the previous status, so callers can act on transitions atomically.
+func (s *Store) SetBridgeStatus(id, status, errMsg string) (prev string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, b := range s.bridges {
 		if b.ID == id {
+			prev = b.Status
 			s.bridges[i].Status = status
 			s.bridges[i].Error = errMsg
-			return
+			return prev
 		}
 	}
+	return ""
 }
 
 // ReplaceDevices swaps in the latest snapshot for one bridge.

@@ -4,55 +4,96 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useDashboardData } from '@/features/dashboard/hooks/useDashboardData';
-import { LogLine } from '@/features/logs';
-import { plural } from '@/lib/format';
+import { formatTime, plural } from '@/lib/format';
+import { cn } from '@/lib/utils';
 
-const RECENT_MS = 5 * 60_000;
-const isProblem = (level: string) => level === 'ERROR' || level === 'WARN';
+const WINDOW_MS = 60 * 60_000;
+const MAX_GROUPS = 5;
 
-/** Error / warning counts and the latest few problem entries from the shared logs. */
+interface ProblemGroup {
+  message: string;
+  level: string;
+  count: number;
+  last: string;
+}
+
+/** Errors and warnings from the last hour, identical messages grouped. */
 export function ErrorsPanel() {
   const { logs, lastTick } = useDashboardData();
 
-  const stats = useMemo(() => {
+  const { errors, warnings, groups } = useMemo(() => {
     // "Now" is when the logs were fetched, keeping this memo pure.
-    const problems = logs.filter((l) => isProblem(l.level));
-    const errors = problems.filter((l) => l.level === 'ERROR').length;
-    const recent = problems.filter(
-      (l) => lastTick - Date.parse(l.timestamp) < RECENT_MS,
-    ).length;
-    const latest = [...problems]
-      .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
-      .slice(0, 6);
+    const recent = logs.filter(
+      (l) =>
+        (l.level === 'ERROR' || l.level === 'WARN') &&
+        lastTick - Date.parse(l.timestamp) < WINDOW_MS,
+    );
+    const byMessage = new Map<string, ProblemGroup>();
+    for (const l of recent) {
+      const g = byMessage.get(l.message);
+      if (!g) {
+        byMessage.set(l.message, {
+          message: l.message,
+          level: l.level,
+          count: 1,
+          last: l.timestamp,
+        });
+      } else {
+        g.count++;
+        if (l.timestamp > g.last) g.last = l.timestamp;
+      }
+    }
+    const errorCount = recent.filter((l) => l.level === 'ERROR').length;
     return {
-      errors,
-      warnings: problems.length - errors,
-      recent,
-      errorRate: logs.length ? (errors / logs.length) * 100 : 0,
-      latest,
+      errors: errorCount,
+      warnings: recent.length - errorCount,
+      groups: [...byMessage.values()]
+        .sort((a, b) => b.last.localeCompare(a.last))
+        .slice(0, MAX_GROUPS),
     };
   }, [logs, lastTick]);
 
   return (
-    <Card className="space-y-3">
+    <Card className="space-y-4">
       <CardHeader
         title="Errors and warnings"
-        description={`${stats.recent} in the last 5 min · ${stats.errorRate.toFixed(1)}% error rate`}
+        description="Last hour"
+        actions={
+          groups.length > 0 && (
+            <div className="flex gap-1.5">
+              {errors > 0 && (
+                <Badge tone="destructive">{plural(errors, 'error')}</Badge>
+              )}
+              {warnings > 0 && (
+                <Badge tone="warning">{plural(warnings, 'warning')}</Badge>
+              )}
+            </div>
+          )
+        }
       />
-      <div className="flex gap-2">
-        <Badge tone="destructive">{plural(stats.errors, 'error')}</Badge>
-        <Badge tone="warning">{plural(stats.warnings, 'warning')}</Badge>
-      </div>
-      {stats.latest.length === 0 ? (
+      {groups.length === 0 ? (
         <EmptyState
           icon={<CircleCheck />}
           title="All clear"
-          description="No errors or warnings in the recent logs."
+          description="No errors or warnings in the last hour."
         />
       ) : (
-        <ul>
-          {stats.latest.map((entry, i) => (
-            <LogLine key={`${entry.timestamp}-${i}`} entry={entry} />
+        <ul className="space-y-1">
+          {groups.map((g) => (
+            <li key={g.message} className="rounded-md bg-muted/50 px-3 py-2">
+              <p className="text-sm break-words">{g.message}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                <span
+                  className={cn(
+                    'font-medium',
+                    g.level === 'ERROR' ? 'text-destructive' : 'text-warning',
+                  )}
+                >
+                  {g.level === 'ERROR' ? 'Error' : 'Warning'}
+                </span>
+                {g.count > 1 && ` · ${g.count}×`} · last at {formatTime(g.last)}
+              </p>
+            </li>
           ))}
         </ul>
       )}
