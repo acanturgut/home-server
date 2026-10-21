@@ -45,7 +45,7 @@ export function EditBridgeDialog({
       description={kind.label}
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" form={formId} loading={save.busy}>

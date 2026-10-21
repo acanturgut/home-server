@@ -21,7 +21,7 @@ export function CodeBlock({
     setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <div className="flex items-start rounded-md border bg-muted/40">
+    <div className="flex items-start rounded-md bg-muted">
       <pre
         className={cn(
           'min-w-0 flex-1 overflow-auto p-3 font-mono text-xs leading-relaxed text-foreground',

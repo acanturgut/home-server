@@ -47,7 +47,7 @@ export function NodesTab() {
           <RefreshButton onClick={n.reload} busy={n.loading} />
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             onClick={n.openAdd}
             disabled={adding}
           >
@@ -71,7 +71,6 @@ export function NodesTab() {
         : n.nodes.length === 0
           ? !adding && (
               <EmptyState
-                dashed
                 icon={<Server />}
                 title="No nodes yet"
                 description="Add an inference worker so chat requests can run on it."
@@ -127,7 +126,7 @@ export function NodesTab() {
                       />
                     </div>
                   </div>
-                  {open && <div className="border-t pt-4">{editor(row)}</div>}
+                  {open && <div className="pt-4">{editor(row)}</div>}
                 </Card>
               );
             })}

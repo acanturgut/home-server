@@ -30,7 +30,7 @@ export function SegmentedControl<T extends string>({
       }}
       aria-label={ariaLabel}
       className={cn(
-        'inline-flex items-center gap-0.5 rounded-md border p-0.5',
+        'inline-flex items-center gap-0.5 rounded-md bg-muted p-0.5',
         className,
       )}
     >
@@ -39,7 +39,7 @@ export function SegmentedControl<T extends string>({
           key={o.value}
           value={o.value}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-sm text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 data-pressed:bg-muted data-pressed:text-foreground [&_svg]:size-3.5 [&_svg]:shrink-0',
+            'inline-flex items-center gap-1.5 rounded-sm text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 data-pressed:bg-foreground/10 data-pressed:text-foreground [&_svg]:size-3.5 [&_svg]:shrink-0',
             size === 'sm' ? 'h-6 px-2 text-xs' : 'h-7 px-2.5 text-sm',
           )}
         >

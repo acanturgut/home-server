@@ -102,15 +102,17 @@ export function BlocklistCard() {
         <h4 className="text-sm font-medium">Sources</h4>
         {status.sources.length === 0 ? (
           <EmptyState
-            dashed
             title="No sources yet"
             description="Add a hosts-format list URL below."
             className="py-6"
           />
         ) : (
-          <ul className="divide-y rounded-md border">
+          <ul className="space-y-1">
             {status.sources.map((src) => (
-              <li key={src.url} className="flex items-center gap-3 px-3 py-2">
+              <li
+                key={src.url}
+                className="flex items-center gap-3 rounded-md bg-muted/50 px-3 py-2"
+              >
                 <Switch
                   aria-label={`Use ${src.name}`}
                   checked={src.enabled}
@@ -171,7 +173,7 @@ export function BlocklistCard() {
         </form>
       </section>
 
-      <section className="space-y-3 border-t pt-4">
+      <section className="space-y-3 pt-4">
         <div>
           <h4 className="text-sm font-medium">Allowlist</h4>
           <p className="text-xs text-muted-foreground">
@@ -179,9 +181,12 @@ export function BlocklistCard() {
           </p>
         </div>
         {allowlist.length > 0 && (
-          <ul className="divide-y rounded-md border">
+          <ul className="space-y-1">
             {allowlist.map((d) => (
-              <li key={d} className="flex items-center gap-3 px-3 py-1.5">
+              <li
+                key={d}
+                className="flex items-center gap-3 rounded-md bg-muted/50 px-3 py-1.5"
+              >
                 <span className="min-w-0 flex-1 truncate font-mono text-sm">
                   {d}
                 </span>
@@ -214,7 +219,7 @@ export function BlocklistCard() {
           </Field>
           <Button
             type="submit"
-            variant="outline"
+            variant="secondary"
             disabled={act.busy || !allowDomain.trim()}
           >
             Allow

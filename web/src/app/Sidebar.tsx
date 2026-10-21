@@ -71,7 +71,7 @@ export function MobileNav({ page, onNavigate }: SidebarProps) {
   return (
     <nav
       aria-label="Primary"
-      className="flex shrink-0 items-stretch border-t pb-[env(safe-area-inset-bottom)] sm:hidden"
+      className="flex shrink-0 items-stretch bg-card pb-[env(safe-area-inset-bottom)] sm:hidden"
     >
       {primary.map((n) => (
         <Button

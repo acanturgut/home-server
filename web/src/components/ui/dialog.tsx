@@ -35,7 +35,7 @@ export function Dialog({
         <DialogPrimitive.Backdrop className={BACKDROP_CLASS} />
         <DialogPrimitive.Popup
           className={cn(
-            'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto rounded-lg border bg-popover p-5 text-popover-foreground outline-none transition-opacity duration-150 data-starting-style:opacity-0 data-ending-style:opacity-0',
+            'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto rounded-xl bg-popover shadow-float p-5 text-popover-foreground outline-none transition-opacity duration-150 data-starting-style:opacity-0 data-ending-style:opacity-0',
             className,
           )}
         >

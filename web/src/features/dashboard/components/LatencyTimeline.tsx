@@ -1,12 +1,5 @@
 import { useMemo } from 'react';
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card, CardHeader } from '@/components/ui/card';
 import {
   ChartContainer,
@@ -73,7 +66,6 @@ export function LatencyTimeline() {
             data={series}
             margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
           >
-            <CartesianGrid vertical={false} stroke="var(--border)" />
             <XAxis
               dataKey="t"
               tickLine={false}
@@ -86,7 +78,7 @@ export function LatencyTimeline() {
               tickFormatter={(v: number) => (v > 0 ? formatLatency(v) : '0')}
             />
             <Tooltip
-              cursor={{ stroke: 'var(--border)' }}
+              cursor={{ stroke: 'var(--muted)' }}
               content={
                 <ChartTooltipContent config={cfg} formatValue={formatLatency} />
               }

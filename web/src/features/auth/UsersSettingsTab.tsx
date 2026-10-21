@@ -83,13 +83,13 @@ function UserAdminCard() {
         {!users ? (
           !loadError && <SkeletonRows rows={3} block />
         ) : (
-          <ul className="divide-y rounded-md border">
+          <ul className="space-y-1">
             {users.map((u) => {
               const self = u.id === me?.id;
               return (
                 <li
                   key={u.id}
-                  className="flex items-center gap-2 py-1.5 pr-1.5 pl-3"
+                  className="flex items-center gap-2 rounded-md bg-muted/50 py-1.5 pr-1.5 pl-3"
                 >
                   <span className="min-w-0 flex-1 truncate font-medium">
                     {u.username}
@@ -157,7 +157,7 @@ function MyAccountCard() {
         icon={<UserCog />}
         description={`Signed in as ${me?.username} (${me?.role})`}
         actions={
-          <Button variant="outline" size="sm" onClick={() => void logout()}>
+          <Button variant="secondary" size="sm" onClick={() => void logout()}>
             <LogOut />
             Sign out
           </Button>
@@ -212,7 +212,7 @@ function AddUserForm({ onAdded }: { onAdded: () => Promise<unknown> }) {
   };
 
   return (
-    <form onSubmit={submit} className="space-y-3 border-t pt-3">
+    <form onSubmit={submit} className="space-y-3 pt-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <Field label="Username" className="flex-1">
           <Input

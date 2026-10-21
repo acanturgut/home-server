@@ -1,28 +1,17 @@
 import { useEffect, useRef } from 'react';
-import { Bot } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Spinner } from '@/components/ui/spinner';
 import { ChatMarkdown } from '@/features/chat/components/ChatMarkdown';
 import type { ChatMsg } from '@/features/chat/types';
 import { cn } from '@/lib/utils';
 
-const SUGGESTIONS = [
-  'Summarize today’s news',
-  'Help me draft a quick email',
-  'Explain this code I’ll paste',
-  'Brainstorm 5 ideas for…',
-];
-
 /** Scrolling transcript; sticks to the bottom as messages and steps arrive. */
 export function MessageList({
   messages,
   thinking,
-  onSuggestion,
 }: {
   messages: ChatMsg[];
   thinking: string | null;
-  onSuggestion: (text: string) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -38,23 +27,9 @@ export function MessageList({
       <div className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-6">
         {messages.length === 0 ? (
           <EmptyState
-            icon={<Bot />}
-            title="What can I help with?"
-            description="Pick a model above or just start typing."
-            action={
-              <div className="grid max-w-md gap-2 sm:grid-cols-2">
-                {SUGGESTIONS.map((s) => (
-                  <Button
-                    key={s}
-                    variant="outline"
-                    className="h-auto justify-start py-2 text-left whitespace-normal"
-                    onClick={() => onSuggestion(s)}
-                  >
-                    {s}
-                  </Button>
-                ))}
-              </div>
-            }
+            title="Ask anything, or control your home"
+            description="Try “turn off the living room lights” or “is the bedroom warm enough?”"
+            className="py-24"
           />
         ) : (
           messages.map((m) => <Bubble key={m.id} msg={m} />)
@@ -84,8 +59,8 @@ function Bubble({ msg }: { msg: ChatMsg }) {
           isUser
             ? 'bg-primary whitespace-pre-wrap text-primary-foreground'
             : msg.error
-              ? 'border border-destructive/30 bg-destructive/10 text-destructive'
-              : 'border bg-card',
+              ? 'bg-destructive/10 text-destructive'
+              : 'bg-card',
         )}
       >
         <span className="sr-only">{isUser ? 'You: ' : 'Assistant: '}</span>

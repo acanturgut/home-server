@@ -4,15 +4,22 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply outline-ring/50;
   }
   html {
     @apply font-sans;
     color-scheme: dark;
   }
-  /* Content reads at 14px; text-xs is for meta only. */
+  /* Content reads at 14px; text-xs is for meta only. Figures line up in
+     tables and live stats. */
   body {
-    @apply bg-background text-foreground text-sm;
+    @apply bg-background text-foreground text-sm antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
   }
 }
 
@@ -30,8 +37,6 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
   --color-ring: var(--ring);
   --color-success: var(--success);
   --color-warning: var(--warning);
@@ -42,31 +47,36 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  /* One radius scale: md for controls, lg for cards and dialogs.
-     ponytail: xl aliases lg until feature code drops rounded-xl. */
-  --radius-sm: 0.25rem;
-  --radius-md: 0.375rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.5rem;
+  /* Radius: tighter inside, softer outside. md for controls, lg for cards,
+     xl for floating layers. */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
 }
 
-/* Single dark theme (index.html hard-codes it; nothing toggles themes). */
+/* No borders anywhere: surfaces separate by tone and spacing. Only layers
+   that float over content (dialogs, menus, toasts) get this shadow. */
+@theme {
+  --shadow-float: 0 24px 48px -16px oklch(0.05 0.01 70 / 70%);
+}
+
+/* Single dark theme (index.html hard-codes it; nothing toggles themes).
+   Warm-tinted neutrals in three tonal steps: page → card → control/hover. */
 :root {
-  --background: oklch(0.18 0 0);
-  --foreground: oklch(0.95 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.95 0 0);
-  --popover: oklch(0.22 0 0);
-  --popover-foreground: oklch(0.95 0 0);
-  --primary: oklch(0.95 0 0);
-  --primary-foreground: oklch(0.2 0 0);
-  --secondary: oklch(0.26 0 0);
-  --secondary-foreground: oklch(0.95 0 0);
-  --muted: oklch(0.26 0 0);
-  --muted-foreground: oklch(0.7 0 0);
-  --border: oklch(1 0 0 / 9%);
-  --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.6 0 0);
+  --background: oklch(0.165 0.004 70);
+  --foreground: oklch(0.95 0.004 70);
+  --card: oklch(0.205 0.004 70);
+  --card-foreground: oklch(0.95 0.004 70);
+  --popover: oklch(0.235 0.005 70);
+  --popover-foreground: oklch(0.95 0.004 70);
+  --primary: oklch(0.95 0.004 70);
+  --primary-foreground: oklch(0.2 0.004 70);
+  --secondary: oklch(0.255 0.005 70);
+  --secondary-foreground: oklch(0.95 0.004 70);
+  --muted: oklch(0.255 0.005 70);
+  --muted-foreground: oklch(0.69 0.008 70);
+  --ring: oklch(0.68 0.01 70);
   /* Semantic state colours: text-safe (>= 6:1 on background). */
   --success: oklch(0.74 0.15 150);
   --warning: oklch(0.82 0.15 80);
@@ -83,10 +93,7 @@
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-*:hover {
-  scrollbar-color: var(--input) transparent;
+  scrollbar-color: var(--muted) transparent;
 }
 ::-webkit-scrollbar {
   width: 6px;
@@ -97,9 +104,6 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--muted);
   border-radius: var(--radius-sm);
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--input);
 }

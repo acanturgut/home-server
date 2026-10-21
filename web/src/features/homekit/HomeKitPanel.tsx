@@ -111,9 +111,12 @@ export function HomeKitPanel() {
           title="Accessories"
           description={plural(accessories.length, 'accessory', 'accessories')}
         >
-          <Card className="divide-y p-0">
+          <Card className="space-y-0.5 p-2">
             {accessories.map((acc) => (
-              <div key={acc.id} className="flex items-center gap-3 px-4 py-3">
+              <div
+                key={acc.id}
+                className="flex items-center gap-3 rounded-md px-3 py-2.5"
+              >
                 <Monitor
                   aria-hidden
                   className="size-4 shrink-0 text-muted-foreground"
@@ -125,7 +128,7 @@ export function HomeKitPanel() {
                   </p>
                 </div>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   loading={waking === acc.id}
                   onClick={() => wake(acc.id, acc.name)}
@@ -145,7 +148,7 @@ export function HomeKitPanel() {
           description="Windows agent that reports stats and accepts commands"
           actions={
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               nativeButton={false}
               render={<a href="/home-agent.exe" download />}
@@ -197,7 +200,7 @@ export function HomeKitPanel() {
           {logs.length === 0 ? (
             <EmptyState title="No HomeKit logs" className="py-6" />
           ) : (
-            <ul className="divide-y">
+            <ul>
               {logs.map((l, i) => (
                 <LogLine key={i} entry={l} />
               ))}

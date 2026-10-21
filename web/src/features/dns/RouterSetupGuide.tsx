@@ -40,14 +40,14 @@ export function RouterSetupGuide({
         }
       >
         <div className="space-y-4 pt-2">
-          <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+          <div className="flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2">
             <StatTile
               label="This host's LAN IP"
               value={lanIp || 'Detecting…'}
               mono
             />
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               disabled={!lanIp}
               onClick={copyIp}

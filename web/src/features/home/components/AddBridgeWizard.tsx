@@ -85,7 +85,7 @@ export function AddBridgeWizard({
         </Button>
         {info && kind && (
           <>
-            <Button variant="outline" className="ml-auto" onClick={back}>
+            <Button variant="secondary" className="ml-auto" onClick={back}>
               <ChevronLeft />
               Back
             </Button>

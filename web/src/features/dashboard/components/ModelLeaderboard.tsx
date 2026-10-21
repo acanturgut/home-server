@@ -128,7 +128,7 @@ export function ModelLeaderboard() {
                 <th className={cn(NUM, 'font-medium')}>Total</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="[&>tr:nth-child(odd)]:bg-muted/30">
               {rows.map((r) => (
                 <tr key={r.name}>
                   <td className="max-w-48 px-2 py-1.5">

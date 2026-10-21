@@ -31,7 +31,7 @@ export function Menu({
           align={align}
           className="z-50 outline-none"
         >
-          <MenuPrimitive.Popup className="min-w-40 rounded-lg border bg-popover p-1 text-popover-foreground outline-none transition-opacity duration-100 data-starting-style:opacity-0 data-ending-style:opacity-0">
+          <MenuPrimitive.Popup className="min-w-40 rounded-lg bg-popover p-1 shadow-float text-popover-foreground outline-none transition-opacity duration-100 data-starting-style:opacity-0 data-ending-style:opacity-0">
             {items.map((item) => (
               <MenuPrimitive.Item
                 key={item.label}

@@ -4,14 +4,14 @@ import { cn } from '@/lib/utils';
 
 const TONE = {
   error: {
-    className: 'border-destructive/30 bg-destructive/10 text-destructive',
+    className: 'bg-destructive/10 text-destructive',
     icon: <CircleAlert />,
   },
   success: {
-    className: 'border-success/30 bg-success/10 text-success',
+    className: 'bg-success/10 text-success',
     icon: <CircleCheck />,
   },
-  info: { className: 'bg-muted/40 text-foreground', icon: <Info /> },
+  info: { className: 'bg-muted text-foreground', icon: <Info /> },
 } as const;
 
 /** Inline message box. Errors are announced immediately (role="alert"). */
@@ -31,7 +31,7 @@ export function Alert({
     <div
       role={tone === 'error' ? 'alert' : 'status'}
       className={cn(
-        'flex items-start gap-2 rounded-md border px-3 py-2 text-sm [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0',
+        'flex items-start gap-2 rounded-md px-3 py-2 text-sm [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0',
         t.className,
         className,
       )}

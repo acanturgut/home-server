@@ -116,14 +116,14 @@ export function HomeDevicesPanel() {
         lights.length > 0 && (
           <div className="flex gap-2">
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={() => void control(lights, { action: 'on' })}
             >
               Lights on
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={() => void control(lights, { action: 'off' })}
             >
@@ -137,7 +137,6 @@ export function HomeDevicesPanel() {
         <SkeletonRows rows={4} block />
       ) : snap.bridges.length === 0 ? (
         <EmptyState
-          dashed
           icon={<Home />}
           title="No smart home bridges yet"
           description={
@@ -167,7 +166,6 @@ export function HomeDevicesPanel() {
           )}
           {rooms.length === 0 && view.sensors.length === 0 && (
             <EmptyState
-              dashed
               title={
                 view.hiddenView
                   ? 'Nothing hidden'

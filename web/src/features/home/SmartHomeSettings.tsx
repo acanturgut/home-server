@@ -122,7 +122,7 @@ function BridgesSection() {
       {!snap ? (
         <SkeletonRows rows={2} block />
       ) : snap.bridges.length > 0 ? (
-        <Card className="divide-y p-0">
+        <Card className="space-y-0.5 p-2">
           {snap.bridges.map((b) => (
             <BridgeRow
               key={b.id}
@@ -136,7 +136,6 @@ function BridgesSection() {
       ) : (
         !adding && (
           <EmptyState
-            dashed
             title="No bridges yet"
             description={
               isAdmin

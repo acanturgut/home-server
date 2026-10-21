@@ -21,7 +21,7 @@ function ToastList() {
     <Toast.Root
       key={t.id}
       toast={t}
-      className="flex items-start gap-2.5 rounded-lg border bg-popover p-3 text-sm text-popover-foreground transition-opacity duration-150 data-starting-style:opacity-0 data-ending-style:opacity-0 [&_svg]:size-4 [&_svg]:shrink-0"
+      className="flex items-start gap-2.5 rounded-lg bg-popover p-3 shadow-float text-sm text-popover-foreground transition-opacity duration-150 data-starting-style:opacity-0 data-ending-style:opacity-0 [&_svg]:size-4 [&_svg]:shrink-0"
     >
       {t.type === 'error' && (
         <CircleAlert aria-hidden className="mt-0.5 text-destructive" />

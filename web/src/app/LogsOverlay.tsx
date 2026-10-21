@@ -20,7 +20,7 @@ export function LogsOverlay({
       inert={!open}
       className={cn(
         'shrink-0 overflow-hidden bg-card transition-[height]',
-        open ? 'h-72 border-t' : 'h-0',
+        open ? 'h-72' : 'h-0',
       )}
     >
       <div className="flex items-center justify-between pt-2 pr-3 pl-5">

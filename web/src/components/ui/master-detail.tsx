@@ -1,7 +1,6 @@
 import { useState, type DragEvent, type ReactNode } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { useIsMobile } from '@/lib/routing';
 import { cn } from '@/lib/utils';
 
@@ -49,7 +48,7 @@ export function MasterDetail({
   const isMobile = useIsMobile();
   const current = activeId ?? defaultId;
   return (
-    <div className="flex max-w-6xl flex-col gap-6 lg:flex-row lg:gap-8">
+    <div className="flex flex-col gap-6 lg:flex-row lg:gap-10">
       {(!isMobile || !activeId) && (
         <nav
           aria-label={backLabel}
@@ -58,11 +57,11 @@ export function MasterDetail({
           {groups
             .filter((g) => g.items.length > 0)
             .map((g) => (
-              <div key={g.label} className="space-y-1.5">
-                <h3 className="px-1 text-xs font-medium text-muted-foreground">
+              <div key={g.label} className="space-y-1">
+                <h3 className="px-3 text-xs font-medium text-muted-foreground">
                   {g.label}
                 </h3>
-                <Card className="divide-y overflow-hidden p-0">
+                <div className="space-y-0.5">
                   {g.items.map((item) => (
                     <NavRow
                       key={item.id}
@@ -71,7 +70,7 @@ export function MasterDetail({
                       onSelect={() => onSelect(item.id)}
                     />
                   ))}
-                </Card>
+                </div>
               </div>
             ))}
         </nav>
@@ -92,7 +91,7 @@ export function MasterDetail({
                   {backLabel}
                 </Button>
               )}
-              <h2 className="truncate text-lg font-medium text-foreground">
+              <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">
                 {title}
               </h2>
               {description && (
@@ -143,8 +142,8 @@ function NavRow({
           : undefined
       }
       className={cn(
-        'flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors outline-none focus-visible:bg-muted',
-        active || dropHover ? 'bg-muted' : 'hover:bg-muted/50',
+        'flex w-full items-start gap-2 rounded-md px-3 py-2 text-left transition-colors outline-none focus-visible:bg-card',
+        active || dropHover ? 'bg-muted' : 'hover:bg-card',
       )}
     >
       <div className="min-w-0 flex-1">

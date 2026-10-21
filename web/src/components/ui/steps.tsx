@@ -12,7 +12,7 @@ export function Steps({
         <li key={i} className="flex gap-3 text-sm">
           <span
             aria-hidden
-            className="flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-medium text-muted-foreground tabular-nums"
+            className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground tabular-nums"
           >
             {i + 1}
           </span>

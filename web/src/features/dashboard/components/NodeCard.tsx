@@ -123,7 +123,7 @@ export function OnlineNodeCard({
         )}
       </div>
 
-      <div className="border-t pt-3">
+      <div className="pt-1">
         <ModelPicker nodeId={id} />
       </div>
     </Card>

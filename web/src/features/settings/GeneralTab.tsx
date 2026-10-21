@@ -196,7 +196,7 @@ function RouterModelForm({
     void save.run(value.trim());
   };
   return (
-    <form onSubmit={submit} className="space-y-2 border-t pt-3">
+    <form onSubmit={submit} className="space-y-2 pt-2">
       <div className="flex items-end gap-2">
         <Field label="Router model" className="flex-1">
           <Input

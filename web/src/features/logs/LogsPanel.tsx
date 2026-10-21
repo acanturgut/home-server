@@ -68,7 +68,7 @@ export function LogsPanel() {
             className="py-6"
           />
         ) : (
-          <ul className="divide-y">
+          <ul>
             {filtered.map((l, i) => (
               <LogLine key={i} entry={l} />
             ))}

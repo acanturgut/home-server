@@ -50,7 +50,7 @@ export function ErrorsPanel() {
           description="No errors or warnings in the recent logs."
         />
       ) : (
-        <ul className="-mx-4 divide-y border-t">
+        <ul>
           {stats.latest.map((entry, i) => (
             <LogLine key={`${entry.timestamp}-${i}`} entry={entry} />
           ))}

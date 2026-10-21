@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
  * phones so iOS doesn't zoom on focus, 14px from `sm` up.
  */
 export const CONTROL_CLASS =
-  'w-full min-w-0 rounded-md border border-input bg-transparent text-base sm:text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive';
+  'w-full min-w-0 rounded-md bg-muted text-base sm:text-sm transition-shadow outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-2 aria-invalid:ring-destructive/60';
 
 function Input({
   className,

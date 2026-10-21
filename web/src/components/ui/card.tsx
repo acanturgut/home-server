@@ -4,7 +4,7 @@ import { useRender } from '@base-ui/react/use-render';
 import { cn } from '@/lib/utils';
 
 /**
- * Flat surface: border + card background, 16px padding, no shadow. Use
+ * Raised tonal surface (no border, no shadow), 20px padding. Use
  * `render={<button type="button" />}` (with `interactive`) for a clickable
  * card, and `p-0` for edge-to-edge lists.
  */
@@ -20,9 +20,9 @@ export function Card({
     props: mergeProps<'div'>(
       {
         className: cn(
-          'rounded-lg border bg-card p-4 text-card-foreground',
+          'rounded-lg bg-card p-5 text-card-foreground',
           interactive &&
-            'w-full text-left transition-colors outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/60',
+            'w-full text-left transition-colors outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/60',
           className,
         ),
       },

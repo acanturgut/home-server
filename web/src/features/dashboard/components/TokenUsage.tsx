@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card, CardHeader } from '@/components/ui/card';
 import {
   ChartContainer,
@@ -82,7 +82,6 @@ export function TokenUsage() {
             data={stats.perMinute}
             margin={{ top: 4, right: 4, bottom: 0, left: -16 }}
           >
-            <CartesianGrid vertical={false} stroke="var(--border)" />
             <XAxis
               dataKey="t"
               tickLine={false}

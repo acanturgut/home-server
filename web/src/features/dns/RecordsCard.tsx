@@ -81,17 +81,16 @@ export function RecordsCard({
 
       {sorted.length === 0 ? (
         <EmptyState
-          dashed
           title="No records yet"
           description="Add one below."
           className="py-6"
         />
       ) : (
-        <ul className="divide-y rounded-md border">
+        <ul className="space-y-1">
           {sorted.map((r) => (
             <li
               key={`${r.type}|${r.name}|${r.value}`}
-              className="flex items-center gap-3 px-3 py-2 text-sm"
+              className="flex items-center gap-3 rounded-md bg-muted/50 px-3 py-2 text-sm"
             >
               <Badge mono className="w-14 justify-center">
                 {r.type}

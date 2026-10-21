@@ -69,13 +69,13 @@ export function ChatPanel() {
   return (
     <div className="flex h-full">
       {!isMobile && (
-        <aside className="w-60 shrink-0 overflow-y-auto border-r p-2">
+        <aside className="w-60 shrink-0 overflow-y-auto p-2">
           {sessionList}
         </aside>
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center gap-2 border-b px-3 py-2 sm:px-4">
+        <header className="flex shrink-0 items-center gap-2 px-3 py-2 sm:px-4">
           {isMobile && (
             <IconButton
               icon={<PanelLeft />}
@@ -98,14 +98,7 @@ export function ChatPanel() {
           />
         </header>
 
-        <MessageList
-          messages={active?.messages ?? []}
-          thinking={thinking}
-          onSuggestion={(text) => {
-            setInput(text);
-            inputRef.current?.focus();
-          }}
-        />
+        <MessageList messages={active?.messages ?? []} thinking={thinking} />
 
         <Composer
           ref={inputRef}

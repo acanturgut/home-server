@@ -1,11 +1,4 @@
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts';
 import { Activity } from 'lucide-react';
 import type { HistoryRange } from '@/features/home/api';
 import type { ConditionsView } from '@/features/home/conditions';
@@ -71,7 +64,6 @@ export function ConditionsChart({
         data={view.rows}
         margin={{ top: 4, right: 16, bottom: 0, left: -12 }}
       >
-        <CartesianGrid vertical={false} stroke="var(--border)" />
         <XAxis
           dataKey="ts"
           type="number"
@@ -90,7 +82,7 @@ export function ConditionsChart({
           width={44}
         />
         <Tooltip
-          cursor={{ stroke: 'var(--border)' }}
+          cursor={{ stroke: 'var(--muted)' }}
           labelFormatter={(t) => new Date(Number(t)).toLocaleString()}
           content={
             <ChartTooltipContent

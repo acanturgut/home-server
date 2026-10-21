@@ -130,7 +130,7 @@ export function StatusBar({
   }, 5000);
 
   return (
-    <footer className="flex h-9 shrink-0 items-center gap-4 overflow-x-auto border-t pr-3 pl-5 text-xs text-muted-foreground">
+    <footer className="flex h-9 shrink-0 items-center gap-4 overflow-x-auto pr-3 pl-5 text-xs text-muted-foreground">
       {sys ? (
         <>
           <span className="flex items-center gap-2 text-foreground">

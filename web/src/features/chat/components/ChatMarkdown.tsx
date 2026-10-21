@@ -42,7 +42,7 @@ export function ChatMarkdown({ text }: { text: string }) {
             <h3 className="mt-2 mb-1 font-medium">{children}</h3>
           ),
           blockquote: ({ children }) => (
-            <blockquote className="my-1.5 border-l-2 pl-3 text-muted-foreground">
+            <blockquote className="my-1.5 rounded-md bg-muted/50 px-3 py-2 text-muted-foreground">
               {children}
             </blockquote>
           ),
@@ -59,22 +59,22 @@ export function ChatMarkdown({ text }: { text: string }) {
             </code>
           ),
           pre: ({ children }) => (
-            <pre className="my-2 max-w-full overflow-auto rounded-md border bg-muted/40 p-2.5 text-xs leading-snug">
+            <pre className="my-2 max-w-full overflow-auto rounded-md bg-muted p-2.5 text-xs leading-snug">
               {children}
             </pre>
           ),
           table: ({ children }) => (
             <div className="my-2 overflow-auto">
-              <table className="w-full border-collapse">{children}</table>
+              <table className="w-full">{children}</table>
             </div>
           ),
           th: ({ children }) => (
-            <th className="border bg-muted/40 px-2 py-1 text-left font-medium">
+            <th className="bg-muted px-2 py-1 text-left font-medium">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="border px-2 py-1 align-top">{children}</td>
+            <td className="px-2 py-1 align-top">{children}</td>
           ),
           hr: () => <hr className="my-2" />,
         }}

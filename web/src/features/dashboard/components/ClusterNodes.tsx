@@ -32,13 +32,12 @@ export function ClusterNodes() {
   if (ids.length === 0) {
     return ready ? (
       <EmptyState
-        dashed
         icon={<Server />}
         title="No cluster nodes"
         description="Add an inference worker in Settings."
         action={
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             onClick={() => gotoPage('settings', { tab: 'nodes' })}
           >

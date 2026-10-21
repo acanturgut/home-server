@@ -38,7 +38,7 @@ export function Composer({
         e.preventDefault();
         onSend();
       }}
-      className="shrink-0 border-t bg-background pb-[env(safe-area-inset-bottom)]"
+      className="shrink-0 bg-background pb-[env(safe-area-inset-bottom)]"
     >
       <div className="mx-auto flex max-w-3xl items-end gap-2 px-3 py-2 sm:px-6">
         <Textarea

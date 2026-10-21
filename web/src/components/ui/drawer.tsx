@@ -30,10 +30,10 @@ export function Drawer({
         <DialogPrimitive.Backdrop className={BACKDROP_CLASS} />
         <DialogPrimitive.Popup
           className={cn(
-            'fixed z-50 flex flex-col bg-popover text-popover-foreground outline-none transition-transform duration-200',
+            'fixed z-50 flex flex-col bg-popover text-popover-foreground shadow-float outline-none transition-transform duration-200',
             side === 'bottom'
-              ? 'inset-x-0 bottom-0 max-h-[85dvh] rounded-t-lg border-t pb-[env(safe-area-inset-bottom)] data-starting-style:translate-y-full data-ending-style:translate-y-full'
-              : 'inset-y-0 left-0 w-[min(20rem,85vw)] border-r data-starting-style:-translate-x-full data-ending-style:-translate-x-full',
+              ? 'inset-x-0 bottom-0 max-h-[85dvh] rounded-t-xl pb-[env(safe-area-inset-bottom)] data-starting-style:translate-y-full data-ending-style:translate-y-full'
+              : 'inset-y-0 left-0 w-[min(20rem,85vw)] data-starting-style:-translate-x-full data-ending-style:-translate-x-full',
           )}
         >
           <div className="flex shrink-0 items-center justify-between gap-3 px-4 pt-3 pb-2">

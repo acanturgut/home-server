@@ -166,9 +166,12 @@ function LoadedModels({
     <div className="space-y-2">
       <p className="text-sm font-medium">Loaded models</p>
       {list.length > 0 && (
-        <ul className="divide-y rounded-md border">
+        <ul className="space-y-1">
           {list.map((m) => (
-            <li key={m} className="flex items-center gap-2 py-1 pr-1 pl-3">
+            <li
+              key={m}
+              className="flex items-center gap-2 rounded-md bg-muted/50 py-1 pr-1 pl-3"
+            >
               <span className="min-w-0 flex-1 truncate font-mono text-sm">
                 {m}
               </span>

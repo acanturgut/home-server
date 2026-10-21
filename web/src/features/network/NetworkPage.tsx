@@ -91,7 +91,6 @@ export function NetworkPage() {
   if (!router?.configured) {
     return (
       <EmptyState
-        dashed
         icon={<Wifi />}
         title="Connect your router"
         description="Add your ASUS router's login to see WAN status, connected devices and per-device controls."
@@ -174,7 +173,7 @@ export function NetworkPage() {
       </Card>
 
       <Card className="p-0">
-        <div className="space-y-3 border-b p-4">
+        <div className="space-y-3 p-4">
           <CardHeader
             icon={<Users />}
             title="Devices"
@@ -213,7 +212,7 @@ export function NetworkPage() {
             }
           />
         ) : (
-          <ul className="divide-y">
+          <ul className="space-y-0.5">
             {devices.map((c) => (
               <DeviceRow
                 key={c.mac}

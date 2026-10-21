@@ -7,22 +7,18 @@ export function EmptyState({
   title,
   description,
   action,
-  dashed = false,
   className,
 }: {
   icon?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
-  /** Dashed outline, for empty lists that stand on their own. */
-  dashed?: boolean;
   className?: string;
 }) {
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center gap-1.5 px-4 py-8 text-center',
-        dashed && 'rounded-lg border border-dashed',
+        'flex flex-col items-center justify-center gap-1.5 px-4 py-10 text-center',
         className,
       )}
     >

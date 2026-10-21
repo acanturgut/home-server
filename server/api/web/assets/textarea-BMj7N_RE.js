@@ -1,1 +1,0 @@
-import{Bt as e,C as t,zt as n}from"./routing-DBpYVcWv.js";var r=n();function i({className:n,...i}){return(0,r.jsx)(`textarea`,{"data-slot":`textarea`,className:e(t,`min-h-16 px-2.5 py-2`,n),...i})}export{i as t};

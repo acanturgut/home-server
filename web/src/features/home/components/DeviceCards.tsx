@@ -41,7 +41,7 @@ export function DeviceCard(props: CardProps) {
 /**
  * Card chrome: type icon, name (the drag handle for moving rooms), edit
  * button, an optional trailing control, and the readings line. Offline
- * devices are dashed and dimmed.
+ * devices are dimmed.
  */
 function DeviceShell({
   device: d,
@@ -60,12 +60,7 @@ function DeviceShell({
   const Icon = TYPE_META[d.type].icon;
   const renamed = !!d.display_name?.trim() && d.display_name.trim() !== d.name;
   return (
-    <Card
-      className={cn(
-        'flex flex-col gap-3',
-        !d.reachable && 'border-dashed opacity-60',
-      )}
-    >
+    <Card className={cn('flex flex-col gap-3', !d.reachable && 'opacity-60')}>
       <div className="flex items-center gap-2">
         <div
           draggable
@@ -186,19 +181,19 @@ function BlindCard({ device: d, onAction, onEdit }: CardProps) {
         aria-label={`${deviceLabel(d)} position`}
       />
       <div className="grid grid-cols-3 gap-2">
-        <Button variant="outline" size="sm" onClick={() => setPosition(0)}>
+        <Button variant="secondary" size="sm" onClick={() => setPosition(0)}>
           <ChevronUp />
           Open
         </Button>
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={() => onAction(d, { action: 'stop' })}
         >
           <Square />
           Stop
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setPosition(100)}>
+        <Button variant="secondary" size="sm" onClick={() => setPosition(100)}>
           <ChevronDown />
           Close
         </Button>

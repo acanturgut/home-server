@@ -19,7 +19,7 @@ export function ApiTab() {
           title={group}
           description={plural(endpoints.length, 'endpoint')}
         >
-          <Card className="divide-y p-0">
+          <Card className="space-y-0.5 p-2">
             {endpoints.map((ep) => (
               <EndpointCard key={`${ep.method} ${ep.path}`} ep={ep} />
             ))}

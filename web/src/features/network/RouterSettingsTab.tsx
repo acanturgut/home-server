@@ -172,7 +172,7 @@ export function RouterSettingsTab() {
               <div className="ml-auto flex items-center gap-2">
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="secondary"
                   loading={test.busy}
                   disabled={save.busy || !form.host || dirty}
                   onClick={() => test.run()}
@@ -270,9 +270,9 @@ function StatusCard({
             <StatTile label="CPU" value={pct(s.cpu_used_pct)} />
             <StatTile label="Memory" value={pct(s.mem_used_pct)} />
           </div>
-          <div className="flex flex-wrap gap-2 border-t pt-4">
+          <div className="flex flex-wrap gap-2 pt-2">
             <Button
-              variant="outline"
+              variant="secondary"
               loading={actions.busy === 'wifi'}
               disabled={actions.busy !== null}
               onClick={actions.restartWifi}

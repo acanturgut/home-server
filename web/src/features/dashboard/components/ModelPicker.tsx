@@ -82,7 +82,7 @@ export function ModelPicker({ nodeId }: { nodeId: string }) {
         </Select>
         <Button
           size="sm"
-          variant="outline"
+          variant="secondary"
           disabled={busy || !selected || selectedLoaded}
           onClick={() => act.run(true, selected)}
         >
