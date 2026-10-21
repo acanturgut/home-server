@@ -1,2 +1,2 @@
 export { RouterSettingsTab } from './RouterSettingsTab';
-export * from './api';
+export { routerApi, type RouterClient, type RouterStatus } from './api';

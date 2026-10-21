@@ -26,7 +26,7 @@ import {
   routerApi,
   type RouterClient,
   type RouterStatus,
-} from '@/features/router/api';
+} from '@/features/router';
 import { copyToClipboard, formatUptime, gotoPage } from '@/lib/format';
 
 /**
@@ -56,16 +56,15 @@ export function NetworkPage() {
   const [showOffline, setShowOffline] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
 
-  const reload = useCallback(async () => {
-    const [rt, cs] = await Promise.all([
-      routerApi.status(),
-      routerApi.clients(),
-    ]);
-    if (rt) setRouter(rt);
-    if (cs?.configured) setClients(cs.clients || []);
-    else setClients(null);
-    setLoading(false);
-  }, []);
+  const reload = useCallback(
+    () =>
+      Promise.all([routerApi.status(), routerApi.clients()]).then(([rt, cs]) => {
+        if (rt) setRouter(rt);
+        setClients(cs?.configured ? cs.clients || [] : null);
+        setLoading(false);
+      }),
+    [],
+  );
 
   useEffect(() => {
     reload();

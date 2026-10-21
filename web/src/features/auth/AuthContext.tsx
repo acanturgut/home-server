@@ -1,23 +1,7 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { authApi, type User } from '@/features/auth/api';
+import { AuthContext } from '@/features/auth/useAuth';
 import { AUTH_UNAUTHORIZED_EVENT } from '@/lib/api';
-
-interface AuthContextValue {
-  user: User | null;
-  loading: boolean;
-  refresh: () => Promise<void>;
-  login: (username: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 /**
  * Provides the current user to descendants and reacts to global 401s
@@ -27,17 +11,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    setUser(await authApi.me());
-    setLoading(false);
-  }, []);
-
   useEffect(() => {
-    refresh();
+    authApi.me().then((u) => {
+      setUser(u);
+      setLoading(false);
+    });
     const onUnauth = () => setUser(null);
     window.addEventListener(AUTH_UNAUTHORIZED_EVENT, onUnauth);
     return () => window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, onUnauth);
-  }, [refresh]);
+  }, []);
 
   const login = useCallback(async (username: string, password: string) => {
     const u = await authApi.login(username, password);
@@ -53,15 +35,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, refresh, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
-}
-
-/** Hook accessor for the auth context. */
-export function useAuth(): AuthContextValue {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
-  return ctx;
 }

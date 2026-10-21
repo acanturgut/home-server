@@ -1,34 +1,18 @@
-/** Chat domain types shared across ChatPanel and its companion modals. */
-
-export interface ChatAttachment {
-  id: string;
-  name: string;
-  type: string; // mime
-  size: number;
-  text?: string; // for text-like content
-  dataUrl?: string; // for images
-}
+/**
+ * Chat domain types shared by ChatPanel and its API layer. Sessions saved by
+ * the legacy panel may carry extra fields; they round-trip untouched.
+ */
 
 export interface ChatMsg {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   node?: string;
-  tier?: string;
   model?: string;
-  route?: string;
   latency?: string;
-  classifierLatency?: string;
-  stepType?: string;
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
-  edited?: boolean;
-  attachments?: ChatAttachment[];
-  reasoningSteps?: Array<{ kind: string; text: string }>;
-  // For branching / regenerate
-  parentSessionId?: string;
-  branchFromMsgId?: string;
 }
 
 export interface ChatSession {
@@ -37,56 +21,8 @@ export interface ChatSession {
   messages: ChatMsg[];
   updatedAt: number;
   createdAt?: number;
-  pinned?: boolean;
-  starred?: boolean;
-  archived?: boolean;
-  system?: string; // persona / system prompt
-  modelOverride?: string; // 'auto' | 'light' | 'heavy' | nodeName
-  temperature?: number;
-  totalPromptTokens?: number;
-  totalCompletionTokens?: number;
-  parentSessionId?: string;
-  branchFromMsgId?: string;
+  modelOverride?: string; // 'auto' | 'light' | 'heavy'
 }
-
-export interface Persona {
-  id: string;
-  name: string;
-  emoji?: string;
-  system: string;
-}
-
-export const BUILTIN_PERSONAS: Persona[] = [
-  { id: 'default', name: 'Default', emoji: '💬', system: '' },
-  {
-    id: 'engineer',
-    name: 'Senior Engineer',
-    emoji: '🔧',
-    system:
-      'You are a senior software engineer. Be concise, pragmatic, and code-first. Prefer trade-off analysis over verbose explanation.',
-  },
-  {
-    id: 'tutor',
-    name: 'Patient Tutor',
-    emoji: '🎓',
-    system:
-      "You are a patient tutor. Explain step-by-step with small examples. Ask one clarifying question if the user's goal is ambiguous.",
-  },
-  {
-    id: 'editor',
-    name: 'Sharp Editor',
-    emoji: '✍️',
-    system:
-      'You are a sharp editor. Tighten prose, kill filler, preserve voice. Show before/after when helpful.',
-  },
-  {
-    id: 'shell',
-    name: 'Shell Wizard',
-    emoji: '🖥️',
-    system:
-      'You are a shell expert. Reply with a single fenced bash block plus one sentence of context unless asked otherwise.',
-  },
-];
 
 // Default system prompt applied to every chat unless the user replaces it.
 // The key goals: (1) stop the model from claiming it can't search when the

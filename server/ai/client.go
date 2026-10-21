@@ -114,7 +114,6 @@ func (c *Client) CallOllama(ctx context.Context, host string, req ChatRequest) (
 }
 
 func (c *Client) CallLMStudio(ctx context.Context, host string, req ChatRequest) (*LMStudioResponse, error) {
-	req.Stream = false
 	payload := map[string]any{
 		"messages": req.Messages,
 		"stream":   false,
@@ -284,41 +283,6 @@ func (c *Client) UnloadModel(ctx context.Context, host, model string) error {
 	return fmt.Errorf("failed to unload model %s on %s", model, host)
 }
 
-// GetModelInfo fetches details about loaded models from LM Studio.
-func (c *Client) GetModelInfo(ctx context.Context, host string) ([]ModelInfo, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, "GET", host+"/v1/models", nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get model info: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("model info endpoint returned %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Data []ModelInfo `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-	return result.Data, nil
-}
-
-// ModelInfo describes a loaded model in LM Studio.
-type ModelInfo struct {
-	ID      string `json:"id"`
-	Object  string `json:"object"`
-	OwnedBy string `json:"owned_by"`
-}
-
 // ModelStatus describes a model's load state on an LM Studio host.
 type ModelStatus struct {
 	ID     string `json:"id"`
@@ -374,86 +338,4 @@ func (c *Client) ListAllModels(ctx context.Context, host string) ([]ModelStatus,
 		out = append(out, ModelStatus{ID: id, State: "loaded", Loaded: true})
 	}
 	return out, nil
-}
-
-// ── Claude (Anthropic) ──────────────────────────────────
-
-type ClaudeRequest struct {
-	Model     string    `json:"model"`
-	MaxTokens int       `json:"max_tokens"`
-	System    string    `json:"system,omitempty"`
-	Messages  []Message `json:"messages"`
-}
-
-type ClaudeResponse struct {
-	Content []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"content"`
-	Model string `json:"model"`
-	Usage struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
-	} `json:"usage"`
-}
-
-// CallClaude calls the Anthropic Messages API.
-// apiKey should come from the ANTHROPIC_API_KEY env var.
-func (c *Client) CallClaude(ctx context.Context, apiKey string, req ClaudeRequest) (*ClaudeResponse, error) {
-	if req.MaxTokens == 0 {
-		req.MaxTokens = 8192
-	}
-	if req.Model == "" {
-		req.Model = "claude-sonnet-4-20250514"
-	}
-
-	// Convert to Anthropic format: system goes in top-level, messages only user/assistant
-	payload := map[string]any{
-		"model":      req.Model,
-		"max_tokens": req.MaxTokens,
-		"messages":   req.Messages,
-	}
-	if req.System != "" {
-		payload["system"] = req.System
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", apiKey)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
-
-	resp, err := c.http.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("claude request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("claude error %d: %s", resp.StatusCode, string(b))
-	}
-
-	var result ClaudeResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
-// ClaudeText is a convenience to extract the text from a ClaudeResponse.
-func (r *ClaudeResponse) Text() string {
-	for _, c := range r.Content {
-		if c.Type == "text" {
-			return c.Text
-		}
-	}
-	return ""
 }

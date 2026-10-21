@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
-  Blocks,
   House,
   MessageSquare,
   Network,
@@ -10,24 +9,20 @@ import {
   Sparkles,
   type LucideIcon,
 } from 'lucide-react';
-import { API_BASE } from '@/lib/api';
-import { guessIcon } from '@/lib/icons';
-import { StatusDot } from '@/components/ui/status-dot';
-import { Section } from '@/components/ui/panel';
+import { gotoPage } from '@/lib/format';
+import { Section } from '@/components/ui/section';
 import { OverviewBar } from '@/features/dashboard/components/OverviewBar';
-import {
-  DashboardDataProvider,
-  useDashboardData,
-} from '@/features/dashboard/hooks/useDashboardData';
+import { DashboardDataProvider } from '@/features/dashboard/components/DashboardDataProvider';
+import { useDashboardData } from '@/features/dashboard/hooks/useDashboardData';
 
 /** Flat dashboard. No gradients, no shadows, no blobs. */
 
 function dispatchNav(page: string) {
-  window.dispatchEvent(new CustomEvent('nav:goto', { detail: { page } }));
+  gotoPage(page);
 }
 
 function dispatchChatPrompt(prompt: string) {
-  window.dispatchEvent(new CustomEvent('nav:goto', { detail: { page: 'chat' } }));
+  gotoPage('chat');
   setTimeout(() => {
     window.dispatchEvent(
       new CustomEvent('chat:prefill-prompt', { detail: { prompt } }),
@@ -58,12 +53,11 @@ const QUICK_TILES: QuickTile[] = [
   { id: 'home', label: 'Smart Home', hint: 'Lights, sensors, scenes', Icon: House, accent: 'text-amber-300' },
   { id: 'cluster', label: 'Cluster', hint: 'Nodes, CPU, GPU', Icon: Server, accent: 'text-emerald-300' },
   { id: 'ai', label: 'AI', hint: 'Tokens, latency, models', Icon: Sparkles, accent: 'text-violet-300' },
-  { id: 'apps', label: 'Apps', hint: 'Open or build', Icon: Blocks, accent: 'text-cyan-300' },
 ];
 
 function QuickTiles() {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
       {QUICK_TILES.map(({ id, label, hint, Icon, accent }) => (
         <button
           key={id}
@@ -86,70 +80,9 @@ function QuickTiles() {
   );
 }
 
-function AppsQuickGrid() {
-  const { apps, ready } = useDashboardData();
-  if (!ready) {
-    return (
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-border/40 bg-card/40 min-h-24 animate-pulse"
-          />
-        ))}
-      </div>
-    );
-  }
-  if (apps.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border/40 bg-card/20 p-6 text-center text-sm text-muted-foreground/80">
-        No apps yet —{' '}
-        <button
-          onClick={() => dispatchNav('apps')}
-          className="text-primary hover:underline">
-          build your first app
-        </button>
-        .
-      </div>
-    );
-  }
-  return (
-    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-      {apps.map((app) => {
-        const icon = app.icon || guessIcon(app.name);
-        const isRunning = app.status === 'running';
-        const isFailed = app.status === 'failed';
-        const interactive = isRunning;
-        return (
-          <button
-            key={app.name}
-            onClick={() =>
-              interactive &&
-              window.open(`${API_BASE}/apps/${app.name}/`, '_blank')
-            }
-            disabled={!interactive}
-            className={`group relative flex flex-col items-center justify-center gap-2 p-3 rounded-xl border transition-colors min-h-24 ${
-              interactive
-                ? 'border-border/40 bg-card/40 hover:border-primary/50 hover:bg-card/60 active:scale-[0.97]'
-                : isFailed
-                  ? 'border-rose-500/25 bg-card/30 opacity-70 cursor-not-allowed'
-                  : 'border-border/30 bg-card/20 opacity-60 cursor-not-allowed'
-            }`}>
-            <span className="text-3xl leading-none">{icon}</span>
-            <span className="text-xs font-medium text-foreground/85 truncate w-full text-center">
-              {app.name}
-            </span>
-            <StatusDot status={app.status} className="absolute top-2 right-2" />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function HeroGreeting() {
   const { lastTick, ready } = useDashboardData();
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
@@ -233,9 +166,6 @@ export function DashboardPage() {
         <OverviewBar />
         <Section title="Jump to" description="Dive into a specific area.">
           <QuickTiles />
-        </Section>
-        <Section title="Apps" description="Tap to open in a new tab.">
-          <AppsQuickGrid />
         </Section>
       </div>
     </DashboardDataProvider>

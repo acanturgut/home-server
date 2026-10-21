@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/acanturgut/home-server/auth"
 )
@@ -93,39 +92,6 @@ func NewRouter(h *Handler) http.Handler {
 	mux.HandleFunc("GET /api/dashboard/cluster", h.DashboardCluster)
 	mux.HandleFunc("GET /api/dashboard/clients", h.DashboardClients)
 
-	// Apps pipeline
-	mux.HandleFunc("GET /api/apps", h.ListApps)
-	mux.HandleFunc("POST /api/apps/build", h.BuildApp)
-	mux.HandleFunc("POST /api/apps/clarify", h.ClarifyApp)
-	mux.HandleFunc("POST /api/apps/refine", h.RefinePrompt)
-	mux.HandleFunc("POST /api/apps/plan", h.PlanApp)
-	mux.HandleFunc("POST /api/apps/architect", h.ArchitectApp)
-	mux.HandleFunc("DELETE /api/apps/{name}", h.DeleteApp)
-	mux.HandleFunc("POST /api/apps/{name}/stop", h.StopApp)
-	mux.HandleFunc("POST /api/apps/{name}/restart", h.RestartApp)
-	mux.HandleFunc("GET /api/apps/{name}/git/log", h.AppGitLog)
-	mux.HandleFunc("GET /api/apps/{name}/git/diff/{sha}", h.AppGitDiff)
-	mux.HandleFunc("POST /api/apps/{name}/git/revert/{sha}", h.AppGitRevert)
-	mux.HandleFunc("POST /api/apps/{name}/git/commit", h.AppGitCommit)
-	mux.HandleFunc("POST /api/apps/{name}/cancel", h.CancelBuild)
-	mux.HandleFunc("POST /api/apps/{name}/rebuild", h.RebuildApp)
-	mux.HandleFunc("POST /api/apps/{name}/fix", h.FixApp)
-	mux.HandleFunc("POST /api/apps/{name}/chat", h.AppChat)
-	mux.HandleFunc("POST /api/apps/{name}/deploy", h.DeployApp)
-	mux.HandleFunc("GET /api/apps/{name}/files", h.ListAppFiles)
-	mux.HandleFunc("GET /api/apps/{name}/logs", h.AppLogs)
-	mux.HandleFunc("GET /api/apps/{name}/events", h.AppEvents)
-	mux.HandleFunc("GET /api/apps/{name}/history", h.AppHistory)
-	mux.HandleFunc("GET /api/apps/{name}/stats", h.AppStats)
-	mux.HandleFunc("GET /api/apps/{name}/search", h.AppSearch)
-	mux.HandleFunc("POST /api/apps/{name}/exec", h.AppExec)
-	mux.HandleFunc("PUT /api/apps/{name}/settings", h.AppSettings)
-
-	// System prompts
-	mux.HandleFunc("GET /api/prompts", h.GetPrompts)
-	mux.HandleFunc("PUT /api/prompts", h.UpdatePrompts)
-	mux.HandleFunc("POST /api/prompts/reset", h.ResetPrompts)
-
 	// Runtime settings
 	mux.HandleFunc("GET /api/settings", h.GetSettings)
 	mux.HandleFunc("PUT /api/settings", h.UpdateSettings)
@@ -143,8 +109,7 @@ func NewRouter(h *Handler) http.Handler {
 	mux.HandleFunc("POST /api/web/search", h.WebSearch)
 	mux.HandleFunc("POST /api/web/search-fetch", h.WebSearchFetch)
 
-	// RAG + tools
-	mux.HandleFunc("POST /api/rag/search", h.RAGSearch)
+	// Tools
 	mux.HandleFunc("GET /api/tools", h.ListTools)
 	mux.HandleFunc("POST /api/tools/run/{name}", h.RunTool)
 
@@ -168,74 +133,11 @@ func NewRouter(h *Handler) http.Handler {
 	mux.HandleFunc("POST /api/tokens/{id}/rotate", h.RotateToken)
 	mux.HandleFunc("DELETE /api/tokens/{id}", h.DeleteToken)
 
-	// Bambu Lab 3D printers (LAN-only MQTT + RTSPS camera proxy).
-	mux.HandleFunc("GET /api/bambu/printers", h.ListBambuPrinters)
-	mux.HandleFunc("POST /api/bambu/printers", h.AddBambuPrinter)
-	mux.HandleFunc("PUT /api/bambu/printers/{id}", h.UpdateBambuPrinter)
-	mux.HandleFunc("DELETE /api/bambu/printers/{id}", h.DeleteBambuPrinter)
-	mux.HandleFunc("GET /api/bambu/printers/{id}/status", h.BambuPrinterStatus)
-	mux.HandleFunc("GET /api/bambu/printers/{id}/camera", h.BambuPrinterCamera)
-	mux.HandleFunc("GET /api/bambu/printers/{id}/snapshot", h.BambuPrinterSnapshot)
-	mux.HandleFunc("POST /api/bambu/printers/{id}/command", h.BambuCommand)
-	mux.HandleFunc("GET /api/bambu/printers/{id}/files", h.BambuListFiles)
-	mux.HandleFunc("POST /api/bambu/printers/{id}/upload", h.BambuUpload)
-	mux.HandleFunc("POST /api/bambu/printers/{id}/print", h.BambuPrint)
-	mux.HandleFunc("GET /api/bambu/printers/{id}/files/download", h.BambuDownload)
-	mux.HandleFunc("DELETE /api/bambu/printers/{id}/files", h.BambuDeleteFile)
-
-	// Paper-trading agent. Uses Yahoo Finance for real prices+news and the
-	// heavy GPU node for LLM-driven trade decisions; money is virtual.
-	mux.HandleFunc("GET /api/trader/state", h.TraderState)
-	mux.HandleFunc("POST /api/trader/start", h.TraderStart)
-	mux.HandleFunc("POST /api/trader/stop", h.TraderStop)
-	mux.HandleFunc("POST /api/trader/tick", h.TraderTick)
-	mux.HandleFunc("POST /api/trader/deposit", h.TraderDeposit)
-	mux.HandleFunc("POST /api/trader/withdraw", h.TraderWithdraw)
-	mux.HandleFunc("POST /api/trader/reset", h.TraderReset)
-	mux.HandleFunc("POST /api/trader/watchlist", h.TraderWatchlist)
-	mux.HandleFunc("POST /api/trader/trade", h.TraderManualTrade)
-	mux.HandleFunc("GET /api/trader/quotes", h.TraderQuotes)
-	mux.HandleFunc("GET /api/trader/news", h.TraderNews)
-	mux.HandleFunc("GET /api/trader/bars", h.TraderBars)
-	mux.HandleFunc("POST /api/trader/tasks", h.TraderTaskCreate)
-	mux.HandleFunc("POST /api/trader/tasks/move", h.TraderTaskMove)
-	mux.HandleFunc("GET /api/trader/alpaca", h.TraderAlpacaGet)
-	mux.HandleFunc("POST /api/trader/alpaca", h.TraderAlpacaSet)
-	mux.HandleFunc("POST /api/trader/alpaca/test", h.TraderAlpacaTest)
-	mux.HandleFunc("DELETE /api/trader/alpaca", h.TraderAlpacaClear)
-
-	// VillaOS — Love Island AI episode simulation
-	mux.HandleFunc("GET /api/villanos/state", h.VillanosState)
-	mux.HandleFunc("POST /api/villanos/start", h.VillanosStart) // start episode
-	mux.HandleFunc("POST /api/villanos/stop", h.VillanosStop)   // force-stop / clear stuck
-	mux.HandleFunc("POST /api/villanos/reset", h.VillanosReset) // wipe everything
-	mux.HandleFunc("POST /api/villanos/tts", h.VillanosTTS)     // text-to-speech for a line
-	mux.HandleFunc("POST /api/villanos/tts/preview", h.VillanosTTSPreview)
-	mux.HandleFunc("POST /api/villanos/sound-effect", h.VillanosSoundEffect)
-	mux.HandleFunc("GET /api/villanos/settings", h.VillanosSettingsGet)
-	mux.HandleFunc("PUT /api/villanos/settings", h.VillanosSettingsUpdate)
+	// Unknown API paths are 404s, not the SPA shell.
+	mux.HandleFunc("/api/", http.NotFound)
 
 	// Serve web UI at root
-	webFS := webHandler()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Reverse-proxy deployed apps at /apps/{name}/
-		if strings.HasPrefix(r.URL.Path, "/apps/") {
-			h.ProxyApp(w, r)
-			return
-		}
-		// File read/write API: /api/apps/{name}/files/{path...}
-		if strings.HasPrefix(r.URL.Path, "/api/apps/") && strings.Contains(r.URL.Path, "/files/") {
-			if r.Method == http.MethodGet {
-				h.GetAppFile(w, r)
-			} else if r.Method == http.MethodPut {
-				h.PutAppFile(w, r)
-			} else {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			}
-			return
-		}
-		webFS.ServeHTTP(w, r)
-	})
+	mux.Handle("/", webHandler())
 
 	var handler http.Handler = mux
 	if h.auth != nil {

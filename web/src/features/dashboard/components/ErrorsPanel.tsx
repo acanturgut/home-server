@@ -5,14 +5,15 @@ import { useDashboardData } from '@/features/dashboard/hooks/useDashboardData';
 /** Errors & warnings panel: counts + last few problem entries. Surfaces
  * what's broken without forcing the user to scan the full activity feed. */
 export function ErrorsPanel() {
-  const { logs } = useDashboardData();
+  const { logs, lastTick } = useDashboardData();
 
   const stats = useMemo(() => {
     let errors = 0;
     let warns = 0;
     let infos = 0;
     let recent5m = 0;
-    const now = Date.now();
+    // "Now" is the time the logs were fetched, keeping this memo pure.
+    const now = lastTick;
     const items: {
       time: string;
       level: string;
@@ -51,7 +52,7 @@ export function ErrorsPanel() {
       recent5m,
       items: items.slice(0, 6),
     };
-  }, [logs]);
+  }, [logs, lastTick]);
 
   const ok = stats.errors === 0 && stats.warns === 0;
 

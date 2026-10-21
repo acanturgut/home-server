@@ -1,28 +1,18 @@
 import { useEffect } from 'react';
 
 /**
- * Listens for a global `nav:goto` CustomEvent and invokes the supplied
- * navigator. The event detail carries the destination page id and an optional
- * payload that the destination page can pick up via its own listener.
- *
- * Currently wired by ChatPanel → "Send to Apps" handoff.
+ * Listens for the global `nav:goto` CustomEvent (fired by `gotoPage`) and
+ * re-dispatches its payload to the destination page's own listener
+ * (`settings:set-tab`). The URL itself is pushed by
+ * `gotoPage`.
  */
-export function useNavGoto(onNavigate: (page: string) => void) {
+export function useNavGoto() {
   useEffect(() => {
     const onNav = (e: Event) => {
       const detail = (e as CustomEvent).detail as
         | { page?: string; payload?: unknown }
         | undefined;
       if (!detail?.page) return;
-      onNavigate(detail.page);
-      if (detail.page === 'apps' && detail.payload) {
-        // Re-dispatch so AppsPanel (already mounted) can pick it up
-        setTimeout(() => {
-          window.dispatchEvent(
-            new CustomEvent('apps:prefill-prompt', { detail: detail.payload }),
-          );
-        }, 50);
-      }
       if (detail.page === 'settings' && detail.payload) {
         setTimeout(() => {
           window.dispatchEvent(
@@ -33,5 +23,5 @@ export function useNavGoto(onNavigate: (page: string) => void) {
     };
     window.addEventListener('nav:goto', onNav as EventListener);
     return () => window.removeEventListener('nav:goto', onNav as EventListener);
-  }, [onNavigate]);
+  }, []);
 }

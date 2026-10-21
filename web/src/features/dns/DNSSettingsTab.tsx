@@ -11,14 +11,14 @@ import {
   Trash2,
 } from 'lucide-react';
 import { dnsApi, type DNSRecord, type DNSStatus } from '@/features/dns/api';
-import { dashboardApi } from '@/features/dashboard/api';
+import { dashboardApi } from '@/features/dashboard';
 import { copyToClipboard } from '@/lib/format';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
   SettingsCard,
   SkeletonRows,
-} from '@/features/settings/components/SettingsRows';
+} from '@/components/ui/settings-rows';
 import { BlocklistCard } from '@/features/dns/BlocklistCard';
 
 /**
@@ -46,12 +46,15 @@ export function DNSSettingsTab() {
     });
   }, []);
 
-  const refresh = useCallback(async () => {
-    const [s, rs] = await Promise.all([dnsApi.status(), dnsApi.records()]);
-    if (s) setStatus(s);
-    if (rs) setRecords(rs);
-    setLoading(false);
-  }, []);
+  const refresh = useCallback(
+    () =>
+      Promise.all([dnsApi.status(), dnsApi.records()]).then(([s, rs]) => {
+        if (s) setStatus(s);
+        if (rs) setRecords(rs);
+        setLoading(false);
+      }),
+    [],
+  );
 
   useEffect(() => {
     refresh();
@@ -111,7 +114,8 @@ export function DNSSettingsTab() {
     <div className="space-y-6">
       <RouterSetupGuide lanIp={lanIp} />
 
-      <SettingsCard title="DNS server" icon={<Globe size={12} />}>        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+      <SettingsCard title="DNS server" icon={<Globe size={12} />}>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
           <Stat
             label="Status"
             value={status?.running ? 'running' : 'stopped'}

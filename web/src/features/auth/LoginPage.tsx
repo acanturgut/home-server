@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from 'react';
-import { Loader2, Lock, Server } from 'lucide-react';
+import { ArrowRight, CircleAlert, Loader2, Server } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
+
+const FIELD = 'h-11 rounded-xl border-0 bg-muted/50 px-4 text-sm';
 
 /**
- * Full-screen sign-in page rendered when no session is active.
+ * Full-screen sign-in page rendered when no session is active: the server
+ * mark, two fields, and a submit arrow inside the password field.
  */
 export function LoginPage() {
   const { login } = useAuth();
@@ -28,62 +30,58 @@ export function LoginPage() {
   };
 
   return (
-    <div className="dark min-h-screen w-full bg-background text-foreground flex items-center justify-center p-6">
+    <div className="min-h-dvh w-full bg-background text-foreground flex items-center justify-center p-6">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-xl">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="rounded-lg bg-primary/10 p-2 text-primary">
-            <Server className="h-5 w-5" />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold">Home Server</h1>
-            <p className="text-xs text-muted-foreground">Sign in to continue</p>
-          </div>
-        </div>
+        className="w-full max-w-xs flex flex-col items-center gap-3">
+        <h1 className="sr-only">Home Server sign in</h1>
+        <Server size={28} className="mb-8" aria-hidden />
 
-        <label className="mb-3 block">
-          <span className="mb-1 block text-xs font-medium text-muted-foreground">
-            Username
-          </span>
-          <Input
-            autoFocus
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            disabled={busy}
-            required
-          />
-        </label>
+        <Input
+          autoFocus
+          aria-label="Username"
+          placeholder="Username"
+          autoComplete="username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          disabled={busy}
+          required
+          className={FIELD}
+        />
 
-        <label className="mb-4 block">
-          <span className="mb-1 block text-xs font-medium text-muted-foreground">
-            Password
-          </span>
+        <div className="relative w-full">
           <Input
             type="password"
+            aria-label="Password"
+            placeholder="Password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={busy}
             required
+            className={`${FIELD} pr-14`}
           />
-        </label>
+          <button
+            type="submit"
+            aria-label="Sign in"
+            disabled={busy || !username.trim() || !password}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 size-8 rounded-lg bg-foreground text-background flex items-center justify-center transition-opacity disabled:opacity-25">
+            {busy ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <ArrowRight size={16} />
+            )}
+          </button>
+        </div>
 
         {err && (
-          <p className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          <p
+            role="alert"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <CircleAlert size={13} />
             {err}
           </p>
         )}
-
-        <Button type="submit" disabled={busy} className="w-full">
-          {busy ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Lock className="mr-2 h-4 w-4" />
-          )}
-          Sign in
-        </Button>
       </form>
     </div>
   );

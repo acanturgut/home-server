@@ -13,24 +13,9 @@ services:
       - LOG_DIR=/var/log/home-server
       - DATA_DIR=/data
       - HOMEKIT_PIN=00102003
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
-      - ELEVENLABS_MODEL_ID=${ELEVENLABS_MODEL_ID:-eleven_v3}
-      - ELEVENLABS_DEFAULT_VOICE_ID=${ELEVENLABS_DEFAULT_VOICE_ID:-}
-      - ELEVENLABS_NARRATOR_VOICE_ID=${ELEVENLABS_NARRATOR_VOICE_ID:-}
-      - ELEVENLABS_VOICE_ZARA=${ELEVENLABS_VOICE_ZARA:-}
-      - ELEVENLABS_VOICE_JAKE=${ELEVENLABS_VOICE_JAKE:-}
-      - ELEVENLABS_VOICE_ELLA=${ELEVENLABS_VOICE_ELLA:-}
-      - ELEVENLABS_VOICE_TYLER=${ELEVENLABS_VOICE_TYLER:-}
-      - ELEVENLABS_VOICE_MIA=${ELEVENLABS_VOICE_MIA:-}
-      - ELEVENLABS_VOICE_LUCA=${ELEVENLABS_VOICE_LUCA:-}
-      - ALPACA_KEY_ID=${ALPACA_KEY_ID:-}
-      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY:-}
-      - ALPACA_BASE_URL=${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
     volumes:
       - server-logs:/var/log/home-server
       - server-data:/data
-      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       ollama:
         condition: service_started

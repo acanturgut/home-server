@@ -31,6 +31,10 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 function fmtDate(iso?: string): string {
   if (!iso) return 'never';
   const d = new Date(iso);
@@ -52,25 +56,15 @@ export function ApiTokensTab() {
   const [creating, setCreating] = useState(false);
   const [revealId, setRevealId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [origin, setOrigin] = useState('');
 
   useEffect(() => {
-    setOrigin(window.location.origin);
-    void refresh();
+    api<{ tokens: ApiToken[] }>('/api/tokens')
+      .then(
+        (data) => setTokens(data.tokens ?? []),
+        (e) => setError(errMsg(e)),
+      )
+      .finally(() => setLoading(false));
   }, []);
-
-  async function refresh() {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await api<{ tokens: ApiToken[] }>('/api/tokens');
-      setTokens(data.tokens ?? []);
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function onCreate() {
     if (!newName.trim()) return;
@@ -84,8 +78,8 @@ export function ApiTokensTab() {
       setNewName('');
       setTokens((t) => [tok, ...t]);
       setRevealId(tok.id);
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e) {
+      setError(errMsg(e));
     } finally {
       setCreating(false);
     }
@@ -97,8 +91,8 @@ export function ApiTokensTab() {
       const tok = await api<ApiToken>(`/api/tokens/${id}/rotate`, { method: 'POST' });
       setTokens((arr) => arr.map((t) => (t.id === id ? tok : t)));
       setRevealId(id);
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e) {
+      setError(errMsg(e));
     }
   }
 
@@ -107,8 +101,8 @@ export function ApiTokensTab() {
     try {
       await api(`/api/tokens/${id}`, { method: 'DELETE' });
       setTokens((arr) => arr.filter((t) => t.id !== id));
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e) {
+      setError(errMsg(e));
     }
   }
 
@@ -148,7 +142,7 @@ export function ApiTokensTab() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') void onCreate();
               }}
-              placeholder="iPhone Shortcut, Mobile App, Pi script…"
+              placeholder="iPhone Shortcut, Pi script…"
               className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:border-amber-500 focus:outline-none"
             />
           </div>
@@ -247,7 +241,7 @@ export function ApiTokensTab() {
           header on a POST to <code className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">/api/ai/ask</code>:
         </p>
         <pre className="mt-3 overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-300">
-          {`curl -X POST ${origin || 'https://your-server'}/api/ai/ask \\
+          {`curl -X POST ${window.location.origin}/api/ai/ask \\
   -H 'Authorization: Bearer <token>' \\
   -H 'Content-Type: application/json' \\
   -d '{"prompt":"Turn off the lights"}'`}

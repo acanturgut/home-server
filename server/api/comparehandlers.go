@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/acanturgut/home-server/ai"
-	"github.com/acanturgut/home-server/apps"
+	"github.com/acanturgut/home-server/assistant"
 )
 
 // ── POST /api/chat/compare ─────────────────────────────────────────────
@@ -83,7 +83,7 @@ func (h *Handler) ListSchedules(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UpsertSchedule(w http.ResponseWriter, r *http.Request) {
-	var sc apps.Schedule
+	var sc assistant.Schedule
 	if err := json.NewDecoder(r.Body).Decode(&sc); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: err.Error()})
 		return
@@ -128,7 +128,7 @@ func (h *Handler) RunScheduleNow(w http.ResponseWriter, r *http.Request) {
 }
 
 // runSchedule executes a single scheduled prompt and returns the reply text.
-func (h *Handler) runSchedule(ctx context.Context, sc apps.Schedule) (string, error) {
+func (h *Handler) runSchedule(ctx context.Context, sc assistant.Schedule) (string, error) {
 	msgs := []ai.Message{{Role: "user", Content: sc.Prompt}}
 	var tempPtr *float64
 	if sc.Temperature > 0 {

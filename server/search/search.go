@@ -30,10 +30,10 @@ import (
 
 // Result is a single web-search hit.
 type Result struct {
-	Title    string `json:"title"`
-	Snippet  string `json:"snippet"`
-	URL      string `json:"url"`
-	Source   string `json:"source,omitempty"`   // "ddg-ia", "ddg-html", "wikipedia"
+	Title   string `json:"title"`
+	Snippet string `json:"snippet"`
+	URL     string `json:"url"`
+	Source  string `json:"source,omitempty"` // "ddg-ia", "ddg-html", "wikipedia"
 }
 
 // httpClient is shared so we get connection reuse.

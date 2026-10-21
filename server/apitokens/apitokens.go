@@ -1,6 +1,6 @@
 // Package apitokens implements a small multi-token store. Each token is a
 // 32-byte random secret with a human-readable label and timestamps. Tokens
-// are sent by clients (Apple Shortcuts, the mobile app, curl scripts) in
+// are sent by clients (Apple Shortcuts, curl scripts) in
 // the `Authorization: Bearer …` header to bypass cookie auth on a subset
 // of public API endpoints.
 //
@@ -17,7 +17,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -251,15 +250,3 @@ func defaultIfEmpty(s, def string) string {
 	}
 	return s
 }
-
-// HasAny reports whether the store has at least one token. Useful for the
-// "first run" UX hint in the web UI.
-func (s *Store) HasAny() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.tokens) > 0
-}
-
-// String is unused but kept so the package always compiles when imported
-// for its side effects.
-var _ = fmt.Sprintf

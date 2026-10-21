@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import {
   SettingsCard,
   SkeletonRows,
-} from '@/features/settings/components/SettingsRows';
+} from '@/components/ui/settings-rows';
 import { formatUptime } from '@/lib/format';
 
 type TestState =
@@ -47,35 +47,45 @@ export function RouterSettingsTab() {
   >(null);
   const [actionBusy, setActionBusy] = useState<'reboot' | 'wifi' | null>(null);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    const c = await routerApi.config();
-    if (c) {
-      setCfg(c);
-      setForm({
-        host: c.host || '',
-        username: c.username || 'admin',
-        password: '',
-        use_ssl: !!c.use_ssl,
-        port: c.port || 0,
-        verify_ssl: !!c.verify_ssl,
-      });
-      setDirty(false);
-    }
-    setLoading(false);
-    if (c?.configured) refreshStatus();
+  const refreshStatus = useCallback(() => {
+    setStatusBusy(true);
+    return routerApi.status().then((s) => {
+      setStatus(s);
+      setStatusBusy(false);
+    });
   }, []);
 
-  const refreshStatus = useCallback(async () => {
-    setStatusBusy(true);
-    const s = await routerApi.status();
-    setStatus(s);
-    setStatusBusy(false);
-  }, []);
+  // Only sets state from the promise callback, so the mount effect can call
+  // it directly (`loading` starts out true).
+  const fetchConfig = useCallback(
+    () =>
+      routerApi.config().then((c) => {
+        if (c) {
+          setCfg(c);
+          setForm({
+            host: c.host || '',
+            username: c.username || 'admin',
+            password: '',
+            use_ssl: !!c.use_ssl,
+            port: c.port || 0,
+            verify_ssl: !!c.verify_ssl,
+          });
+          setDirty(false);
+        }
+        setLoading(false);
+        if (c?.configured) void refreshStatus();
+      }),
+    [refreshStatus],
+  );
+
+  const loadAll = useCallback(() => {
+    setLoading(true);
+    return fetchConfig();
+  }, [fetchConfig]);
 
   useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+    void fetchConfig();
+  }, [fetchConfig]);
 
   const onChange = <K extends keyof typeof form>(
     k: K,
@@ -423,14 +433,9 @@ function Stat({
   label: string;
   value: string;
   mono?: boolean;
-  tone?: 'good' | 'bad';
+  tone?: 'good';
 }) {
-  const color =
-    tone === 'good'
-      ? 'text-emerald-300/85'
-      : tone === 'bad'
-        ? 'text-rose-300/85'
-        : 'text-foreground/85';
+  const color = tone === 'good' ? 'text-emerald-300/85' : 'text-foreground/85';
   return (
     <div className="space-y-0.5">
       <div className="text-xs uppercase tracking-wider text-muted-foreground/65">

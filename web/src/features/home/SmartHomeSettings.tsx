@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2, RefreshCcw, Edit3, Check, X } from 'lucide-react';
 import { HomeKitPanel } from '@/features/homekit';
 import {
@@ -48,16 +48,19 @@ function BridgesSection() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
 
-  const load = async () => {
-    const d = await homeApi.list();
-    if (d) setSnap(d);
-  };
+  const load = useCallback(
+    () =>
+      homeApi.list().then((d) => {
+        if (d) setSnap(d);
+      }),
+    [],
+  );
 
   useEffect(() => {
     load();
     const id = setInterval(load, 10000);
     return () => clearInterval(id);
-  }, []);
+  }, [load]);
 
   const refresh = async () => {
     setLoading(true);

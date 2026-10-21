@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import {
   Activity,
-  Blocks,
   ChevronLeft,
   ExternalLink,
   Hexagon,
+  Info,
   Power,
   RefreshCw,
   Wrench,
@@ -16,7 +16,6 @@ import { ENDPOINTS } from '@/lib/endpoints';
 import { EndpointCard } from '@/features/settings/components/EndpointCard';
 import { SmartHomeSettings } from '@/features/home';
 import { ApiTokensTab } from '@/features/settings/ApiTokensTab';
-import { VillanosSettingsTab } from '@/features/settings/VillanosSettingsTab';
 import { RouterSettingsTab } from '@/features/router';
 import { DNSSettingsTab } from '@/features/dns';
 import { UsersSettingsTab } from '@/features/auth';
@@ -24,10 +23,8 @@ import {
   SettingsCard,
   SkeletonRows,
   InfoRow,
-  ToggleRow,
   NumberRow,
-} from '@/features/settings/components/SettingsRows';
-import { PromptsEditor } from '@/features/settings/components/PromptsEditor';
+} from '@/components/ui/settings-rows';
 import { NodeFormInline } from '@/features/settings/components/NodeFormInline';
 import { useSettings } from '@/features/settings/hooks/useSettings';
 import { Input } from '@/components/ui/input';
@@ -42,9 +39,7 @@ type SettingsTabId =
   | 'dns'
   | 'users'
   | 'tokens'
-  | 'villanos'
-  | 'api'
-  | 'prompts';
+  | 'api';
 
 const VALID_TABS: SettingsTabId[] = [
   'general',
@@ -54,9 +49,7 @@ const VALID_TABS: SettingsTabId[] = [
   'dns',
   'users',
   'tokens',
-  'villanos',
   'api',
-  'prompts',
 ];
 
 /* ── Settings Panel (Config + Node CRUD) ── */
@@ -110,13 +103,6 @@ export function SettingsPanel() {
     saveSettings,
     resetSettings,
     refreshSettings,
-    prompts,
-    promptsDirty,
-    promptsSaving,
-    refreshPrompts,
-    savePrompts,
-    resetPrompts,
-    updatePrompt,
     nodes,
     editId,
     setEditId,
@@ -133,17 +119,7 @@ export function SettingsPanel() {
   } = useSettings();
 
   const tabs: Array<{
-    id:
-      | 'general'
-      | 'nodes'
-      | 'prompts'
-      | 'home'
-      | 'router'
-      | 'dns'
-      | 'users'
-      | 'tokens'
-      | 'villanos'
-      | 'api';
+    id: SettingsTabId;
     label: string;
     description: string;
     group: 'system' | 'network' | 'ai' | 'devices';
@@ -151,7 +127,7 @@ export function SettingsPanel() {
     {
       id: 'general',
       label: 'General',
-      description: 'Version, build defaults, system info',
+      description: 'Version, defaults, system info',
       group: 'system',
     },
     {
@@ -186,18 +162,6 @@ export function SettingsPanel() {
       description: 'Inference workers and their models',
       group: 'ai',
     },
-    {
-      id: 'prompts',
-      label: 'Prompts',
-      description: 'System prompts used by chat & router',
-      group: 'ai',
-    },
-    {
-      id: 'villanos',
-      label: 'VillaOS',
-      description: 'ElevenLabs voices and cast voice profiles',
-      group: 'ai',
-    },
 
     {
       id: 'home',
@@ -208,7 +172,7 @@ export function SettingsPanel() {
     {
       id: 'tokens',
       label: 'API Tokens',
-      description: 'Bearer tokens for the mobile app, Shortcuts, and scripts',
+      description: 'Bearer tokens for Shortcuts and scripts',
       group: 'system',
     },
   ];
@@ -327,20 +291,10 @@ export function SettingsPanel() {
                   label="Uptime"
                   value={formatUptime(sysCfg.uptime_seconds)}
                 />
-                <InfoRow label="Apps" value={String(sysCfg.apps_count)} />
                 <InfoRow label="Nodes" value={String(sysCfg.nodes_count)} />
                 <InfoRow label="Data dir" value={sysCfg.data_dir} mono full />
                 <InfoRow label="Log dir" value={sysCfg.log_dir} mono full />
                 <InfoRow label="HomeKit PIN" value={sysCfg.homekit_pin} mono />
-                <InfoRow
-                  label="Anthropic key"
-                  value={sysCfg.anthropic_set ? 'configured' : 'not set'}
-                  valueClass={
-                    sysCfg.anthropic_set
-                      ? 'text-emerald-400/80'
-                      : 'text-muted-foreground/70'
-                  }
-                />
               </div>
             )}
           </SettingsCard>
@@ -388,9 +342,9 @@ export function SettingsPanel() {
             )}
           </SettingsCard>
 
-          {/* ── Build Defaults card ── */}
+          {/* ── Defaults card ── */}
           <SettingsCard
-            title="Build Defaults"
+            title="Defaults"
             icon={<Wrench size={12} />}
             actions={
               <>
@@ -412,15 +366,9 @@ export function SettingsPanel() {
               </>
             }>
             {settingsLoading ? (
-              <SkeletonRows rows={5} />
+              <SkeletonRows rows={1} />
             ) : (
               <div className="space-y-3">
-                <ToggleRow
-                  label="Auto-fix on crash"
-                  hint="Automatically run /fix when a deployed app exits unexpectedly"
-                  value={settings.autoFixOnCrash}
-                  onChange={(v) => updateSetting('autoFixOnCrash', v)}
-                />
                 <NumberRow
                   label="Default temperature"
                   hint="Used as the LLM temperature default for new nodes (0.0–2.0)"
@@ -430,37 +378,17 @@ export function SettingsPanel() {
                   max={2}
                   onChange={(v) => updateSetting('defaultTemperature', v)}
                 />
-                <NumberRow
-                  label="Build timeout"
-                  hint="Hard cap on how long a single build pipeline run may take, in minutes"
-                  value={settings.buildTimeoutMin}
-                  step={1}
-                  min={1}
-                  max={240}
-                  suffix="min"
-                  onChange={(v) => updateSetting('buildTimeoutMin', v)}
-                />
-                <NumberRow
-                  label="Keep build history"
-                  hint="Number of past builds retained per app"
-                  value={settings.keepBuildHistory}
-                  step={1}
-                  min={1}
-                  max={200}
-                  suffix="entries"
-                  onChange={(v) => updateSetting('keepBuildHistory', v)}
-                />
               </div>
             )}
           </SettingsCard>
 
           {/* ── About card ── */}
-          <SettingsCard title="About" icon={<Blocks size={12} />}>
+          <SettingsCard title="About" icon={<Info size={12} />}>
             <div className="space-y-2 text-xs text-muted-foreground/70">
               <p>
                 <span className="text-foreground/80">home-server</span> — a
-                self-hosted dashboard that turns natural-language prompts into
-                running web apps on your Raspberry Pi.
+                self-hosted dashboard for your network, smart home, and AI
+                nodes, running on your Raspberry Pi.
               </p>
               <div className="flex flex-wrap gap-3 pt-1">
                 <a
@@ -644,23 +572,9 @@ export function SettingsPanel() {
       {/* ── Smart Home Tab (HomeKit + bridges) ── */}
       {tab === 'home' && <SmartHomeSettings />}
       {tab === 'tokens' && <ApiTokensTab />}
-      {tab === 'villanos' && <VillanosSettingsTab />}
       {tab === 'router' && <RouterSettingsTab />}
       {tab === 'dns' && <DNSSettingsTab />}
       {tab === 'users' && <UsersSettingsTab />}
-
-      {/* ── Prompts Tab ── */}
-      {tab === 'prompts' && (
-        <PromptsEditor
-          prompts={prompts}
-          onLoad={refreshPrompts}
-          onChange={updatePrompt}
-          onSave={savePrompts}
-          onReset={resetPrompts}
-          saving={promptsSaving}
-          dirty={promptsDirty}
-        />
-      )}
 
       {/* ── API Tab ── */}
       {tab === 'api' && (

@@ -60,9 +60,6 @@ func (r *Router) SetHomeController(c HomeController) {
 	r.homedev = c
 }
 
-// HomeController returns the registered controller (may be nil).
-func (r *Router) HomeController() HomeController { return r.homedev }
-
 // TryHomeIntent attempts to handle the message as a home-control / status
 // command. Returns (reply, true) when handled; (_, false) lets the caller
 // fall through to a normal LLM call. Mirrors the streaming path in
@@ -794,15 +791,6 @@ func (r *Router) LoadNodeModel(ctx context.Context, nodeID, model string) error 
 		return fmt.Errorf("node %s not found", nodeID)
 	}
 	return r.client.LoadModel(ctx, node.Host, model)
-}
-
-// GetNodeModelInfo fetches loaded model details from the node.
-func (r *Router) GetNodeModelInfo(ctx context.Context, nodeID string) ([]ModelInfo, error) {
-	node, ok := r.nodes.Get(nodeID)
-	if !ok {
-		return nil, fmt.Errorf("node %s not found", nodeID)
-	}
-	return r.client.GetModelInfo(ctx, node.Host)
 }
 
 // ListAllNodeModels returns every model on the node with its load state.

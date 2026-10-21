@@ -11,8 +11,6 @@
  *   /settings/router            → settings with router tab open
  *   /home                       → smart home (all rooms)
  *   /home/Living%20Room         → smart home filtered to that room
- *   /apps                       → apps launcher
- *   /apps/myapp                 → apps with `myapp` selected
  *
  * `useRoute()` re-renders on popstate. `pushRoute()` updates the URL and
  * fires popstate so subscribers re-read.
@@ -27,7 +25,7 @@ export type RouteState = {
 
 const DEFAULT_PAGE = 'dashboard';
 
-export function readRoute(): RouteState {
+function readRoute(): RouteState {
   const segs = window.location.pathname.split('/').filter(Boolean);
   const page = segs[0] || DEFAULT_PAGE;
   const sub = segs[1] ? safeDecode(segs[1]) : undefined;
@@ -43,7 +41,7 @@ function safeDecode(s: string): string {
   }
 }
 
-export function buildPath(
+function buildPath(
   page: string,
   sub?: string,
   query?: Record<string, string | undefined>,
@@ -73,28 +71,9 @@ export function pushRoute(
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
-/** Replace the current route without pushing a history entry. */
-export function replaceRoute(
-  page: string,
-  sub?: string,
-  query?: Record<string, string | undefined>,
-): void {
-  const path = buildPath(page, sub, query);
-  if (path === window.location.pathname + window.location.search) return;
-  window.history.replaceState({}, '', path);
-  window.dispatchEvent(new PopStateEvent('popstate'));
-}
-
-// Reusable subscribe for useSyncExternalStore
-const listeners = new Set<() => void>();
 function subscribe(cb: () => void) {
-  listeners.add(cb);
-  const onPop = () => listeners.forEach((l) => l());
-  window.addEventListener('popstate', onPop);
-  return () => {
-    listeners.delete(cb);
-    window.removeEventListener('popstate', onPop);
-  };
+  window.addEventListener('popstate', cb);
+  return () => window.removeEventListener('popstate', cb);
 }
 
 // Cache snapshot so getSnapshot is stable between popstate events.
@@ -114,7 +93,7 @@ export function useRoute(): RouteState {
 }
 
 /** Reactive media-query hook — used for mobile master/detail. */
-export function useMediaQuery(query: string): boolean {
+function useMediaQuery(query: string): boolean {
   const [match, setMatch] = useState(
     () => typeof window !== 'undefined' && window.matchMedia(query).matches,
   );

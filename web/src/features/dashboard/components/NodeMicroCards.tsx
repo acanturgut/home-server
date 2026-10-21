@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart } from 'recharts';
 import {
   Cpu,
@@ -13,7 +13,10 @@ import { useDashboardData } from '@/features/dashboard/hooks/useDashboardData';
 import type { NodeStats } from '@/lib/types';
 import { StatusDot } from '@/components/ui/status-dot';
 import { formatUptime, relTime } from '@/lib/format';
-import { settingsApi } from '@/features/settings/api';
+import {
+  dashboardApi,
+  type NodeModelStatus,
+} from '@/features/dashboard/api';
 
 const HISTORY_LEN = 30;
 
@@ -36,26 +39,27 @@ export function NodeMicroCards() {
     () => nodeRows.map((x) => ({ id: x.id, name: x.name })),
     [nodeRows],
   );
-  const histRef = useRef<Record<string, NodeHistory>>({});
-  const counterRef = useRef(0);
-  const [, force] = useState(0);
   const [busy, setBusy] = useState<Record<string, 'wake' | 'shutdown' | null>>(
     {},
   );
 
-  // Update rolling history each shared-tick.
-  useEffect(() => {
-    if (!lastTick) return;
-    const i = counterRef.current++;
+  // Rolling history, appended once per shared tick (adjust-state-during-render).
+  const [hist, setHist] = useState<{
+    tick: number;
+    byId: Record<string, NodeHistory>;
+  }>({ tick: 0, byId: {} });
+  if (lastTick && lastTick !== hist.tick) {
+    const byId = { ...hist.byId };
     Object.entries(stats).forEach(([id, st]: [string, NodeStats]) => {
-      const h = histRef.current[id] || { cpu: [], mem: [], gpu: [] };
-      h.cpu = [...h.cpu, { i, v: st.cpu_usage || 0 }].slice(-HISTORY_LEN);
-      h.mem = [...h.mem, { i, v: st.mem_pct || 0 }].slice(-HISTORY_LEN);
-      h.gpu = [...h.gpu, { i, v: st.gpu_usage || 0 }].slice(-HISTORY_LEN);
-      histRef.current[id] = h;
+      const h = byId[id] || { cpu: [], mem: [], gpu: [] };
+      byId[id] = {
+        cpu: [...h.cpu, { i: lastTick, v: st.cpu_usage || 0 }].slice(-HISTORY_LEN),
+        mem: [...h.mem, { i: lastTick, v: st.mem_pct || 0 }].slice(-HISTORY_LEN),
+        gpu: [...h.gpu, { i: lastTick, v: st.gpu_usage || 0 }].slice(-HISTORY_LEN),
+      };
     });
-    force((x) => x + 1);
-  }, [lastTick, stats]);
+    setHist({ tick: lastTick, byId });
+  }
 
   const allIds = useMemo(
     () =>
@@ -87,7 +91,7 @@ export function NodeMicroCards() {
   const handleWake = async (id: string) => {
     setBusy((b) => ({ ...b, [id]: 'wake' }));
     try {
-      await settingsApi.wakeNode(id);
+      await dashboardApi.wakeNode(id);
     } catch (e) {
       console.error('wake failed', e);
     } finally {
@@ -99,7 +103,7 @@ export function NodeMicroCards() {
       return;
     setBusy((b) => ({ ...b, [id]: 'shutdown' }));
     try {
-      await settingsApi.shutdownNode(id);
+      await dashboardApi.shutdownNode(id);
     } catch (e) {
       console.error('shutdown failed', e);
       window.alert('Shutdown failed: ' + (e as Error).message);
@@ -114,9 +118,10 @@ export function NodeMicroCards() {
         const s = stats[id];
         const meta = nodes.find((n) => n.id === id);
         const name = s?.hostname || meta?.name || id;
+        // Online = reported within 30s of the last poll.
         const isOnline =
-          s && Date.now() - new Date(s.last_seen).getTime() < 30000;
-        const h = histRef.current[id];
+          s && lastTick - new Date(s.last_seen).getTime() < 30000;
+        const h = hist.byId[id];
         const busyState = busy[id];
         // Only configured nodes (in nodeRows) can be powered on/off.
         const isConfigured = nodes.some((n) => n.id === id);
@@ -380,40 +385,41 @@ function InlineMetric({
   );
 }
 
-interface ModelStatus {
-  id: string;
-  state: string;
-  type?: string;
-  loaded: boolean;
-}
-
 function ModelPicker({ nodeId }: { nodeId: string }) {
-  const [models, setModels] = useState<ModelStatus[] | null>(null);
+  const [models, setModels] = useState<NodeModelStatus[] | null>(null);
   const [selected, setSelected] = useState<string>('');
-  const [busy, setBusy] = useState<'load' | 'unload' | 'refresh' | null>(null);
+  // Starts as 'refresh': the initial fetch is kicked off on mount.
+  const [busy, setBusy] = useState<'load' | 'unload' | 'refresh' | null>(
+    'refresh',
+  );
   const [error, setError] = useState<string | null>(null);
 
-  const fetchModels = async () => {
-    setBusy('refresh');
-    setError(null);
-    try {
-      const res = await settingsApi.getNodeModelsStatus(nodeId);
-      const list = res?.models ?? [];
-      setModels(list);
-      // Prefer currently-loaded model in the dropdown; else first item.
-      const loaded = list.find((m) => m.loaded);
-      setSelected((prev) => prev || loaded?.id || list[0]?.id || '');
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  };
+  // Fetch + apply; state is only touched in the async callbacks.
+  const loadModels = useCallback(
+    () =>
+      dashboardApi
+        .nodeModelsStatus(nodeId)
+        .then((res) => {
+          const list = res?.models ?? [];
+          setModels(list);
+          // Prefer currently-loaded model in the dropdown; else first item.
+          const loaded = list.find((m) => m.loaded);
+          setSelected((prev) => prev || loaded?.id || list[0]?.id || '');
+        })
+        .catch((e: Error) => setError(e.message))
+        .finally(() => setBusy(null)),
+    [nodeId],
+  );
 
   useEffect(() => {
-    fetchModels();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeId]);
+    loadModels();
+  }, [loadModels]);
+
+  const fetchModels = () => {
+    setBusy('refresh');
+    setError(null);
+    return loadModels();
+  };
 
   const loaded = models?.find((m) => m.loaded);
 
@@ -422,7 +428,7 @@ function ModelPicker({ nodeId }: { nodeId: string }) {
     setBusy('load');
     setError(null);
     try {
-      await settingsApi.loadNodeModel(nodeId, selected);
+      await dashboardApi.loadNodeModel(nodeId, selected);
       await fetchModels();
     } catch (e) {
       setError((e as Error).message);
@@ -435,7 +441,7 @@ function ModelPicker({ nodeId }: { nodeId: string }) {
     setBusy('unload');
     setError(null);
     try {
-      await settingsApi.unloadNodeModel(nodeId, loaded.id);
+      await dashboardApi.unloadNodeModel(nodeId, loaded.id);
       await fetchModels();
     } catch (e) {
       setError((e as Error).message);

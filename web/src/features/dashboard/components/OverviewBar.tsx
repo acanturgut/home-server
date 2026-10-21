@@ -10,16 +10,12 @@ import {
   CloudSnow,
   CloudFog,
   CloudLightning,
-  Droplets,
-  Wind,
 } from 'lucide-react';
 import { dashboardApi, type DashboardOverview } from '@/features/dashboard/api';
 
 function weatherIcon(code: number, isDay: boolean, size = 16) {
   // Map WMO codes to lucide icons.
   if (code === 0) return isDay ? <Sun size={size} /> : <Moon size={size} />;
-  if (code === 1 || code === 2) return <Cloud size={size} />;
-  if (code === 3) return <Cloud size={size} />;
   if (code === 45 || code === 48) return <CloudFog size={size} />;
   if (code >= 51 && code <= 67) return <CloudRain size={size} />;
   if (code >= 71 && code <= 77) return <CloudSnow size={size} />;
@@ -125,6 +121,3 @@ export function OverviewBar() {
     </div>
   );
 }
-
-// Smaller helpers re-exported in case anything wants them later.
-export const __WeatherIcons = { Droplets, Wind };

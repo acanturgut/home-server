@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/acanturgut/home-server/apps"
+	"github.com/acanturgut/home-server/assistant"
 )
 
 // ── POST /api/fetch-url ─────────────────────────────────────────────────
@@ -169,7 +169,7 @@ func (h *Handler) ListSnippets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CreateSnippet(w http.ResponseWriter, r *http.Request) {
-	var sn apps.Snippet
+	var sn assistant.Snippet
 	if err := json.NewDecoder(r.Body).Decode(&sn); err != nil || sn.Body == "" {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "body required"})
 		return
@@ -217,7 +217,7 @@ func (h *Handler) WebSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	results, err := apps.SearchDDG(ctx, req.Q, req.K)
+	results, err := assistant.SearchDDG(ctx, req.Q, req.K)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, errorResp{Error: err.Error()})
 		return
@@ -256,13 +256,13 @@ func (h *Handler) WebSearchFetch(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
 	defer cancel()
-	hits, err := apps.SearchDDG(ctx, req.Q, req.K)
+	hits, err := assistant.SearchDDG(ctx, req.Q, req.K)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, errorResp{Error: err.Error()})
 		return
 	}
 	// Fan out page fetches in parallel, skipping blocked hosts.
-	results := make([]apps.WebResult, len(hits))
+	results := make([]assistant.WebResult, len(hits))
 	done := make(chan int, len(hits))
 	for i, h := range hits {
 		results[i] = h
@@ -272,7 +272,7 @@ func (h *Handler) WebSearchFetch(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		go func(i int, u string) {
-			title, text := apps.FetchPageText(ctx, u, req.PerPageChars)
+			title, text := assistant.FetchPageText(ctx, u, req.PerPageChars)
 			if title != "" && results[i].Title == "" {
 				results[i].Title = title
 			}

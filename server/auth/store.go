@@ -21,7 +21,6 @@ package auth
 
 import (
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -173,19 +172,6 @@ func (s *Store) Users() []User {
 		out = append(out, c)
 	}
 	return out
-}
-
-// User returns a single user by ID.
-func (s *Store) User(id string) (User, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	u, ok := s.users[id]
-	if !ok {
-		return User{}, false
-	}
-	c := *u
-	c.PasswordHash = ""
-	return c, true
 }
 
 // SetPassword updates a user's password (also called by self-service change).
@@ -454,10 +440,4 @@ func randomToken(nBytes int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
-}
-
-// constantTimeEqual avoids timing-leak comparisons. (Used internally for
-// possible future API-token endpoints.)
-func constantTimeEqual(a, b string) bool {
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }

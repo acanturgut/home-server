@@ -29,7 +29,6 @@ import {
   type HomeDeviceType,
   type HomeSnapshot,
 } from '@/features/home/api';
-import { dashboardApi } from '@/features/dashboard/api';
 import { gotoPage } from '@/lib/format';
 import { useRoute, pushRoute, useIsMobile } from '@/app/routing';
 import { ConditionsCard } from '@/features/home/components/ConditionsCard';
@@ -96,7 +95,6 @@ export function HomeDevicesPanel() {
   });
   const optimisticUntil = useRef<Record<string, number>>({});
   const inFlight = useRef(0);
-  const [tab, setTab] = useState<Tab>('active');
   const [editing, setEditing] = useState<HomeDevice | null>(null);
 
   // Sub-route is the selected room (or '__hidden__'). Empty = master list on
@@ -108,10 +106,7 @@ export function HomeDevicesPanel() {
     else pushRoute('home', r);
   }, []);
   // Hidden view rides on the same sub-route slot.
-  useEffect(() => {
-    if (urlSub === '__hidden__') setTab('hidden');
-    else setTab('active');
-  }, [urlSub]);
+  const tab: Tab = urlSub === '__hidden__' ? 'hidden' : 'active';
   const showMaster = !isMobile || !urlSub;
   const showDetail = !isMobile || !!urlSub;
 
@@ -217,7 +212,7 @@ export function HomeDevicesPanel() {
         ),
       }));
       try {
-        await dashboardApi.setDeviceOverride(dev.id, {
+        await homeApi.setDeviceOverride(dev.id, {
           name: patch.name,
           room: patch.room ?? dev.room ?? '',
           type: patch.type,

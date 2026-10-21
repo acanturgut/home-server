@@ -11,20 +11,17 @@ import (
 
 	"github.com/acanturgut/home-server/ai"
 	"github.com/acanturgut/home-server/api"
-	"github.com/acanturgut/home-server/apps"
+	"github.com/acanturgut/home-server/apitokens"
+	"github.com/acanturgut/home-server/assistant"
 	"github.com/acanturgut/home-server/asusrouter"
 	"github.com/acanturgut/home-server/auth"
-	"github.com/acanturgut/home-server/bambu"
 	"github.com/acanturgut/home-server/config"
 	"github.com/acanturgut/home-server/homedevices"
 	"github.com/acanturgut/home-server/homedns"
-	"github.com/acanturgut/home-server/apitokens"
 	"github.com/acanturgut/home-server/homekit"
 	"github.com/acanturgut/home-server/logger"
 	"github.com/acanturgut/home-server/network"
 	"github.com/acanturgut/home-server/nodestate"
-	"github.com/acanturgut/home-server/trader"
-	"github.com/acanturgut/home-server/villanos"
 )
 
 // version is set via -ldflags "-X main.version=..." at build time.
@@ -46,14 +43,9 @@ func main() {
 	}
 
 	router := ai.NewRouter(cfg, nodes)
-	aiClient := ai.NewClient()
 	ns := nodestate.NewStore()
-	appStore := apps.NewStore(cfg.DataDir)
-	promptStore := apps.NewPromptStore(cfg.DataDir)
-	settingsStore := apps.NewSettingsStore(cfg.DataDir)
-	taskHistory := apps.NewTaskHistory(cfg.DataDir)
-	pipeline := apps.NewPipeline(appStore, promptStore, settingsStore, taskHistory)
-	handler := api.NewHandler(router, cfg, nodes, ns, appStore, pipeline, aiClient, promptStore, settingsStore, version)
+	settingsStore := assistant.NewSettingsStore(cfg.DataDir)
+	handler := api.NewHandler(router, cfg, nodes, ns, settingsStore, version)
 	handler.StartSysCollector(5*time.Second, 60) // 5min of 5s samples
 
 	// Smart-home device manager (Hue, Dirigera, webOS, HTTP). Bridges are
@@ -95,29 +87,10 @@ func main() {
 	}
 	handler.SetAuth(authStore)
 
-	// API tokens (bearer auth for Shortcuts, mobile app, scripts).
+	// API tokens (bearer auth for Shortcuts and scripts).
 	// On first run, an existing siri.json is migrated automatically.
 	tokenStore := apitokens.NewStore(cfg.DataDir)
 	handler.SetTokens(tokenStore)
-
-	// Bambu Lab 3D printers (LAN-only MQTT + RTSPS camera proxy via FFmpeg).
-	bambuStore := bambu.NewStore(cfg.DataDir)
-	bambuMgr := bambu.NewManager(bambuStore)
-	handler.SetBambu(bambuMgr)
-
-	// Paper-trading agent. Single Manager process-wide; persisted to
-	// <data>/trader.json. Loop is started below alongside bambuMgr.Run.
-	traderStore := trader.NewStore(cfg.DataDir)
-	alpaca := trader.NewAlpacaFromEnv() // nil if creds unset → simulated mode
-	if alpaca != nil {
-		fmt.Fprintln(os.Stderr, "trader: Alpaca paper credentials detected—routing trades through broker")
-	}
-	traderMgr, err := trader.NewManagerWithBroker(traderStore, router, alpaca)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "trader: failed to load state: %v\n", err)
-	} else {
-		handler.SetTrader(traderMgr)
-	}
 
 	mux := api.NewRouter(handler)
 
@@ -125,26 +98,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start crash monitor — auto-fixes deployed apps when their container exits.
-	// Honours the AutoFixOnCrash runtime setting; polls every 30s.
-	pipeline.StartCrashMonitor(ctx, handler.CrashMonitorDeps(), 30*time.Second)
-
 	// Start home devices polling loop.
 	go hdManager.Run(ctx, 15*time.Second)
-	// Start Bambu MQTT clients (per-printer; reconnects automatically).
-	bambuMgr.Run(ctx)
-	if traderMgr != nil {
-		go traderMgr.Run(ctx)
-	}
-
-	// VillaOS — Love Island AI agent simulation.
-	villanosMgr, err := villanos.NewManager(villanos.NewStore(cfg.DataDir), router)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "villanos: failed to init: %v\n", err)
-	} else {
-		handler.SetVillanos(villanosMgr)
-		go villanosMgr.Run(ctx)
-	}
 	// Periodic sensor-history compaction (drops samples older than 30 days).
 	go func() {
 		t := time.NewTicker(6 * time.Hour)

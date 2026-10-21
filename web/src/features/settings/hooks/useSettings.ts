@@ -1,21 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { NodeConfig } from '@/features/settings/components/NodeFormInline';
-import { settingsApi, type SystemConfigDTO } from '@/features/settings/api';
+import {
+  settingsApi,
+  type NodeConfig,
+  type SystemConfigDTO,
+} from '@/features/settings/api';
 
-export type SystemConfig = SystemConfigDTO;
-
-export type RuntimeSettings = {
-  autoFixOnCrash: boolean;
+type RuntimeSettings = {
   defaultTemperature: number;
-  buildTimeoutMin: number;
-  keepBuildHistory: number;
 };
 
-export const DEFAULT_RUNTIME_SETTINGS: RuntimeSettings = {
-  autoFixOnCrash: false,
+const DEFAULT_RUNTIME_SETTINGS: RuntimeSettings = {
   defaultTemperature: 0.7,
-  buildTimeoutMin: 30,
-  keepBuildHistory: 20,
 };
 
 export interface NodeForm {
@@ -40,7 +35,7 @@ const EMPTY_FORM: NodeForm = {
 
 /**
  * Settings page state + side-effects: system config, runtime settings,
- * prompts, and node CRUD. The panel component is purely presentational.
+ * and node CRUD. The panel component is purely presentational.
  */
 export function useSettings() {
   // --- system config + health ---
@@ -50,7 +45,7 @@ export function useSettings() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [sysCfg, setSysCfg] = useState<SystemConfig | null>(null);
+  const [sysCfg, setSysCfg] = useState<SystemConfigDTO | null>(null);
 
   // --- runtime settings ---
   const [settings, setSettings] = useState<RuntimeSettings>(
@@ -67,86 +62,57 @@ export function useSettings() {
   const [form, setForm] = useState<NodeForm>(EMPTY_FORM);
   const [models, setModels] = useState<string[]>([]);
 
-  // --- prompts ---
-  const [prompts, setPrompts] = useState<Record<string, string>>({});
-  const [promptsSaving, setPromptsSaving] = useState(false);
-  const [promptsDirty, setPromptsDirty] = useState(false);
-
-  /* prompts */
-  const refreshPrompts = useCallback(async () => {
-    const d = await settingsApi.getPrompts();
-    if (d) {
-      setPrompts(d);
-      setPromptsDirty(false);
-    }
-  }, []);
-
-  const savePrompts = useCallback(async () => {
-    setPromptsSaving(true);
-    try {
-      const d = await settingsApi.putPrompts(prompts);
-      setPrompts(d);
-      setPromptsDirty(false);
-    } catch {
-      /* ignore */
-    }
-    setPromptsSaving(false);
-  }, [prompts]);
-
-  const resetPrompts = useCallback(async () => {
-    if (!confirm('Reset all prompts to defaults?')) return;
-    setPromptsSaving(true);
-    try {
-      const d = await settingsApi.resetPrompts();
-      setPrompts(d);
-      setPromptsDirty(false);
-    } catch {
-      /* ignore */
-    }
-    setPromptsSaving(false);
-  }, []);
-
-  const updatePrompt = useCallback((key: string, val: string) => {
-    setPrompts((prev) => ({ ...prev, [key]: val }));
-    setPromptsDirty(true);
-  }, []);
-
   /* config / health */
+  // `load*` only set state from promise callbacks, so the mount effect can
+  // call them directly; `refresh*` also flip the loading flags first.
+  const loadConfig = useCallback(
+    () =>
+      Promise.all([settingsApi.getConfig(), settingsApi.getHealth()])
+        .then(([cfg, health]) => {
+          setSysCfg(cfg);
+          setRouterModel(cfg.router_model || '');
+          setOllamaHost(cfg.ollama_host || '');
+          setOllamaOnline(health.backends?.ollama || false);
+          setNodes((health.backends?.nodes || []).map((n) => ({ ...n })));
+        })
+        .catch((e) =>
+          setLoadError(e instanceof Error ? e.message : 'Failed to load'),
+        )
+        .finally(() => setLoading(false)),
+    [],
+  );
+
   const refresh = useCallback(() => {
     setLoading(true);
     setLoadError(null);
-    Promise.all([settingsApi.getConfig(), settingsApi.getHealth()])
-      .then(([cfg, health]) => {
-        setSysCfg(cfg);
-        setRouterModel(cfg.router_model || '');
-        setOllamaHost(cfg.ollama_host || '');
-        setOllamaOnline(health.backends?.ollama || false);
-        setNodes((health.backends?.nodes || []).map((n) => ({ ...n })));
-      })
-      .catch((e) =>
-        setLoadError(e instanceof Error ? e.message : 'Failed to load'),
-      )
-      .finally(() => setLoading(false));
-  }, []);
+    void loadConfig();
+  }, [loadConfig]);
 
   /* runtime settings */
+  const loadSettings = useCallback(
+    () =>
+      settingsApi
+        .getSettings()
+        .then((d) => {
+          if (d) {
+            setSettings({ ...DEFAULT_RUNTIME_SETTINGS, ...d });
+            setSettingsDirty(false);
+          }
+        })
+        .finally(() => setSettingsLoading(false)),
+    [],
+  );
+
   const refreshSettings = useCallback(() => {
     setSettingsLoading(true);
-    settingsApi
-      .getSettings()
-      .then((d) => {
-        if (d) {
-          setSettings({ ...DEFAULT_RUNTIME_SETTINGS, ...d });
-          setSettingsDirty(false);
-        }
-      })
-      .finally(() => setSettingsLoading(false));
-  }, []);
+    void loadSettings();
+  }, [loadSettings]);
 
+  // Initial state already has loading flags on and no error.
   useEffect(() => {
-    refresh();
-    refreshSettings();
-  }, [refresh, refreshSettings]);
+    void loadConfig();
+    void loadSettings();
+  }, [loadConfig, loadSettings]);
 
   const updateSetting = useCallback(
     <K extends keyof RuntimeSettings>(k: K, v: RuntimeSettings[K]) => {
@@ -260,14 +226,6 @@ export function useSettings() {
     saveSettings,
     resetSettings,
     refreshSettings,
-    // prompts
-    prompts,
-    promptsDirty,
-    promptsSaving,
-    refreshPrompts,
-    savePrompts,
-    resetPrompts,
-    updatePrompt,
     // nodes
     nodes,
     editId,

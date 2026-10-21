@@ -6,28 +6,6 @@
 @custom-variant dark (&:is(.dark *));
 
 @layer base {
-  :root {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 200 90% 70%;
-    --primary-foreground: 200 80% 12%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 200 90% 75%;
-    --accent-foreground: 200 80% 12%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 200 90% 70%;
-    --radius: 0.5rem;
-  }
   * {
     @apply border-border outline-ring/50;
   }
@@ -36,16 +14,6 @@
   }
   html {
     @apply font-sans;
-  }
-}
-
-@layer base {
-  * {
-    border-color: hsl(var(--border));
-  }
-  body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
   }
 }
 
@@ -99,18 +67,18 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.72 0.14 230);
-  --primary-foreground: oklch(0.18 0.04 230);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.85 0.08 230);
-  --accent-foreground: oklch(0.25 0.06 230);
-  --destructive: oklch(0.577 0.245 27.325);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.205 0 0);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.78 0.11 230);
+  --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -119,12 +87,12 @@
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.72 0.14 230);
-  --sidebar-primary-foreground: oklch(0.18 0.04 230);
-  --sidebar-accent: oklch(0.85 0.08 230);
-  --sidebar-accent-foreground: oklch(0.25 0.06 230);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.78 0.11 230);
+  --sidebar-ring: oklch(0.708 0 0);
 }
 
 .dark {
@@ -134,18 +102,18 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.78 0.11 230);
-  --primary-foreground: oklch(0.18 0.04 230);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.145 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.78 0.11 230);
-  --accent-foreground: oklch(0.18 0.04 230);
-  --destructive: oklch(0.704 0.191 22.216);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.985 0 0);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.78 0.11 230);
+  --ring: oklch(0.556 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -153,24 +121,20 @@
   --chart-5: oklch(0.269 0 0);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.78 0.11 230);
-  --sidebar-primary-foreground: oklch(0.18 0.04 230);
-  --sidebar-accent: oklch(0.78 0.11 230);
-  --sidebar-accent-foreground: oklch(0.18 0.04 230);
+  --sidebar-primary: oklch(0.985 0 0);
+  --sidebar-primary-foreground: oklch(0.145 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.78 0.11 230);
+  --sidebar-ring: oklch(0.556 0 0);
 }
 
-/* Code editor overrides */
-.code-editor-root {
-  min-height: 100% !important;
-}
-.code-editor-root textarea {
-  outline: none !important;
-  background: transparent !important;
-}
-.code-editor-root pre {
-  min-height: 100% !important;
+/* Monochrome: feature code still carries chromatic Tailwind classes and
+   chart hex colors; grayscale on the root flattens all of it to gray.
+   ponytail: one filter instead of ~500 per-component edits; swap the
+   classes for neutral tokens if the filter ever costs frame rate. */
+html {
+  filter: grayscale(1);
 }
 
 /* Minimalist scrollbars */

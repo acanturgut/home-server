@@ -275,178 +275,6 @@ export const ENDPOINTS: Endpoint[] = [
     summary: 'Recent web clients that have hit the dashboard',
   },
 
-  // ── Apps pipeline ──────────────────────────────────────────────
-  {
-    group: 'Apps',
-    method: 'GET',
-    path: '/api/apps',
-    summary: 'List deployed apps with status, port, route, build history',
-  },
-  {
-    group: 'Apps',
-    method: 'POST',
-    path: '/api/apps/build',
-    summary: 'Build a new app from a prompt (streaming NDJSON pipeline events)',
-    body: JSON.stringify(
-      { prompt: 'A pomodoro timer with a leaderboard.', name: 'pomodoro' },
-      null,
-      2,
-    ),
-  },
-  {
-    group: 'Apps',
-    method: 'POST',
-    path: '/api/apps/clarify',
-    summary:
-      'Generate AI clarifying questions for a build prompt (used by the wizard)',
-    body: JSON.stringify({ prompt: 'A pomodoro timer.' }, null, 2),
-  },
-  {
-    group: 'Apps',
-    method: 'POST',
-    path: '/api/apps/refine',
-    summary: 'Rewrite a raw user prompt into a clearer app brief',
-    body: JSON.stringify(
-      { prompt: 'pomodoro app maybe with leaderboard' },
-      null,
-      2,
-    ),
-  },
-  {
-    group: 'Apps',
-    method: 'POST',
-    path: '/api/apps/{name}/rebuild',
-    summary: 'Apply a change request to an existing app (streaming)',
-    pathParams: ['name'],
-    body: JSON.stringify({ changes: 'Add a settings page.' }, null, 2),
-  },
-  {
-    group: 'Apps',
-    method: 'POST',
-    path: '/api/apps/{name}/fix',
-    summary: 'Ask the model to diagnose & patch an app from container logs',
-    pathParams: ['name'],
-    body: JSON.stringify({ description: '' }, null, 2),
-  },
-  {
-    group: 'Apps',
-    method: 'POST',
-    path: '/api/apps/{name}/deploy',
-    summary: 'Re-deploy current files (no AI) — rebuild image and restart',
-    pathParams: ['name'],
-  },
-  {
-    group: 'Apps',
-    method: 'POST',
-    path: '/api/apps/{name}/stop',
-    summary: 'Stop the running app container',
-    pathParams: ['name'],
-  },
-  {
-    group: 'Apps',
-    method: 'POST',
-    path: '/api/apps/{name}/restart',
-    summary: 'Restart the app container from its existing image',
-    pathParams: ['name'],
-  },
-  {
-    group: 'Apps',
-    method: 'POST',
-    path: '/api/apps/{name}/cancel',
-    summary: 'Cancel an in-progress build / rebuild / fix',
-    pathParams: ['name'],
-  },
-  {
-    group: 'Apps',
-    method: 'DELETE',
-    path: '/api/apps/{name}',
-    summary: 'Stop and remove an app completely',
-    pathParams: ['name'],
-  },
-  {
-    group: 'Apps',
-    method: 'POST',
-    path: '/api/apps/{name}/chat',
-    summary: 'Chat about / iterate on an app with the LLM',
-    pathParams: ['name'],
-    body: JSON.stringify({ message: 'How do I add dark mode?' }, null, 2),
-  },
-  {
-    group: 'Apps',
-    method: 'GET',
-    path: '/api/apps/{name}/files',
-    summary: 'List project files for an app',
-    pathParams: ['name'],
-  },
-  {
-    group: 'Apps',
-    method: 'GET',
-    path: '/api/apps/{name}/logs',
-    summary: 'Recent container logs for an app',
-    pathParams: ['name'],
-    queryParams: [{ name: 'n', default: '200' }],
-  },
-  {
-    group: 'Apps',
-    method: 'GET',
-    path: '/api/apps/{name}/stats',
-    summary: 'Container CPU / memory stats',
-    pathParams: ['name'],
-  },
-  {
-    group: 'Apps',
-    method: 'GET',
-    path: '/api/apps/{name}/search',
-    summary: 'Search project files by substring',
-    pathParams: ['name'],
-    queryParams: [{ name: 'q' }],
-  },
-  {
-    group: 'Apps',
-    method: 'POST',
-    path: '/api/apps/{name}/exec',
-    summary: 'Run an arbitrary shell command inside the app container',
-    pathParams: ['name'],
-    body: JSON.stringify({ cmd: 'ls -la' }, null, 2),
-  },
-  {
-    group: 'Apps',
-    method: 'PUT',
-    path: '/api/apps/{name}/settings',
-    summary: 'Update per-app settings (auto-fix, etc.)',
-    pathParams: ['name'],
-    body: JSON.stringify({ auto_fix: true }, null, 2),
-  },
-  {
-    group: 'Apps',
-    method: 'GET',
-    path: '/api/apps/{name}/git/log',
-    summary: 'Git commit log for the app project',
-    pathParams: ['name'],
-  },
-  {
-    group: 'Apps',
-    method: 'GET',
-    path: '/api/apps/{name}/git/diff/{sha}',
-    summary: 'Git diff for a specific commit',
-    pathParams: ['name', 'sha'],
-  },
-  {
-    group: 'Apps',
-    method: 'POST',
-    path: '/api/apps/{name}/git/revert/{sha}',
-    summary: 'Revert the project to a specific commit',
-    pathParams: ['name', 'sha'],
-  },
-  {
-    group: 'Apps',
-    method: 'POST',
-    path: '/api/apps/{name}/git/commit',
-    summary: 'Manually commit current project state',
-    pathParams: ['name'],
-    body: JSON.stringify({ message: 'manual save' }, null, 2),
-  },
-
   // ── Chat ───────────────────────────────────────────────────────
   {
     group: 'Chat',
@@ -540,22 +368,15 @@ export const ENDPOINTS: Endpoint[] = [
     body: JSON.stringify({ q: 'home automation', limit: 3 }, null, 2),
   },
 
-  // ── RAG & tools ────────────────────────────────────────────────
+  // ── Tools ──────────────────────────────────────────────────────
   {
-    group: 'RAG & tools',
-    method: 'POST',
-    path: '/api/rag/search',
-    summary: 'Search indexed app files by similarity',
-    body: JSON.stringify({ q: 'how do I add a route', k: 5 }, null, 2),
-  },
-  {
-    group: 'RAG & tools',
+    group: 'Tools',
     method: 'GET',
     path: '/api/tools',
     summary: 'List available built-in tools',
   },
   {
-    group: 'RAG & tools',
+    group: 'Tools',
     method: 'POST',
     path: '/api/tools/run/{name}',
     summary: 'Run a built-in tool by name',
@@ -596,50 +417,24 @@ export const ENDPOINTS: Endpoint[] = [
     pathParams: ['id'],
   },
 
-  // ── Settings & prompts ─────────────────────────────────────────
+  // ── Settings ───────────────────────────────────────────────────
   {
     group: 'Settings',
     method: 'GET',
     path: '/api/settings',
-    summary: 'Get runtime settings (auto-fix, build timeout, history depth, …)',
+    summary: 'Get runtime settings (default node temperature)',
   },
   {
     group: 'Settings',
     method: 'PUT',
     path: '/api/settings',
     summary: 'Update runtime settings',
-    body: JSON.stringify(
-      {
-        auto_fix_on_crash: true,
-        build_timeout_min: 15,
-        keep_build_history: 20,
-      },
-      null,
-      2,
-    ),
+    body: JSON.stringify({ defaultTemperature: 0.7 }, null, 2),
   },
   {
     group: 'Settings',
     method: 'POST',
     path: '/api/settings/reset',
     summary: 'Reset all runtime settings to defaults',
-  },
-  {
-    group: 'Settings',
-    method: 'GET',
-    path: '/api/prompts',
-    summary: 'Get all editable system prompts (build, clarify, refine, …)',
-  },
-  {
-    group: 'Settings',
-    method: 'PUT',
-    path: '/api/prompts',
-    summary: 'Update one or more system prompts',
-  },
-  {
-    group: 'Settings',
-    method: 'POST',
-    path: '/api/prompts/reset',
-    summary: 'Reset all system prompts to defaults',
   },
 ];

@@ -144,11 +144,11 @@ export function ConditionsCard({ sensors, onEdit }: Props) {
   const [metric, setMetric] = useState<Metric>(
     () => availableMetrics[0] ?? 'temp',
   );
-  useEffect(() => {
-    if (!availableMetrics.includes(metric) && availableMetrics[0]) {
-      setMetric(availableMetrics[0]);
-    }
-  }, [availableMetrics, metric]);
+  // Fall back to the first available metric when the selected one disappears
+  // (adjust-state-during-render; no effect needed).
+  if (!availableMetrics.includes(metric) && availableMetrics[0]) {
+    setMetric(availableMetrics[0]);
+  }
 
   const [range, setRange] = useState<Range>('24h');
   const [hidden, setHidden] = useState<Set<string>>(new Set());

@@ -48,17 +48,17 @@ export interface RouterClient {
   blocked?: boolean;
 }
 
-export interface RouterStatusResp {
+interface RouterStatusResp {
   configured: boolean;
   status?: RouterStatus;
 }
 
-export interface RouterClientsResp {
+interface RouterClientsResp {
   configured: boolean;
   clients: RouterClient[];
 }
 
-export interface RouterConfigInput {
+interface RouterConfigInput {
   host: string;
   username: string;
   password?: string;

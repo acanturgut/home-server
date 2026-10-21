@@ -1,21 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import { Circle } from 'lucide-react';
 import { settingsApi } from '@/features/settings/api';
+import type { NodeForm } from '@/features/settings/hooks/useSettings';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-
-/** Persisted compute-node configuration row. */
-export interface NodeConfig {
-  id: string;
-  name: string;
-  host: string;
-  tier: string;
-  gpu?: string;
-  mac?: string;
-  model?: string;
-  online?: boolean;
-  temperature?: number | null;
-}
 
 /** Inline node-editor form: identity fields + tier/model + temperature slider
  * + LM-Studio model load/eject controls when the node is online. */
@@ -26,26 +14,21 @@ export function NodeFormInline({
   nodeId,
   online,
 }: {
-  form: {
-    name: string;
-    host: string;
-    tier: string;
-    gpu: string;
-    mac: string;
-    model: string;
-    temperature: number;
-  };
-  setForm: React.Dispatch<React.SetStateAction<typeof form>>;
+  form: NodeForm;
+  setForm: Dispatch<SetStateAction<NodeForm>>;
   models: string[];
   nodeId?: string;
   online?: boolean;
 }) {
   const [loadingModel, setLoadingModel] = useState<string | null>(null);
+  // Local copy so load/eject can update the list optimistically; reset
+  // whenever the parent hands us a new `models` array.
   const [localModels, setLocalModels] = useState<string[]>(models);
-
-  useEffect(() => {
+  const [prevModels, setPrevModels] = useState(models);
+  if (models !== prevModels) {
+    setPrevModels(models);
     setLocalModels(models);
-  }, [models]);
+  }
 
   const loadModel = async (model: string) => {
     if (!nodeId) return;
@@ -74,24 +57,25 @@ export function NodeFormInline({
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2.5">
-        {[
-          { key: 'name', label: 'Name', placeholder: 'My PC' },
-          {
-            key: 'host',
-            label: 'Host',
-            placeholder: 'http://192.168.50.100:1234',
-          },
-          { key: 'gpu', label: 'GPU', placeholder: 'RTX 4090' },
-          { key: 'mac', label: 'MAC', placeholder: 'AA:BB:CC:DD:EE:FF' },
-        ].map((f) => (
+        {(
+          [
+            { key: 'name', label: 'Name', placeholder: 'My PC' },
+            {
+              key: 'host',
+              label: 'Host',
+              placeholder: 'http://192.168.50.100:1234',
+            },
+            { key: 'gpu', label: 'GPU', placeholder: 'RTX 4090' },
+            { key: 'mac', label: 'MAC', placeholder: 'AA:BB:CC:DD:EE:FF' },
+          ] as const
+        ).map((f) => (
           <div key={f.key} className="space-y-0.5">
             <label className="text-xs text-muted-foreground/60">
               {f.label}
             </label>
             <Input
               inputSize="sm"
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              value={(form as any)[f.key]}
+              value={form[f.key]}
               onChange={(e) =>
                 setForm((prev) => ({ ...prev, [f.key]: e.target.value }))
               }

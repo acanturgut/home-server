@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import {
   SettingsCard,
   SkeletonRows,
-} from '@/features/settings/components/SettingsRows';
+} from '@/components/ui/settings-rows';
 
 /**
  * Pi-hole-style ad-blocker panel. Manages hosts-format blocklist sources,
@@ -30,10 +30,13 @@ export function BlocklistCard() {
   const [url, setUrl] = useState('');
   const [allowDomain, setAllowDomain] = useState('');
 
-  const refresh = useCallback(async () => {
-    const s = await dnsApi.blocklist.status();
-    if (s) setStatus(s);
-  }, []);
+  const refresh = useCallback(
+    () =>
+      dnsApi.blocklist.status().then((s) => {
+        if (s) setStatus(s);
+      }),
+    [],
+  );
 
   useEffect(() => {
     refresh();

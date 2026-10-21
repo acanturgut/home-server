@@ -19,18 +19,16 @@ const (
 )
 
 var (
-	advapi32            = syscall.NewLazyDLL("advapi32.dll")
-	procRegOpenKeyEx    = advapi32.NewProc("RegOpenKeyExW")
-	procRegSetValueEx   = advapi32.NewProc("RegSetValueExW")
-	procRegDeleteValue  = advapi32.NewProc("RegDeleteValueW")
-	procRegCloseKey     = advapi32.NewProc("RegCloseKey")
-	procRegQueryValueEx = advapi32.NewProc("RegQueryValueExW")
+	advapi32           = syscall.NewLazyDLL("advapi32.dll")
+	procRegOpenKeyEx   = advapi32.NewProc("RegOpenKeyExW")
+	procRegSetValueEx  = advapi32.NewProc("RegSetValueExW")
+	procRegDeleteValue = advapi32.NewProc("RegDeleteValueW")
+	procRegCloseKey    = advapi32.NewProc("RegCloseKey")
 )
 
 const (
 	hkeyCurrentUser = 0x80000001
 	keyWrite        = 0x20006
-	keyRead         = 0x20019
 	regSZ           = 1
 )
 

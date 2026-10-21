@@ -14,9 +14,9 @@ import { Button } from '@/components/ui/button';
 import {
   SettingsCard,
   SkeletonRows,
-} from '@/features/settings/components/SettingsRows';
+} from '@/components/ui/settings-rows';
 import { authApi, type Role, type User } from '@/features/auth/api';
-import { useAuth } from '@/features/auth/AuthContext';
+import { useAuth } from '@/features/auth/useAuth';
 
 /**
  * Settings → Users tab. Lists accounts (admin only), supports add / role
@@ -41,23 +41,25 @@ export function UsersSettingsTab() {
   const [nextPw, setNextPw] = useState('');
   const [pwMsg, setPwMsg] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!isAdmin) {
-      setUsers([]);
-      return;
-    }
-    try {
-      setUsers(await authApi.users.list());
-      setErr(null);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-      setUsers([]);
-    }
-  }, [isAdmin]);
+  const refresh = useCallback(
+    () =>
+      authApi.users.list().then(
+        (list) => {
+          setUsers(list);
+          setErr(null);
+        },
+        (e) => {
+          setErr(e instanceof Error ? e.message : String(e));
+          setUsers([]);
+        },
+      ),
+    [],
+  );
 
+  // The user list is only rendered for admins, so only admins fetch it.
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (isAdmin) void refresh();
+  }, [isAdmin, refresh]);
 
   const onCreate = async (e: FormEvent) => {
     e.preventDefault();

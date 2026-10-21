@@ -3,16 +3,12 @@ import type { ReactNode } from 'react';
 export interface PageLayoutProps {
   /** Page title — rendered in the top header. Hidden when omitted. */
   title?: string;
+  /** Optional icon shown before the title. */
+  icon?: ReactNode;
   /** Optional toolbar elements rendered at the right of the header. */
   toolbar?: ReactNode;
   /** Optional content rendered centered in the header (between title & toolbar). */
   headerCenter?: ReactNode;
-  /** Optional left rail (e.g. file tree, session list, app list). */
-  leftRail?: ReactNode;
-  /** Optional right rail (e.g. inspector, build panel). */
-  rightRail?: ReactNode;
-  /** Optional bottom dock rendered above the global status bar. */
-  bottomDock?: ReactNode;
   /** Page content. */
   children: ReactNode;
   /**
@@ -20,43 +16,32 @@ export interface PageLayoutProps {
    * style pages). Defaults to false.
    */
   fullBleed?: boolean;
-  /** When true, hides the header bar entirely. */
-  hideHeader?: boolean;
 }
 
 /**
- * Standard page chrome shared across panels:
- *
- *   ┌──────────────────────────── header (title + toolbar) ─┐
- *   │  ┌────────┬─────────────────────────────┬──────────┐  │
- *   │  │ left   │         content             │  right   │  │
- *   │  │ rail   │                             │  rail    │  │
- *   │  └────────┴─────────────────────────────┴──────────┘  │
- *   │  ──────────────── bottom dock ──────────────────────  │
- *   └───────────────────────────────────────────────────────┘
+ * Standard page chrome shared across panels: a sticky header (icon + title,
+ * centered slot, toolbar) above the page content.
  *
  * The outer App shell still owns the navigation sidebar, the slide-up logs
  * overlay and the global status bar.
  */
 export function PageLayout({
   title,
+  icon,
   toolbar,
   headerCenter,
-  leftRail,
-  rightRail,
-  bottomDock,
   children,
   fullBleed = false,
-  hideHeader = false,
 }: PageLayoutProps) {
-  const showHeader = !hideHeader && (title || toolbar || headerCenter);
+  const showHeader = title || toolbar || headerCenter;
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {showHeader && (
-        <div className="sticky top-0 z-10 bg-background/85 backdrop-blur-md border-b border-border/15 px-4 sm:px-6 py-3 shrink-0 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <div className="sticky top-0 z-10 bg-background px-4 sm:px-6 pt-5 pb-3 shrink-0 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
           {title ? (
-            <h1 className="text-base font-semibold tracking-tight text-foreground/95 justify-self-start truncate">
-              {title}
+            <h1 className="flex min-w-0 items-center gap-2.5 text-base font-medium tracking-tight text-foreground justify-self-start">
+              {icon && <span className="text-muted-foreground">{icon}</span>}
+              <span className="truncate">{title}</span>
             </h1>
           ) : (
             <span />
@@ -73,11 +58,6 @@ export function PageLayout({
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        {leftRail && (
-          <aside className="shrink-0 border-r border-border/20 overflow-auto">
-            {leftRail}
-          </aside>
-        )}
         <main
           className={
             fullBleed
@@ -86,18 +66,7 @@ export function PageLayout({
           }>
           {children}
         </main>
-        {rightRail && (
-          <aside className="shrink-0 border-l border-border/20 overflow-auto">
-            {rightRail}
-          </aside>
-        )}
       </div>
-
-      {bottomDock && (
-        <div className="shrink-0 border-t border-border/20 overflow-hidden">
-          {bottomDock}
-        </div>
-      )}
     </div>
   );
 }

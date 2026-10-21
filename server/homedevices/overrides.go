@@ -36,13 +36,6 @@ func NewOverrideStore(dataDir string) *OverrideStore {
 	return s
 }
 
-func (s *OverrideStore) Get(id string) (DeviceOverride, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	o, ok := s.data[id]
-	return o, ok
-}
-
 func (s *OverrideStore) All() map[string]DeviceOverride {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

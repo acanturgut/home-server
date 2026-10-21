@@ -1,5 +1,5 @@
-import { apiJsonSafe, API_BASE } from '@/lib/api';
-import type { AppInfo, LogEntry, NodeStats, SystemInfo } from '@/lib/types';
+import { apiFetch, apiJson, apiJsonSafe } from '@/lib/api';
+import type { LogEntry, NodeStats } from '@/lib/types';
 
 export interface SystemHistoryPoint {
   t: string;
@@ -17,7 +17,7 @@ export interface NodeRow {
   mac?: string;
 }
 
-export interface OverviewLocation {
+interface OverviewLocation {
   city: string;
   region: string;
   country: string;
@@ -27,7 +27,7 @@ export interface OverviewLocation {
   isp: string;
 }
 
-export interface OverviewWeather {
+interface OverviewWeather {
   temp: number;
   feels_like: number;
   humidity: number;
@@ -60,36 +60,38 @@ export interface ClusterAggregate {
   vram_total_mb: number;
 }
 
-export interface DashboardClient {
-  ip: string;
-  count: number;
-  last_seen: string;
-  last_path: string;
-  user_agent?: string;
+export interface NodeModelStatus {
+  id: string;
+  state: string;
+  type?: string;
+  loaded: boolean;
 }
 
 export const dashboardApi = {
-  system: () => apiJsonSafe<SystemInfo>('/api/system'),
   systemHistory: () => apiJsonSafe<SystemHistoryPoint[]>('/api/system/history'),
-  apps: () => apiJsonSafe<AppInfo[]>('/api/apps'),
   nodes: () => apiJsonSafe<NodeRow[]>('/api/nodes'),
   nodeStats: () => apiJsonSafe<Record<string, NodeStats>>('/api/nodes/stats'),
   logs: (n = 200) => apiJsonSafe<LogEntry[]>(`/api/logs?n=${n}`),
   overview: () => apiJsonSafe<DashboardOverview>('/api/dashboard/overview'),
   cluster: () => apiJsonSafe<ClusterAggregate>('/api/dashboard/cluster'),
-  clients: () => apiJsonSafe<DashboardClient[]>('/api/dashboard/clients'),
-  setDeviceOverride: async (
-    deviceId: string,
-    o: { name?: string; room?: string; type?: string; hidden?: boolean },
-  ) => {
-    const r = await fetch(
-      `${API_BASE}/api/home/devices/${encodeURIComponent(deviceId)}/override`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(o),
-      },
-    );
-    if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
-  },
+
+  // node power + model controls (cluster cards)
+  wakeNode: (id: string) =>
+    apiFetch(`/api/nodes/${id}/wake`, { method: 'POST' }),
+  shutdownNode: (id: string) =>
+    apiFetch(`/api/nodes/${id}/shutdown`, { method: 'POST' }),
+  nodeModelsStatus: (id: string) =>
+    apiJsonSafe<{ models?: NodeModelStatus[] }>(
+      `/api/nodes/${id}/models/status`,
+    ),
+  loadNodeModel: (nodeId: string, model: string) =>
+    apiJson<unknown>(`/api/nodes/${nodeId}/models/load`, {
+      method: 'POST',
+      body: JSON.stringify({ model }),
+    }),
+  unloadNodeModel: (nodeId: string, model: string) =>
+    apiJson<unknown>(`/api/nodes/${nodeId}/models/unload`, {
+      method: 'POST',
+      body: JSON.stringify({ model }),
+    }),
 };

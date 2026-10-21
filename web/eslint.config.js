@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import js from '@eslint/js';
 import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';
@@ -7,12 +8,12 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 
 // ── Cross-feature import boundary ──────────────────────────────────────────
 // Inside any `src/features/<x>/` file, deep imports into a *different*
-// feature (e.g. `@/features/chat/hooks/useChatPanel` from `features/apps/`)
+// feature (e.g. `@/features/settings/api` from `features/dashboard/`)
 // are forbidden. Cross-feature consumers must go through the feature barrel
 // (`@/features/<other>` → `index.ts`) — that's the only public surface.
 // Same-feature deep imports (`@/features/<self>/components/...`) remain
 // allowed, since they're internal to the feature and don't break boundaries.
-const FEATURES = ['apps', 'chat', 'dashboard', 'homekit', 'logs', 'settings'];
+const FEATURES = readdirSync(new URL('./src/features', import.meta.url));
 const featureBoundaryConfigs = FEATURES.map((self) => {
   const others = FEATURES.filter((f) => f !== self);
   const groups = others.flatMap((other) => [
@@ -54,4 +55,22 @@ export default defineConfig([
     },
   },
   ...featureBoundaryConfigs,
+  // The app shell may only consume features through their barrels.
+  {
+    files: ['src/app/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/features/*/*'],
+              message:
+                'Deep feature imports are forbidden. Use the feature barrel `@/features/<name>` instead.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ]);

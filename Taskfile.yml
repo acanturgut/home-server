@@ -12,26 +12,6 @@ tasks:
     dir: server
     cmd: go run .
 
-  app:dev:
-    desc: Start Expo dev server (requires a dev build — Expo Go can't use native speech)
-    dir: app
-    cmd: npx expo start --dev-client
-
-  app:install:
-    desc: Install app dependencies
-    dir: app
-    cmd: yarn install
-
-  app:prebuild:
-    desc: Generate native ios/android folders for the app
-    dir: app
-    cmd: npx expo prebuild --clean
-
-  app:ios:
-    desc: Build & run the iOS dev build on a connected device or simulator
-    dir: app
-    cmd: npx expo run:ios --device
-
   # ─── BUILD ─────────────────────────────────────────────
   server:build:
     desc: Build Go binary for Pi (arm64)
@@ -81,10 +61,9 @@ tasks:
     cmd: >-
       rsync -avz --delete
       --exclude 'node_modules'
-      --exclude '.expo'
+      --exclude '*.log'
       --exclude 'dist'
       --exclude '.git'
-      --exclude 'app'
       --exclude '/web'
       ./ {{.PI_HOST}}:{{.PI_DIR}}/
 

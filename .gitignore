@@ -1,5 +1,11 @@
 dist/
 node_modules/
-.expo/
 *.log
 .env
+
+# Stray build outputs
+/homeserver
+/server/main
+/web/server/
+/agent/home-agent
+/agent/home-agent.exe

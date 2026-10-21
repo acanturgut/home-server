@@ -6,7 +6,6 @@
  * Recognised payload keys map to URL parts:
  *   { tab: 'router' }   →  /settings/router
  *   { room: 'Kitchen' } →  /home/Kitchen
- *   { app:  'apps1' }   →  /apps/apps1
  *   { prompt: 'hi' }    →  ?prompt=hi
  */
 import { pushRoute } from '@/app/routing';
@@ -18,12 +17,11 @@ export function gotoPage(page: string, payload?: unknown): void {
     const p = payload as Record<string, unknown>;
     if (typeof p.tab === 'string') sub = p.tab;
     else if (typeof p.room === 'string') sub = p.room;
-    else if (typeof p.app === 'string') sub = p.app;
     if (typeof p.prompt === 'string') query.prompt = p.prompt;
   }
   pushRoute(page, sub, query);
   // Back-compat: still emit the legacy event so existing listeners
-  // (chat:prefill-prompt, apps:prefill-prompt) continue to fire.
+  // (chat:prefill-prompt, settings:set-tab) continue to fire.
   window.dispatchEvent(
     new CustomEvent('nav:goto', { detail: { page, payload } }),
   );
@@ -56,19 +54,4 @@ export function formatUptime(seconds: number): string {
   if (d > 0) return `${d}d ${h}h ${m}m`;
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
-}
-
-/** "HH:MM:SS" from an ISO timestamp string. */
-export function fmtTime(ts?: string): string {
-  if (!ts) return '';
-  try {
-    return new Date(ts).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    });
-  } catch {
-    return '';
-  }
 }

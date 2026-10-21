@@ -117,6 +117,20 @@ export const homeApi = {
       throw new Error(t || `HTTP ${r.status}`);
     }
   },
+  setDeviceOverride: async (
+    deviceId: string,
+    o: { name?: string; room?: string; type?: string; hidden?: boolean },
+  ) => {
+    const r = await fetch(
+      `${API_BASE}/api/home/devices/${encodeURIComponent(deviceId)}/override`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(o),
+      },
+    );
+    if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
+  },
   refresh: async () => {
     await fetch(`${API_BASE}/api/home/refresh`, { method: 'POST' });
   },

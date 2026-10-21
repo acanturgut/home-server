@@ -57,17 +57,6 @@ func (s *Store) Get(mac string) (Override, bool) {
 	return o, ok
 }
 
-// All returns a copy of the override map.
-func (s *Store) All() map[string]Override {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make(map[string]Override, len(s.overrides))
-	for k, v := range s.overrides {
-		out[k] = v
-	}
-	return out
-}
-
 // Set stores or updates the override for a MAC. Empty name removes the entry.
 func (s *Store) Set(mac, name string) error {
 	mac = strings.ToLower(strings.TrimSpace(mac))

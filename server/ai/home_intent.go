@@ -41,37 +41,15 @@ const (
 	verbStatus     // "are the lights on?" — read-only
 )
 
-func (v intentVerb) String() string {
-	switch v {
-	case verbOn:
-		return "on"
-	case verbOff:
-		return "off"
-	case verbToggle:
-		return "toggle"
-	case verbBrightness, verbDim, verbBrighten:
-		return "brightness"
-	case verbOpen, verbClose:
-		return "position"
-	case verbStatus:
-		return "status"
-	}
-	return ""
-}
-
 // homeIntent is the parsed user intent.
 type homeIntent struct {
-	Verb      intentVerb
-	Value     int    // brightness 0..100 OR position 0..100 (when applicable)
-	HasValue  bool
-	Type      homedevices.DeviceType // optional filter ("lights", "plugs", "blinds")
-	HasType   bool
-	Room      string // optional room filter (matched case-insensitive against device.Room)
-	HasRoom   bool
-	NameQuery string // optional substring match against device name
-	HasName   bool
-	All       bool   // "all lights" / "all the lights"
-	Raw       string // normalized message
+	Verb     intentVerb
+	Value    int // brightness 0..100 OR position 0..100 (when applicable)
+	HasValue bool
+	Type     homedevices.DeviceType // optional filter ("lights", "plugs", "blinds")
+	HasType  bool
+	All      bool   // "all lights" / "all the lights"
+	Raw      string // normalized message
 }
 
 // tryHandleHomeIntent returns true when the message was understood AND
