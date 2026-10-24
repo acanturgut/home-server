@@ -56,6 +56,7 @@ func main() {
 	homeMgr := homedevices.NewManager(homedevices.NewStore(cfg.DataDir))
 	settings := assistant.NewSettingsStore(cfg.DataDir)
 	ns := nodestate.NewStore()
+	nodeHist := nodestate.NewHistory(cfg.DataDir)
 
 	// Home DNS server. Binds UDP+TCP :53 (host networking required). On first
 	// run it points canshome.com and home.lan at this host's LAN IP.
@@ -75,6 +76,7 @@ func main() {
 		Config:    cfg,
 		Nodes:     nodes,
 		NodeState: ns,
+		NodeHist:  nodeHist,
 		Settings:  settings,
 		Chats:     assistant.NewChatStore(cfg.DataDir),
 		Home:      homeMgr,
@@ -90,7 +92,7 @@ func main() {
 
 	go handler.RunSysCollector(ctx, 5*time.Second)
 	go homeMgr.Run(ctx, 15*time.Second)
-	go compactSensorHistory(ctx, homeMgr)
+	go compactHistory(ctx, homeMgr, nodeHist)
 
 	hkBridge, err := homekit.NewBridge(nodes, ns, cfg.DataDir, cfg.HomeKitPIN)
 	if err != nil {
@@ -126,8 +128,8 @@ func main() {
 	}
 }
 
-// compactSensorHistory drops sensor samples older than 30 days every 6h.
-func compactSensorHistory(ctx context.Context, m *homedevices.Manager) {
+// compactHistory drops old sensor and node samples every 6h.
+func compactHistory(ctx context.Context, m *homedevices.Manager, nodes *nodestate.History) {
 	t := time.NewTicker(6 * time.Hour)
 	defer t.Stop()
 	for {
@@ -136,6 +138,7 @@ func compactSensorHistory(ctx context.Context, m *homedevices.Manager) {
 			return
 		case <-t.C:
 			m.History().Compact()
+			nodes.Compact()
 		}
 	}
 }

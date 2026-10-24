@@ -154,3 +154,6 @@ func collectSystemStats(hb *Heartbeat) {
 		}
 	}
 }
+
+// collectLogs is Linux-only (journald).
+func collectLogs() []string { return nil }

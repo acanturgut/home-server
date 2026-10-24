@@ -21,9 +21,23 @@ export interface NodeStats {
   gpu_mem_used_mb?: number;
   gpu_temp?: number;
   cpu_temp?: number;
+  nvme_temp?: number;
   uptime_secs: number;
   last_seen: string;
 }
+
+/** One minute of a node's history (GET /api/nodes/{id}/history). */
+export interface NodeSample {
+  t: string;
+  cpu: number;
+  mem: number;
+  gpu?: number;
+  cpu_temp?: number;
+  gpu_temp?: number;
+  nvme_temp?: number;
+}
+
+export type NodeRange = '24h' | '168h';
 
 const post = <T>(path: string, body?: unknown) =>
   apiJson<T>(path, {
@@ -37,6 +51,13 @@ const post = <T>(path: string, body?: unknown) =>
  */
 export const nodesApi = {
   stats: () => apiJsonSafe<Record<string, NodeStats>>('/api/nodes/stats'),
+  history: (id: string, range: NodeRange) =>
+    apiJsonSafe<{ samples: NodeSample[] }>(
+      `/api/nodes/${id}/history?range=${range}`,
+    ),
+  /** Latest system warnings and errors, oldest first. */
+  logs: (id: string) =>
+    apiJsonSafe<{ lines: string[] }>(`/api/nodes/${id}/logs`),
   /** Sends a Wake-on-LAN packet. */
   wake: (id: string) =>
     post<{ status: 'sent'; node: string }>(`/api/nodes/${id}/wake`),

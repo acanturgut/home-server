@@ -28,6 +28,7 @@ type Deps struct {
 	Config    *config.Config
 	Nodes     *config.NodeStore
 	NodeState *nodestate.Store
+	NodeHist  *nodestate.History
 	Settings  *assistant.SettingsStore
 	Chats     *assistant.ChatStore
 	Home      *homedevices.Manager
@@ -43,6 +44,7 @@ type Handler struct {
 	cfg      *config.Config
 	nodes    *config.NodeStore
 	ns       *nodestate.Store
+	nodeHist *nodestate.History
 	settings *assistant.SettingsStore
 	chats    *assistant.ChatStore
 	home     *homedevices.Manager
@@ -62,6 +64,7 @@ func NewHandler(d Deps) *Handler {
 		cfg:      d.Config,
 		nodes:    d.Nodes,
 		ns:       d.NodeState,
+		nodeHist: d.NodeHist,
 		settings: d.Settings,
 		chats:    d.Chats,
 		home:     d.Home,
@@ -444,7 +447,31 @@ func (h *Handler) AgentHeartbeat(w http.ResponseWriter, r *http.Request) {
 			stats.NodeID = node.ID
 		}
 	}
+	h.nodeHist.Record(stats, time.Now())
 	writeJSON(w, http.StatusOK, map[string]any{"commands": h.ns.Update(stats)})
+}
+
+// GET /api/nodes/{id}/history?range=24h|168h — one sample per minute since
+// now-range. Defaults to 24h, capped at the retention.
+func (h *Handler) NodeHistory(w http.ResponseWriter, r *http.Request) {
+	rangeStr := r.URL.Query().Get("range")
+	if rangeStr == "" {
+		rangeStr = "24h"
+	}
+	dur, err := time.ParseDuration(rangeStr)
+	if err != nil || dur <= 0 {
+		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid range"})
+		return
+	}
+	since := time.Now().Add(-min(dur, nodestate.Retention))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"samples": h.nodeHist.Series(r.PathValue("id"), since),
+	})
+}
+
+// GET /api/nodes/{id}/logs — the node's latest warnings and errors, oldest first.
+func (h *Handler) NodeLogs(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"lines": h.ns.Logs(r.PathValue("id"))})
 }
 
 // GET /api/nodes/stats
