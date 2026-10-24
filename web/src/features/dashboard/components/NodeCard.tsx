@@ -114,7 +114,7 @@ export function OnlineNodeCard({
         <StatTile
           label="GPU"
           icon={<Zap />}
-          value={pct(s.gpu_usage)}
+          value={pct(s.gpu_name ? (s.gpu_usage ?? 0) : undefined)}
           chart={spark(history?.gpu, 'var(--chart-3)')}
         />
         {vramTotal > 0 && (

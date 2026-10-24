@@ -1,1 +1,0 @@
-import{_ as e,dt as t,ut as n}from"./routing-BWzeTouZ.js";var r=n();function i({className:n,...i}){return(0,r.jsx)(`textarea`,{"data-slot":`textarea`,className:t(e,`min-h-16 px-2.5 py-2`,n),...i})}export{i as t};

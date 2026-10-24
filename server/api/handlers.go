@@ -454,12 +454,8 @@ func (h *Handler) AgentHeartbeat(w http.ResponseWriter, r *http.Request) {
 // GET /api/nodes/{id}/history?range=24h|168h — one sample per minute since
 // now-range. Defaults to 24h, capped at the retention.
 func (h *Handler) NodeHistory(w http.ResponseWriter, r *http.Request) {
-	rangeStr := r.URL.Query().Get("range")
-	if rangeStr == "" {
-		rangeStr = "24h"
-	}
-	dur, err := time.ParseDuration(rangeStr)
-	if err != nil || dur <= 0 {
+	dur, ok := parseRange(r.URL.Query().Get("range"))
+	if !ok {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid range"})
 		return
 	}

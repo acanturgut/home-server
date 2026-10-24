@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -129,21 +130,17 @@ func (h *Handler) ApplyHomeAction(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// GET /api/home/devices/{id}/history?range=24h|168h|720h — sensor time
+// GET /api/home/devices/{id}/history?range=24h|7d|30d — sensor time
 // series since now-range. Defaults to 24h, capped at the 30-day retention.
 func (h *Handler) GetHomeDeviceHistory(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	rangeStr := r.URL.Query().Get("range")
-	if rangeStr == "" {
-		rangeStr = "24h"
-	}
-	dur, err := time.ParseDuration(rangeStr)
-	if err != nil || dur <= 0 {
+	dur, ok := parseRange(rangeStr)
+	if !ok {
 		writeJSON(w, http.StatusBadRequest, errorResp{Error: "invalid range"})
 		return
 	}
-	dur = min(dur, 30*24*time.Hour)
-	since := time.Now().Add(-dur)
+	since := time.Now().Add(-min(dur, 30*24*time.Hour))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"device_id": id,
 		"range":     rangeStr,
@@ -211,4 +208,18 @@ func (h *Handler) PairHue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"access_token": token})
+}
+
+// parseRange reads a history range: a Go duration ("24h", "168h") or whole
+// days ("7d", "30d"). Empty means 24h.
+func parseRange(s string) (time.Duration, bool) {
+	if s == "" {
+		return 24 * time.Hour, true
+	}
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		n, err := strconv.Atoi(days)
+		return time.Duration(n) * 24 * time.Hour, err == nil && n > 0
+	}
+	d, err := time.ParseDuration(s)
+	return d, err == nil && d > 0
 }
