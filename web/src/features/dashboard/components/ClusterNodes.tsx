@@ -90,7 +90,8 @@ export function ClusterNodes() {
         const online =
           !!s && lastTick - Date.parse(s.last_seen) < ONLINE_WINDOW_MS;
         // Only configured nodes can be powered on or off.
-        const ctl = nodes.some((n) => n.id === id)
+        const configured = nodes.some((n) => n.id === id);
+        const ctl = configured
           ? { busy: !!busy[id], onClick: () => power(id, name, online) }
           : undefined;
         return online ? (
@@ -101,6 +102,7 @@ export function ClusterNodes() {
             stats={s}
             history={history[id]}
             power={ctl}
+            configured={configured}
           />
         ) : (
           <OfflineNodeCard key={id} name={name} stats={s} power={ctl} />

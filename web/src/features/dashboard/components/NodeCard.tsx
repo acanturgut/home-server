@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { Collapsible } from '@/components/ui/collapsible';
 import { Sparkline } from '@/components/ui/chart';
 import { IconButton } from '@/components/ui/icon-button';
 import { Meter } from '@/components/ui/meter';
@@ -15,6 +16,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { StatTile } from '@/components/ui/stat-tile';
 import { StatusDot } from '@/components/ui/status-dot';
 import { ModelPicker } from '@/features/dashboard/components/ModelPicker';
+import { NodeInsights } from '@/features/dashboard/components/NodeInsights';
 import type { NodeHistory } from '@/features/dashboard/hooks/useNodeHistory';
 import { formatUptime, relTime } from '@/lib/format';
 import type { NodeStats } from '@/lib/nodes';
@@ -64,11 +66,14 @@ export function OnlineNodeCard({
   stats: s,
   history,
   power,
+  configured,
 }: {
   id: string;
   name: string;
   stats: NodeStats;
   history?: NodeHistory;
+  /** Configured inference workers have models to manage. */
+  configured: boolean;
   /** Present for configured nodes, which can be shut down. */
   power?: { busy: boolean; onClick: () => void };
 }) {
@@ -123,9 +128,15 @@ export function OnlineNodeCard({
         )}
       </div>
 
-      <div className="pt-1">
-        <ModelPicker nodeId={id} />
-      </div>
+      {configured && (
+        <div className="pt-1">
+          <ModelPicker nodeId={id} />
+        </div>
+      )}
+
+      <Collapsible trigger="History and logs">
+        <NodeInsights nodeId={id} />
+      </Collapsible>
     </Card>
   );
 }

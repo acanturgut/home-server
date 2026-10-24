@@ -5,6 +5,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -117,7 +119,13 @@ func collectSystemStats(hb *Heartbeat) {
 		}
 	}
 
-	// CPU Temp — read from thermal zones
+	// CPU temp from the CPU's own sensor; NVMe from the drive's composite.
+	hb.CPUTemp = hwmonTemp("k10temp", "coretemp", "cpu_thermal")
+	hb.NVMeTemp = hwmonTemp("nvme")
+	if hb.CPUTemp > 0 {
+		return
+	}
+	// Fallback: the hottest thermal zone (often the board, not the CPU).
 	for i := 0; i < 10; i++ {
 		path := fmt.Sprintf("/sys/class/thermal/thermal_zone%d/temp", i)
 		raw, err := os.ReadFile(path)
@@ -130,4 +138,64 @@ func collectSystemStats(hb *Heartbeat) {
 			hb.CPUTemp = temp // take the highest thermal zone
 		}
 	}
+}
+
+// hwmonTemp returns temp1 (°C) of the first hwmon chip named like one of
+// names, tried in order; 0 when none is present.
+func hwmonTemp(names ...string) int {
+	dirs, _ := filepath.Glob("/sys/class/hwmon/hwmon*")
+	for _, want := range names {
+		for _, d := range dirs {
+			name, _ := os.ReadFile(filepath.Join(d, "name"))
+			if strings.TrimSpace(string(name)) != want {
+				continue
+			}
+			raw, err := os.ReadFile(filepath.Join(d, "temp1_input"))
+			if err != nil {
+				continue
+			}
+			v, _ := strconv.Atoi(strings.TrimSpace(string(raw)))
+			return v / 1000
+		}
+	}
+	return 0
+}
+
+const (
+	maxLogLines = 50
+	cursorMark  = "-- cursor: "
+)
+
+// journalCursor is where the next collectLogs call resumes; empty until the
+// first call, which only marks the journal's end so old history isn't sent.
+var journalCursor string
+
+// collectLogs returns journal warnings and errors written since the last call.
+func collectLogs() []string {
+	first := journalCursor == ""
+	args := []string{"-q", "--no-pager", "--show-cursor", "-o", "short-iso"}
+	if first {
+		args = append(args, "-n", "1")
+	} else {
+		args = append(args, "-p", "warning", "--after-cursor", journalCursor)
+	}
+	out, err := exec.Command("journalctl", args...).Output()
+	if err != nil {
+		return nil
+	}
+	var lines []string
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if c, ok := strings.CutPrefix(l, cursorMark); ok {
+			journalCursor = c
+		} else if l != "" {
+			lines = append(lines, l)
+		}
+	}
+	if first {
+		return nil
+	}
+	if len(lines) > maxLogLines {
+		lines = lines[len(lines)-maxLogLines:]
+	}
+	return lines
 }

@@ -37,7 +37,10 @@ type Heartbeat struct {
 	GPUMemTotal int     `json:"gpu_mem_total_mb,omitempty"`
 	GPUMemUsed  int     `json:"gpu_mem_used_mb,omitempty"`
 	GPUTemp     int     `json:"gpu_temp,omitempty"`
+	NVMeTemp    int     `json:"nvme_temp,omitempty"`
 	UptimeSecs  int64   `json:"uptime_secs"`
+	// Logs are system warnings and errors since the previous heartbeat.
+	Logs []string `json:"logs,omitempty"`
 }
 
 // HeartbeatResponse contains commands from the server.
@@ -137,6 +140,8 @@ func main() {
 
 		collectSystemStats(&hb)
 		collectGPU(&hb)
+		// ponytail: lines from a failed heartbeat are dropped, not retried.
+		hb.Logs = collectLogs()
 
 		cmds := sendHeartbeat(serverURL, hb)
 		for _, cmd := range cmds {

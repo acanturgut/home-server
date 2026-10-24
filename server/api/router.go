@@ -29,6 +29,8 @@ func NewRouter(h *Handler) http.Handler {
 	mux.HandleFunc("POST /api/nodes/{id}/models/load", h.LoadNodeModel)
 	mux.HandleFunc("POST /api/nodes/{id}/models/unload", h.UnloadNodeModel)
 	mux.HandleFunc("GET /api/nodes/stats", h.NodeStats)
+	mux.HandleFunc("GET /api/nodes/{id}/history", h.NodeHistory)
+	mux.HandleFunc("GET /api/nodes/{id}/logs", h.NodeLogs)
 	mux.HandleFunc("GET /api/config", h.GetConfig)
 	mux.HandleFunc("PUT /api/config", h.UpdateConfig)
 	mux.HandleFunc("GET /api/homekit", h.HomeKit)

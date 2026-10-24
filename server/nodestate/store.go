@@ -26,8 +26,11 @@ type Stats struct {
 	GPUMemUsed  int       `json:"gpu_mem_used_mb,omitempty"`
 	GPUTemp     int       `json:"gpu_temp,omitempty"`
 	CPUTemp     int       `json:"cpu_temp,omitempty"`
+	NVMeTemp    int       `json:"nvme_temp,omitempty"`
 	UptimeSecs  int64     `json:"uptime_secs"`
 	LastSeen    time.Time `json:"last_seen"`
+	// Logs arrive with a heartbeat and move to the store's log buffer.
+	Logs []string `json:"logs,omitempty"`
 }
 
 // Store keeps per-node stats and a command queue.
@@ -35,18 +38,28 @@ type Store struct {
 	mu       sync.RWMutex
 	stats    map[string]*Stats
 	commands map[string][]string
+	logs     map[string][]string
 }
 
 func NewStore() *Store {
 	return &Store{
 		stats:    make(map[string]*Stats),
 		commands: make(map[string][]string),
+		logs:     make(map[string][]string),
 	}
 }
 
 // staleAfter is how long an agent may stay silent before it is forgotten.
 // It also bounds the maps, since heartbeats are unauthenticated.
 const staleAfter = 10 * time.Minute
+
+// Heartbeats are unauthenticated, so log input is capped per heartbeat, per
+// line and per node.
+const (
+	maxLogsPerBeat = 50
+	maxLogLineLen  = 500
+	keepLogs       = 200
+)
 
 // Update stores the latest stats and returns any pending commands for the node.
 func (s *Store) Update(st Stats) []string {
@@ -57,8 +70,20 @@ func (s *Store) Update(st Stats) []string {
 		if now.Sub(old.LastSeen) > staleAfter {
 			delete(s.stats, id)
 			delete(s.commands, id)
+			delete(s.logs, id)
 		}
 	}
+	if n := len(st.Logs); n > 0 {
+		lines := st.Logs[max(0, n-maxLogsPerBeat):]
+		for i, l := range lines {
+			if len(l) > maxLogLineLen {
+				lines[i] = l[:maxLogLineLen]
+			}
+		}
+		all := append(s.logs[st.NodeID], lines...)
+		s.logs[st.NodeID] = all[max(0, len(all)-keepLogs):]
+	}
+	st.Logs = nil
 	st.LastSeen = now
 	s.stats[st.NodeID] = &st
 	cmds := s.commands[st.NodeID]
@@ -94,4 +119,11 @@ func (s *Store) IsOnline(nodeID string) bool {
 		return false
 	}
 	return time.Since(st.LastSeen) < 30*time.Second
+}
+
+// Logs returns a node's most recent warning and error lines, oldest first.
+func (s *Store) Logs(nodeID string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]string(nil), s.logs[nodeID]...)
 }
