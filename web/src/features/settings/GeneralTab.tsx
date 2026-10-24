@@ -13,13 +13,12 @@ import { StatusDot } from '@/components/ui/status-dot';
 import { useRuntimeSettings } from '@/features/settings/hooks/useRuntimeSettings';
 import { useSystemConfig } from '@/features/settings/hooks/useSystemConfig';
 import { useAction } from '@/hooks/useAction';
-import { API_BASE } from '@/lib/api';
 import { formatUptime } from '@/lib/format';
 
 const LINKS = [
   { href: 'https://github.com/acanturgut/home-server', label: 'GitHub' },
-  { href: `${API_BASE}/api/health`, label: '/api/health' },
-  { href: `${API_BASE}/api/system`, label: '/api/system' },
+  { href: '/api/health', label: '/api/health' },
+  { href: '/api/system', label: '/api/system' },
 ];
 
 /** Settings → General: system info, backends, runtime defaults, about. */

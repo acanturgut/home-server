@@ -1,1 +1,0 @@
-import{_ as e,dt as t,ft as n}from"./routing-DfNVnSy6.js";var r=t();function i({className:t,...i}){return(0,r.jsx)(`textarea`,{"data-slot":`textarea`,className:n(e,`min-h-16 px-2.5 py-2`,t),...i})}export{i as t};

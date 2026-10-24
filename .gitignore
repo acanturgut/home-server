@@ -2,6 +2,7 @@ dist/
 node_modules/
 *.log
 .env
+/server/.data/
 
 # Stray build outputs
 /homeserver

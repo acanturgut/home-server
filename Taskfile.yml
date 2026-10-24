@@ -8,8 +8,11 @@ vars:
 tasks:
   # ─── LOCAL DEV ──────────────────────────────────────────
   server:dev:
-    desc: Run Go server locally
+    desc: Run Go server locally (data in server/.data)
     dir: server
+    env:
+      DATA_DIR: .data
+      LOG_DIR: .data/logs
     cmd: go run .
 
   # ─── QUALITY ───────────────────────────────────────────
