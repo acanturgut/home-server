@@ -23,6 +23,8 @@ type Sample struct {
 	CPUTemp  int       `json:"cpu_temp,omitempty"`
 	GPUTemp  int       `json:"gpu_temp,omitempty"`
 	NVMeTemp int       `json:"nvme_temp,omitempty"`
+	CPUW     float64   `json:"cpu_w,omitempty"`
+	GPUW     float64   `json:"gpu_w,omitempty"`
 }
 
 const (
@@ -77,7 +79,8 @@ func (h *History) Record(st Stats, now time.Time) {
 		return
 	}
 	s := Sample{T: now, CPU: st.CPUUsage, Mem: st.MemPct, GPU: st.GPUUsage,
-		CPUTemp: st.CPUTemp, GPUTemp: st.GPUTemp, NVMeTemp: st.NVMeTemp}
+		CPUTemp: st.CPUTemp, GPUTemp: st.GPUTemp, NVMeTemp: st.NVMeTemp,
+		CPUW: st.CPUWatts, GPUW: st.GPUWatts}
 	h.mem[st.NodeID] = append(cur, s)
 	if f, err := os.OpenFile(h.path(st.NodeID), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
 		_ = json.NewEncoder(f).Encode(s)

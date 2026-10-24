@@ -29,6 +29,26 @@ const LOAD: ChartConfig = {
   gpu: { label: 'GPU', color: 'var(--chart-3)' },
 };
 
+const POWER: ChartConfig = {
+  cpu_w: { label: 'CPU', color: 'var(--chart-1)' },
+  gpu_w: { label: 'GPU', color: 'var(--chart-3)' },
+};
+
+/** Samples further apart than this are a gap (node off), not usage. */
+const MAX_GAP_MS = 2 * 60_000;
+
+/** CPU + GPU energy over the samples, in kWh. */
+const energyKWh = (samples: NodeSample[]) => {
+  let wh = 0;
+  for (let i = 1; i < samples.length; i++) {
+    const ms = Date.parse(samples[i].t) - Date.parse(samples[i - 1].t);
+    if (ms > MAX_GAP_MS) continue;
+    const w = (samples[i].cpu_w ?? 0) + (samples[i].gpu_w ?? 0);
+    wh += (w * ms) / 3_600_000;
+  }
+  return wh / 1000;
+};
+
 type Row = Record<string, number | undefined> & { ts: number };
 
 /** Only the series this node actually reports (no NVMe on a Mac, no GPU on a Pi). */
@@ -172,6 +192,15 @@ function InsightsBody({ nodeId, range }: { nodeId: string; range: NodeRange }) {
             range={range}
             unit="°"
           />
+          {rows.some((r) => r.cpu_w || r.gpu_w) && (
+            <HistoryChart
+              title={`Power (CPU + GPU) · ${energyKWh(data.samples).toFixed(2)} kWh`}
+              config={POWER}
+              rows={rows}
+              range={range}
+              unit=" W"
+            />
+          )}
           <HistoryChart
             title="Load"
             config={LOAD}

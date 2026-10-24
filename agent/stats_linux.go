@@ -122,6 +122,7 @@ func collectSystemStats(hb *Heartbeat) {
 	// CPU temp from the CPU's own sensor; NVMe from the drive's composite.
 	hb.CPUTemp = hwmonTemp("k10temp", "coretemp", "cpu_thermal")
 	hb.NVMeTemp = hwmonTemp("nvme")
+	hb.CPUWatts = cpuWatts()
 	if hb.CPUTemp > 0 {
 		return
 	}
@@ -198,4 +199,33 @@ func collectLogs() []string {
 		lines = lines[len(lines)-maxLogLines:]
 	}
 	return lines
+}
+
+// raplEnergy is the CPU package energy counter (Intel and AMD Zen). It is
+// root-only; the agent needs CAP_DAC_READ_SEARCH to read it.
+const raplEnergy = "/sys/class/powercap/intel-rapl:0/energy_uj"
+
+var (
+	prevEnergy   uint64
+	prevEnergyAt time.Time
+)
+
+// cpuWatts is the CPU package's average power since the previous call; 0 on
+// the first call, after a counter wrap, or without RAPL access.
+func cpuWatts() float64 {
+	raw, err := os.ReadFile(raplEnergy)
+	if err != nil {
+		return 0
+	}
+	e, err := strconv.ParseUint(strings.TrimSpace(string(raw)), 10, 64)
+	if err != nil {
+		return 0
+	}
+	now := time.Now()
+	prev, prevAt := prevEnergy, prevEnergyAt
+	prevEnergy, prevEnergyAt = e, now
+	if prevAt.IsZero() || e < prev {
+		return 0
+	}
+	return float64(e-prev) / 1e6 / now.Sub(prevAt).Seconds()
 }

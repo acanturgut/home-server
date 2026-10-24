@@ -27,6 +27,8 @@ type Stats struct {
 	GPUTemp     int       `json:"gpu_temp,omitempty"`
 	CPUTemp     int       `json:"cpu_temp,omitempty"`
 	NVMeTemp    int       `json:"nvme_temp,omitempty"`
+	CPUWatts    float64   `json:"cpu_watts,omitempty"`
+	GPUWatts    float64   `json:"gpu_watts,omitempty"`
 	UptimeSecs  int64     `json:"uptime_secs"`
 	LastSeen    time.Time `json:"last_seen"`
 	// Logs arrive with a heartbeat and move to the store's log buffer.

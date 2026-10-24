@@ -22,6 +22,8 @@ export interface NodeStats {
   gpu_temp?: number;
   cpu_temp?: number;
   nvme_temp?: number;
+  cpu_watts?: number;
+  gpu_watts?: number;
   uptime_secs: number;
   last_seen: string;
 }
@@ -35,6 +37,8 @@ export interface NodeSample {
   cpu_temp?: number;
   gpu_temp?: number;
   nvme_temp?: number;
+  cpu_w?: number;
+  gpu_w?: number;
 }
 
 export type NodeRange = '24h' | '168h';
