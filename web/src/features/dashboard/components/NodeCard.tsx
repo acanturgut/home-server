@@ -1,6 +1,7 @@
 import {
   Cpu,
   MemoryStick,
+  Plug,
   Power,
   PowerOff,
   Thermometer,
@@ -89,6 +90,15 @@ export function OnlineNodeCard({
             {specs(s)} · up {formatUptime(s.uptime_secs)}
           </p>
         </div>
+        {!!(s.cpu_watts || s.gpu_watts) && (
+          <span
+            className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground tabular-nums"
+            title="CPU + GPU power"
+          >
+            <Plug className="size-3.5" aria-hidden />
+            {Math.round((s.cpu_watts ?? 0) + (s.gpu_watts ?? 0))} W
+          </span>
+        )}
         {s.cpu_temp != null && (
           <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground tabular-nums">
             <Thermometer className="size-3.5" aria-hidden />

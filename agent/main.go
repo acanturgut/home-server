@@ -38,6 +38,8 @@ type Heartbeat struct {
 	GPUMemUsed  int     `json:"gpu_mem_used_mb,omitempty"`
 	GPUTemp     int     `json:"gpu_temp,omitempty"`
 	NVMeTemp    int     `json:"nvme_temp,omitempty"`
+	CPUWatts    float64 `json:"cpu_watts,omitempty"`
+	GPUWatts    float64 `json:"gpu_watts,omitempty"`
 	UptimeSecs  int64   `json:"uptime_secs"`
 	// Logs are system warnings and errors since the previous heartbeat.
 	Logs []string `json:"logs,omitempty"`
@@ -202,7 +204,7 @@ func executeCommand(cmd string) {
 
 func collectGPU(hb *Heartbeat) {
 	out, err := exec.Command("nvidia-smi",
-		"--query-gpu=name,utilization.gpu,memory.total,memory.used,temperature.gpu",
+		"--query-gpu=name,utilization.gpu,memory.total,memory.used,temperature.gpu,power.draw",
 		"--format=csv,noheader,nounits").Output()
 	if err != nil {
 		return
@@ -217,6 +219,9 @@ func collectGPU(hb *Heartbeat) {
 	hb.GPUMemTotal, _ = strconv.Atoi(strings.TrimSpace(parts[2]))
 	hb.GPUMemUsed, _ = strconv.Atoi(strings.TrimSpace(parts[3]))
 	hb.GPUTemp, _ = strconv.Atoi(strings.TrimSpace(parts[4]))
+	if len(parts) > 5 { // "[N/A]" on GPUs without a power sensor parses as 0
+		hb.GPUWatts, _ = strconv.ParseFloat(strings.TrimSpace(parts[5]), 64)
+	}
 }
 
 // deriveNodeID generates a node ID from the hostname (lowercase, sanitized).
