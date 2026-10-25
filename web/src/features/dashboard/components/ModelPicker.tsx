@@ -7,6 +7,7 @@ import { StatusDot } from '@/components/ui/status-dot';
 import { dashboardApi, type NodeModelStatus } from '@/features/dashboard/api';
 import { useAction } from '@/hooks/useAction';
 import { nodesApi } from '@/lib/nodes';
+import { cn } from '@/lib/utils';
 
 /** Loaded-model status of one node, with load / eject for its models. */
 export function ModelPicker({ nodeId }: { nodeId: string }) {
@@ -37,9 +38,21 @@ export function ModelPicker({ nodeId }: { nodeId: string }) {
   const loaded = models?.find((m) => m.loaded);
 
   if (!models) {
+    // Nothing listening on the model port is a normal state (LM Studio not
+    // started), not a failure.
+    const noServer = /connection refused/i.test(String(error ?? ''));
     return error ? (
-      <div className="flex items-center gap-2 text-xs text-destructive">
-        <span className="min-w-0 truncate">Model API unavailable: {error}</span>
+      <div
+        className={cn(
+          'flex items-center gap-2 text-xs',
+          noServer ? 'text-muted-foreground' : 'text-destructive',
+        )}
+      >
+        <span className="min-w-0 truncate">
+          {noServer
+            ? 'No model server running'
+            : `Model API unavailable: ${error}`}
+        </span>
         <RefreshButton onClick={reload} busy={busy} label="Retry" />
       </div>
     ) : (
