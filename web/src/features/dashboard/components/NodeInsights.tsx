@@ -37,16 +37,26 @@ const POWER: ChartConfig = {
 /** Samples further apart than this are a gap (node off), not usage. */
 const MAX_GAP_MS = 2 * 60_000;
 
-/** CPU + GPU energy over the samples, in kWh. */
-const energyKWh = (samples: NodeSample[]) => {
+// ponytail: fixed price; move to Settings if it starts changing often.
+const KR_PER_KWH = 2.5;
+const HOURS_PER_MONTH = 730;
+
+/** CPU + GPU energy over the samples, its cost, and a monthly estimate at the same average draw. */
+const powerSummary = (samples: NodeSample[]) => {
   let wh = 0;
+  let ms = 0;
   for (let i = 1; i < samples.length; i++) {
-    const ms = Date.parse(samples[i].t) - Date.parse(samples[i - 1].t);
-    if (ms > MAX_GAP_MS) continue;
-    const w = (samples[i].cpu_w ?? 0) + (samples[i].gpu_w ?? 0);
-    wh += (w * ms) / 3_600_000;
+    const dt = Date.parse(samples[i].t) - Date.parse(samples[i - 1].t);
+    if (dt > MAX_GAP_MS) continue;
+    wh +=
+      (((samples[i].cpu_w ?? 0) + (samples[i].gpu_w ?? 0)) * dt) / 3_600_000;
+    ms += dt;
   }
-  return wh / 1000;
+  const kwh = wh / 1000;
+  const avgKw = ms ? kwh / (ms / 3_600_000) : 0;
+  return `${kwh.toFixed(2)} kWh · ${(kwh * KR_PER_KWH).toFixed(2)} kr · ≈ ${Math.round(
+    avgKw * HOURS_PER_MONTH * KR_PER_KWH,
+  )} kr/month`;
 };
 
 type Row = Record<string, number | undefined> & { ts: number };
@@ -194,7 +204,7 @@ function InsightsBody({ nodeId, range }: { nodeId: string; range: NodeRange }) {
           />
           {rows.some((r) => r.cpu_w || r.gpu_w) && (
             <HistoryChart
-              title={`Power (CPU + GPU) · ${energyKWh(data.samples).toFixed(2)} kWh`}
+              title={`Power (CPU + GPU) · ${powerSummary(data.samples)}`}
               config={POWER}
               rows={rows}
               range={range}
