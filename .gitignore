@@ -10,3 +10,7 @@ node_modules/
 /web/server/
 /agent/home-agent
 /agent/home-agent.exe
+
+# HomeKit pairing state (keypair etc.) belongs in DATA_DIR, never in git
+/server/homekit/*
+!/server/homekit/*.go
