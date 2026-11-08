@@ -1,35 +1,29 @@
 # Home Server
 
-A self-hosted dashboard for a Raspberry Pi: smart home control, LAN devices
-and router, local DNS with ad blocking, AI chat across your GPU machines, and
-a HomeKit bridge.
+Self-hosted home dashboard for a Raspberry Pi: smart home, network, local DNS
+with ad blocking, AI chat, and a HomeKit bridge.
 
-## Folders
-
-- `server/` – Go backend (API, DNS, HomeKit); serves the built UI
+- `server/` – Go backend, serves the built UI
 - `web/` – React UI
-- `agent/` – tiny agent for GPU machines (stats, remote shutdown)
-- `caddy/` – HTTPS proxy config
+- `agent/` – small agent for GPU machines
+- `caddy/` – HTTPS proxy
 
-## Run locally
-
-Needs Go 1.27, Node with Yarn 4, and [Task](https://taskfile.dev).
+## Run
 
 ```sh
 task server:dev        # API on :8080
 cd web && yarn dev     # UI on :5173
 ```
 
-The first start prints a one-time `admin` password.
+First start prints a one-time `admin` password. Needs Go, Yarn 4 and [Task](https://taskfile.dev).
 
-## Deploy to the Pi
+## Deploy
 
 ```sh
 task deploy
 ```
 
-## Check everything
+## Secrets
 
-```sh
-task check
-```
+None in the repo. Keys, tokens and pairing data live in `DATA_DIR`
+(`server/.data` locally). Set your own `HOMEKIT_PIN`.
